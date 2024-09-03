@@ -409,6 +409,10 @@ struct Field
 
     inline void updateSpatialStructure(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
+        // 1. Evaluate regions with new-coming samples
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_distributionFactory);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_distributionFactory);
+        // 2. Subdivide
         m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         m_spatialSubdivBuilder.insertTree(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
         if (m_useStochasticNNLookUp)

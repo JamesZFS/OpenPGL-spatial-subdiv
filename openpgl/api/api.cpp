@@ -609,6 +609,18 @@ extern "C" OPENPGL_DLLEXPORT uint32_t pglSurfaceSamplingDistributionGetId(PGLSur
     return gSurfaceSamplingDistribution->getId();
 }
 
+extern "C" OPENPGL_DLLEXPORT float pglSurfaceSamplingDistributionGetFluence(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)
+{
+    ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
+    return gSurfaceSamplingDistribution->getFluence();
+}
+
+extern "C" OPENPGL_DLLEXPORT float pglSurfaceSamplingDistributionGetCE(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)
+{
+    ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
+    return gSurfaceSamplingDistribution->getCE();
+}
+
 extern "C" OPENPGL_DLLEXPORT bool pglSurfaceSamplingDistributionValidate(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)
 {
     ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;

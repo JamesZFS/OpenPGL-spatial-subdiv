@@ -120,6 +120,11 @@ struct SurfaceSamplingDistribution
      * @return uint32_t The id of the cache.
      */
     uint32_t GetId() const;
+
+    float GetFluence() const;
+
+    float GetCE() const;
+
 #ifdef OPENPGL_RADIANCE_CACHES
     /**
      * @brief Returns the incoming radiance estimates.
@@ -266,6 +271,19 @@ OPENPGL_INLINE uint32_t SurfaceSamplingDistribution::GetId() const
     OPENPGL_ASSERT(m_surfaceSamplingDistributionHandle);
     return pglSurfaceSamplingDistributionGetId(m_surfaceSamplingDistributionHandle);
 }
+
+OPENPGL_INLINE float SurfaceSamplingDistribution::GetFluence() const
+{
+    OPENPGL_ASSERT(m_surfaceSamplingDistributionHandle);
+    return pglSurfaceSamplingDistributionGetFluence(m_surfaceSamplingDistributionHandle);
+}
+
+OPENPGL_INLINE float SurfaceSamplingDistribution::GetCE() const
+{
+    OPENPGL_ASSERT(m_surfaceSamplingDistributionHandle);
+    return pglSurfaceSamplingDistributionGetCE(m_surfaceSamplingDistributionHandle);
+}
+
 #ifdef OPENPGL_RADIANCE_CACHES
 OPENPGL_INLINE pgl_vec3f SurfaceSamplingDistribution::IncomingRadiance(pgl_vec3f &direction, const bool directLightMIS) const
 {
