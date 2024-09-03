@@ -26,9 +26,26 @@
 
 #include <iostream>
 #include <limits>
+#include <type_traits>
 
 namespace openpgl
 {
+
+template <typename T, typename = std::void_t<>>
+struct has_member_weight : std::false_type {};
+
+template <typename T>
+struct has_member_weight<T, std::void_t<decltype(std::declval<T>().weight)>> : std::true_type {};
+
+template <typename T>
+std::enable_if_t<has_member_weight<T>::value, float> getSampleWeight(const T& obj) {
+    return obj.weight;
+}
+
+template <typename T>
+std::enable_if_t<!has_member_weight<T>::value, float> getSampleWeight(const T&) {
+    return 0;
+}
 
 template <typename TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer>
 struct KDTreePartitionBuilder
@@ -133,6 +150,19 @@ struct KDTreePartitionBuilder
         size_t depth = 1;
 
         insertTreeNode(&kdTree, root, depth, samples, sampleRange, &dataStorage);
+    }
+
+    template<class TContainer, class TDistFactory>
+    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const TDistFactory &distFactory) {
+        KDNode &root = kdTree.getRoot();
+
+        Range sampleRange;
+        sampleRange.m_begin = 0;
+        sampleRange.m_end = samples.size();
+
+        size_t depth = 1;
+
+        updateCEStatsNode(&kdTree, root, depth, samples, sampleRange, &dataStorage, &distFactory);
     }
 
     std::string toString() const;
@@ -302,6 +332,8 @@ struct KDTreePartitionBuilder
                 // merge split handling
                 regionAndRangeData.first.sampleStatistics.split(splitDim, splitPos, 0.25f, false);
                 regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
+                regionAndRangeData.first.ceStatistics.decay(0.25f);
+                regionAndRangeDataRight.first.ceStatistics.decay(0.25f);
 
                 regionAndRangeData.first.splitFlag = true;
                 regionAndRangeDataRight.first.splitFlag = true;
@@ -462,6 +494,77 @@ struct KDTreePartitionBuilder
             },
             [&] {
                 insertTreeNode(kdTree, kdTree->getNode(nodeIdsLeftRight[1]), depth + 1, samples, sampleRangeLeftRight[1], dataStorage);
+            });
+    }
+
+    template<class TContainer, class TDistFactory>
+    void updateCEStatsNode(KDTree *kdTree, KDNode &node, size_t depth, TContainer &samples, const Range sampleRange,
+                        tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const TDistFactory *distFactory) const
+    {
+        if (sampleRange.size() == 0)
+        {
+            return;
+        }
+        uint8_t splitDim = {0};
+        float splitPos = {0.0f};
+
+        uint32_t nodeIdsLeftRight[2];
+        Range sampleRangeLeftRight[2];
+
+        if (node.isLeaf())
+        {
+            uint32_t dataIdx = node.getDataIdx();
+            std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
+            for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; ++i) {
+                auto &sample = samples[i];
+                float phi = getSampleWeight(sample);
+                float pdf = 1; // TODO  dist.parallax(regionCenter, sample.position).pdf(sample.direction)
+                regionAndRangeData.first.ceStatistics.addSample(phi, pdf);
+            }
+            return;
+        }
+        else
+        {
+            splitDim = node.getSplitDim();
+            splitPos = node.getSplitPivot();
+            nodeIdsLeftRight[0] = node.getLeftChildIdx();
+            nodeIdsLeftRight[1] = nodeIdsLeftRight[0] + 1;
+        }
+
+        OPENPGL_ASSERT(!node.isLeaf());
+        OPENPGL_ASSERT(sampleRange.size() > 0);
+
+#ifdef USE_EMBREE_PARALLEL
+        size_t rPivotItr = 0;
+#else
+        typename TZeroValueSamplesContainer::iterator rPivotItr;
+        auto begin = samples.begin() + sampleRange.m_begin, end = samples.begin() + sampleRange.m_end;
+#endif
+#ifdef USE_EMBREE_PARALLEL
+        rPivotItr = pivotSplitSamples2<typename TContainer::value_type>(samples.data(), sampleRange.m_begin, sampleRange.m_end, splitDim, splitPos);
+#else
+        rPivotItr = pivotSplitSamples<TContainer>(begin, end, splitDim, splitPos);
+#endif
+
+#ifdef USE_EMBREE_PARALLEL
+        sampleRangeLeftRight[0] = Range(sampleRange.m_begin, rPivotItr);
+        sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
+#else
+        sampleRangeLeftRight[0] = Range(sampleRange.m_begin, std::distance(samples.begin(), rPivotItr));
+        sampleRangeLeftRight[1] = Range(std::distance(samples.begin(), rPivotItr), sampleRange.m_end);
+#endif
+        /* This assert is a sanity check which is only valid with the assumption that the number of samples grows at same pace
+           as the number of spatial nodes: in practice this is not the case (e.g., after many 1spp iterations)
+        */
+        // OPENPGL_ASSERT(sampleRangeLeftRight[0].size() > 1);
+        // OPENPGL_ASSERT(sampleRangeLeftRight[1].size() > 1);
+
+        tbb::parallel_invoke(
+            [&] {
+                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[0]), depth + 1, samples, sampleRangeLeftRight[0], dataStorage, distFactory);
+            },
+            [&] {
+                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[1]), depth + 1, samples, sampleRangeLeftRight[1], dataStorage, distFactory);
             });
     }
 };

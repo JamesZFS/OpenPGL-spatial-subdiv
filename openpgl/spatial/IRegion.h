@@ -13,6 +13,10 @@ struct IRegion
 {
     virtual ~IRegion(){};
 
+    virtual float getFluence() const = 0;
+
+    virtual float getCE() const = 0;
+
 #ifdef OPENPGL_RADIANCE_CACHES
     virtual Vector3 getOutgoingRadiance(const Vector3 dir) const = 0;
 #endif

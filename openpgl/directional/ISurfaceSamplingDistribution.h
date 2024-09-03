@@ -53,6 +53,18 @@ struct ISurfaceSamplingDistribution
         m_id = id;
     };
 
+    float getFluence() const {
+        auto r = getRegion();
+        if (r == nullptr) return 0;
+        return r->getFluence();
+    }
+
+    float getCE() const {
+        auto r = getRegion();
+        if (r == nullptr) return 0;
+        return r->getCE();
+    }
+
     virtual void setRegion(const IRegion *region) = 0;
 
     virtual const IRegion *getRegion() const = 0;

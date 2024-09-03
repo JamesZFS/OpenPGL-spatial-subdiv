@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../data/SampleStatistics.h"
+#include "../data/CEStatistics.h"
 #include "../openpgl_common.h"
 #ifdef OPENPGL_RADIANCE_CACHES
 #include "../directional/OutgoingRadianceHistogram.h"
@@ -21,10 +22,19 @@ struct Region : public IRegion
     SampleStatistics sampleStatistics;
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
+    CEStatistics ceStatistics;  // for adaptive subdivision
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
     // bool valid{true};
+
+    float getFluence() const override {
+        return ceStatistics.getFluence();
+    }
+
+    float getCE() const override {
+        return ceStatistics.getCE();
+    }
 
     inline const BBox &getRegionBounds() const
     {
