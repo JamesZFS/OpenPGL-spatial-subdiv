@@ -107,6 +107,7 @@ struct Device : public IDevice
             gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
             delete spatialSturctureArguments;
 
             PGLVMMFactoryArguments *directionalDistributionArguments = (PGLVMMFactoryArguments *)args.directionalDistributionArguments;
@@ -156,6 +157,7 @@ struct Device : public IDevice
             gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
             delete spatialSturctureArguments;
 
             PGLVMMFactoryArguments *directionalDistributionArguments = (PGLVMMFactoryArguments *)args.directionalDistributionArguments;
@@ -205,6 +207,7 @@ struct Device : public IDevice
             gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
             gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
 
             PGLDQTFactoryArguments *directionalDistributionArguments = (PGLDQTFactoryArguments *)args.directionalDistributionArguments;
             gFieldSettings.distributionFactorySettings.leafEstimator = (LeafEstimator)directionalDistributionArguments->leafEstimator;
