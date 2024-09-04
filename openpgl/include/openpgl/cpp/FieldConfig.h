@@ -35,9 +35,11 @@ struct FieldConfig
      * @param directionalType The directional distribution type.
      * @param deterministic If the training/updating of the field should be deterministic (default = true).
      * @param maxSamplesPerLeaf The maximum number of samples per tree node (default = 32K).
+     * @param maxDepth The maximum depth of the tree (default = 32).
+     * @param ceThreshold
      */
     void Init(const PGL_SPATIAL_STRUCTURE_TYPE spatialType, const PGL_DIRECTIONAL_DISTRIBUTION_TYPE directionalType, const bool deterministic = true,
-              const size_t maxSamplesPerLeaf = 32000);
+              const size_t maxSamplesPerLeaf = 32000, const size_t maxDepth = 32, const float ceThreshold = std::numeric_limits<float>::infinity());
 
     /**
      * @brief Sets the maximum depth of the tree structure (e.g., 16).
@@ -79,9 +81,9 @@ struct FieldConfig
 ////////////////////////////////////////////////////////////
 
 OPENPGL_INLINE void FieldConfig::Init(const PGL_SPATIAL_STRUCTURE_TYPE spatialType, const PGL_DIRECTIONAL_DISTRIBUTION_TYPE directionalType, const bool deterministic,
-                                      const size_t maxSamplesPerLeaf)
+                                      const size_t maxSamplesPerLeaf, const size_t maxDepth, const float ceThreshold)
 {
-    pglFieldArgumentsSetDefaults(m_args, spatialType, directionalType, deterministic, maxSamplesPerLeaf);
+    pglFieldArgumentsSetDefaults(m_args, spatialType, directionalType, deterministic, maxSamplesPerLeaf, maxDepth, ceThreshold);
 }
 
 OPENPGL_INLINE void FieldConfig::SetDebugArgFitRegions(const bool fitRegions)

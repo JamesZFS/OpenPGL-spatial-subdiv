@@ -64,6 +64,7 @@ struct KDTreePartitionBuilder
         size_t minSamples{100};
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
         size_t maxDepth{32};
+        float ceThreshold{std::numeric_limits<float>::infinity()};  // nodes' with cross-entropy larger than this gets subdivided
 
         void serialize(std::ostream &stream) const;
         void deserialize(std::istream &stream);
@@ -72,7 +73,7 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings &b) const
         {
             bool equal = true;
-            if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth)
+            if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth || ceThreshold != b.ceThreshold)
             {
                 equal = false;
             }
@@ -82,6 +83,7 @@ struct KDTreePartitionBuilder
 
     void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
     {
+        std::cout << buildSettings.toString() << std::endl;
         kdTree.init(bounds, 4096);
         dataStorage.resize(1);
         dataStorage[0].first.regionBounds = bounds;
@@ -320,7 +322,10 @@ struct KDTreePartitionBuilder
         {
             uint32_t dataIdx = node.getDataIdx();
             std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
-            if (depth < buildSettings.maxDepth && regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size() > buildSettings.maxSamples)
+            if (depth < buildSettings.maxDepth && (
+                regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size() > buildSettings.maxSamples ||  // maximum sample count threshold
+                regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
+                ))
             {
                 SampleStatistics mergedSampleStats = regionAndRangeData.first.sampleStatistics;
                 mergedSampleStats.merge(sampleStats);
@@ -332,8 +337,8 @@ struct KDTreePartitionBuilder
                 // merge split handling
                 regionAndRangeData.first.sampleStatistics.split(splitDim, splitPos, 0.25f, false);
                 regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
-                regionAndRangeData.first.ceStatistics.decay(0.25f);
-                regionAndRangeDataRight.first.ceStatistics.decay(0.25f);
+                regionAndRangeData.first.ceStatistics.decay(0);  // TODO: find an optimal decay ratio
+                regionAndRangeDataRight.first.ceStatistics.decay(0);
 
                 regionAndRangeData.first.splitFlag = true;
                 regionAndRangeDataRight.first.splitFlag = true;
@@ -593,6 +598,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamples: " << minSamples << std::endl;
     ss << "  maxSamples: " << maxSamples << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
+    ss << "  ceThreshold: " << ceThreshold << std::endl;
 
     return ss.str();
 }
@@ -603,6 +609,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char *>(&minSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxDepth), sizeof(size_t));
+    stream.write(reinterpret_cast<const char *>(&ceThreshold), sizeof(float));
 }
 
 template <class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -611,5 +618,6 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char *>(&minSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxDepth), sizeof(size_t));
+    stream.read(reinterpret_cast<char *>(&ceThreshold), sizeof(float));
 }
 }  // namespace openpgl
