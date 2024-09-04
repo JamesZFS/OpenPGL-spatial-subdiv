@@ -12,23 +12,28 @@
 namespace openpgl
 {
 
-template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename> class TSpatialStructureBuilder, typename TSurfaceSamplingDistribution,
+template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename, typename> class TSpatialStructureBuilder, typename TSurfaceSamplingDistribution,
           typename TVolumeSamplingDistribution>
 struct SurfaceVolumeField : public ISurfaceVolumeField
 {
    private:
-    using FieldType = Field<Vecsize, TDirectionalDistributionFactory, TSpatialStructureBuilder>;
+    using SurfaceFieldType = Field<Vecsize, TDirectionalDistributionFactory, TSpatialStructureBuilder, TSurfaceSamplingDistribution>;
+    using VolumeFieldType = Field<Vecsize, TDirectionalDistributionFactory, TSpatialStructureBuilder, TVolumeSamplingDistribution>;
     using SampleContainer = SampleDataStorage::SampleContainer;
 
    public:
-    using Settings = typename FieldType::Settings;
-    using RegionType = typename FieldType::RegionType;
-    using DirectionalDistribution = typename FieldType::DirectionalDistribution;
+    using SurfaceSettings = typename SurfaceFieldType::Settings;
+    using SurfaceRegionType = typename SurfaceFieldType::RegionType;
+    using VolumeSettings = typename VolumeFieldType::Settings;
+    using VolumeRegionType = typename VolumeFieldType::RegionType;
+
+    using Settings = SurfaceSettings;
+    using DirectionalDistribution = typename SurfaceFieldType::DirectionalDistribution;
 
    public:
     SurfaceVolumeField() = default;
 
-    SurfaceVolumeField(const Settings &settings) : m_surfaceField(settings), m_volumeField(settings)
+    SurfaceVolumeField(const SurfaceSettings &settings) : m_surfaceField(settings), m_volumeField(reinterpret_cast<const VolumeSettings&>(settings))
     {
         m_surfaceField.setIsSurface(true);
         m_volumeField.setIsSurface(false);
@@ -45,7 +50,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
     {
         TSurfaceSamplingDistribution *_surfaceSamplingDistribution = (TSurfaceSamplingDistribution *)surfaceSamplingDistribution;
         uint32_t id = -1;
-        const RegionType *region = m_surfaceField.getRegion(position, sample1D, id);
+        const SurfaceRegionType *region = m_surfaceField.getRegion(position, sample1D, id);
         if (!region || !region->valid)
         {
             return false;
@@ -66,7 +71,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
     {
         TVolumeSamplingDistribution *_volumeSamplingDistribution = (TVolumeSamplingDistribution *)volumeSamplingDistribution;
         uint32_t id = -1;
-        const RegionType *region = m_volumeField.getRegion(position, sample1D, id);
+        const VolumeRegionType *region = m_volumeField.getRegion(position, sample1D, id);
         if (!region || !region->valid)
         {
             return false;
@@ -167,12 +172,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 
     PGL_SPATIAL_STRUCTURE_TYPE getSpatialStructureType() const override
     {
-        return FieldType::SpatialStructureBuilder::SPATIAL_STRUCTURE_TYPE;
+        return SurfaceFieldType::SpatialStructureBuilder::SPATIAL_STRUCTURE_TYPE;
     }
 
     PGL_DIRECTIONAL_DISTRIBUTION_TYPE getDirectionalDistributionType() const override
     {
-        return FieldType::DirectionalDistributionFactory::DIRECTIONAL_DISTRIBUTION_TYPE;
+        return SurfaceFieldType::DirectionalDistributionFactory::DIRECTIONAL_DISTRIBUTION_TYPE;
     }
 
     size_t getIteration() const override
@@ -216,9 +221,9 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 
         os.write(FIELD_FILE_HEADER_STRING, strlen(FIELD_FILE_HEADER_STRING) + 1);
 
-        auto spatialStructureType = FieldType::SpatialStructureBuilder::SPATIAL_STRUCTURE_TYPE;
+        auto spatialStructureType = SurfaceFieldType::SpatialStructureBuilder::SPATIAL_STRUCTURE_TYPE;
         os.write(reinterpret_cast<const char *>(&spatialStructureType), sizeof(spatialStructureType));
-        auto directionalDistributionType = FieldType::DirectionalDistributionFactory::DIRECTIONAL_DISTRIBUTION_TYPE;
+        auto directionalDistributionType = SurfaceFieldType::DirectionalDistributionFactory::DIRECTIONAL_DISTRIBUTION_TYPE;
         os.write(reinterpret_cast<const char *>(&directionalDistributionType), sizeof(directionalDistributionType));
 
         serialize(os);
@@ -255,8 +260,8 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
     size_t m_iteration{0};
     size_t m_totalSPP{0};
 
-    FieldType m_surfaceField;
-    FieldType m_volumeField;
+    SurfaceFieldType m_surfaceField;
+    VolumeFieldType m_volumeField;
 };
 
 }  // namespace openpgl

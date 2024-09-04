@@ -22,7 +22,7 @@
 namespace openpgl
 {
 
-template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename> class TSpatialStructureBuilder>
+template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename, typename> class TSpatialStructureBuilder, typename TSamplingDistribution>
 struct Field
 {
    public:
@@ -39,7 +39,7 @@ struct Field
     typedef std::pair<RegionType, RangeType> RegionStorageType;
     typedef tbb::concurrent_vector<RegionStorageType> RegionStorageContainerType;
 
-    using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal>;
+    using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;
     using SpatialStructure = typename SpatialStructureBuilder::SpatialStructure;
     using SpatialBuilderSettings = typename SpatialStructureBuilder::Settings;
 
@@ -243,6 +243,7 @@ struct Field
 
             m_timeLastUpdateDirectionalDistriubtionUpdate = updateStep.elapsed() * 1e-3f;
             m_timeLastUpdate = updateAll.elapsed() * 1e-3f;
+            std::cout << "updateField() took " << updateAll.elapsed() * 1e-3f << " ms" << std::endl;
         }
         m_iteration++;
     }
@@ -409,9 +410,11 @@ struct Field
 
     inline void updateSpatialStructure(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
+        Timer timer;
         // 1. Evaluate regions with new-coming samples
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_distributionFactory);
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_distributionFactory);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
+        std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         // 2. Subdivide
         m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         m_spatialSubdivBuilder.insertTree(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
