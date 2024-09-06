@@ -322,10 +322,13 @@ struct KDTreePartitionBuilder
         {
             uint32_t dataIdx = node.getDataIdx();
             std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
+            size_t total_samples = regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size();
             if (depth < buildSettings.maxDepth && (
-                regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size() > buildSettings.maxSamples ||  // maximum sample count threshold
-                regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
-                ))
+                total_samples > buildSettings.maxSamples ||  // maximum sample count threshold
+                (
+                    total_samples > 2 * buildSettings.minSamples &&
+                    regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
+                )))
             {
                 SampleStatistics mergedSampleStats = regionAndRangeData.first.sampleStatistics;
                 mergedSampleStats.merge(sampleStats);
