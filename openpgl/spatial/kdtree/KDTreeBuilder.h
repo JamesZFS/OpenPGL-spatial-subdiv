@@ -377,10 +377,13 @@ struct KDTreePartitionBuilder
             SampleStatistics mergedSampleStats = regionAndRangeData.first.sampleStatistics;
             mergedSampleStats.merge(sampleStats);
             bool validBoundRange = mergedSampleStats.hasValidBoundRange();
+			size_t total_samples = regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size();
             if (validBoundRange && depth < buildSettings.maxDepth && (
-                regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size() > buildSettings.maxSamples ||  // maximum sample count threshold
-                regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
-                ))
+                total_samples > buildSettings.maxSamples ||  // maximum sample count threshold
+                (
+                    total_samples > 2 * buildSettings.minSamples &&
+                    regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
+                )))
             {
                 nodeSplit = true;
                 splitDim = parentSplitDim;
