@@ -23,6 +23,7 @@ struct Region : public IRegion
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
     CEStatistics ceStatistics;  // for adaptive subdivision
+    float parentCE = std::numeric_limits<float>::lowest();  // initializes the root
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif

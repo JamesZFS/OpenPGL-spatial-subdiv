@@ -327,7 +327,8 @@ struct KDTreePartitionBuilder
                 total_samples > buildSettings.maxSamples ||  // maximum sample count threshold
                 (
                     total_samples > 2 * buildSettings.minSamples &&
-                    regionAndRangeData.first.ceStatistics.getNumSamples() > 0 && regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold
+                    regionAndRangeData.first.ceStatistics.getNumSamples() > 0 &&
+                    regionAndRangeData.first.parentCE - regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold: significant reduction
                 )))
             {
                 SampleStatistics mergedSampleStats = regionAndRangeData.first.sampleStatistics;
@@ -340,8 +341,9 @@ struct KDTreePartitionBuilder
                 // merge split handling
                 regionAndRangeData.first.sampleStatistics.split(splitDim, splitPos, 0.25f, false);
                 regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
-                regionAndRangeData.first.ceStatistics.decay(0);  // TODO: find an optimal decay ratio
-                regionAndRangeDataRight.first.ceStatistics.decay(0);
+                regionAndRangeData.first.parentCE = regionAndRangeDataRight.first.parentCE = regionAndRangeData.first.ceStatistics.getCE();
+                regionAndRangeData.first.ceStatistics.decay(0.8f);  // TODO: find an optimal decay ratio
+                regionAndRangeDataRight.first.ceStatistics.decay(0.8f);
 
                 regionAndRangeData.first.splitFlag = true;
                 regionAndRangeDataRight.first.splitFlag = true;
