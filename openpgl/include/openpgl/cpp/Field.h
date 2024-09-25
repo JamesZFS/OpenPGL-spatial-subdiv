@@ -124,6 +124,9 @@ struct Field
      */
     FieldStatistics GetVolumeStatistics() const;
 
+    /// Returns the CE value for a given surface cache ID.
+    float GetCESurface(uint32_t id) const;
+
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
 
@@ -234,6 +237,12 @@ OPENPGL_INLINE FieldStatistics Field::GetVolumeStatistics() const
     OPENPGL_ASSERT(m_fieldHandle);
     PGLFieldStatistics fieldStats = pglFieldGetVolumeStatistics(m_fieldHandle);
     return FieldStatistics(fieldStats);
+}
+
+OPENPGL_INLINE float Field::GetCESurface(uint32_t id) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetCESurface(m_fieldHandle, id);
 }
 
 }  // namespace cpp
