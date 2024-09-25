@@ -257,6 +257,12 @@ extern "C" OPENPGL_DLLEXPORT PGLFieldStatistics pglFieldGetVolumeStatistics(PGLF
     return (PGLFieldStatistics)gField->getVolumeStatistics();
 }
 
+extern "C" OPENPGL_DLLEXPORT float pglFieldGetCESurface(PGLField field, uint32_t id)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getCESurface(id);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SampleStorage //////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

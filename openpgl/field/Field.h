@@ -266,6 +266,15 @@ struct Field
         return m_iteration;
     }
 
+    float getCE(uint32_t id) const
+    {
+        if (id >= m_regionStorageContainer.size() || m_regionStorageContainer[id].first.sampleStatistics.numSamples == 0)
+        {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+        return m_regionStorageContainer[id].first.getCE();
+    }
+
     void serialize(std::ostream &os) const
     {
         os.write(reinterpret_cast<const char *>(&m_isSurface), sizeof(m_isSurface));

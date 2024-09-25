@@ -57,5 +57,7 @@ struct ISurfaceVolumeField
     virtual FieldStatistics *getSurfaceStatistics() const = 0;
 
     virtual FieldStatistics *getVolumeStatistics() const = 0;
+
+    virtual float getCESurface(uint32_t id) const = 0;
 };
 }  // namespace openpgl

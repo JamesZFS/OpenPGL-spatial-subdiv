@@ -256,7 +256,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return stats;
     }
 
-   private:
+    float getCESurface(uint32_t id) const override
+    {
+        return m_surfaceField.getCE(id);
+    }
+
+private:
     size_t m_iteration{0};
     size_t m_totalSPP{0};
 
