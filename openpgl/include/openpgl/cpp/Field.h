@@ -51,6 +51,9 @@ struct Field
 
     Field(const Field &) = delete;
 
+    /// Updates the spatial subdivision configuration of the Field.
+    void UpdateSubdivConfig(const PGLKDTreeArguments &args);
+
     /**
      * @brief Stores Field as serialized representation to file on disk
      *
@@ -162,6 +165,12 @@ OPENPGL_INLINE Field::~Field()
     OPENPGL_ASSERT(m_fieldHandle);
     pglReleaseField(m_fieldHandle);
     m_fieldHandle = nullptr;
+}
+
+OPENPGL_INLINE void Field::UpdateSubdivConfig(const PGLKDTreeArguments &args)
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    pglFieldUpdateSubdivConfig(m_fieldHandle, args);
 }
 
 OPENPGL_INLINE bool Field::Store(const std::string &fieldFileName) const

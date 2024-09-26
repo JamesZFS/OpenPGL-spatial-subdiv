@@ -162,6 +162,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_iteration++;
     }
 
+    void updateSubdivConfig(const PGLKDTreeArguments &cfg) override
+    {
+        m_surfaceField.updateSubdivConfig(cfg);
+        m_volumeField.updateSubdivConfig(cfg);
+    }
+
     void resetField() override
     {
         m_iteration = 0;

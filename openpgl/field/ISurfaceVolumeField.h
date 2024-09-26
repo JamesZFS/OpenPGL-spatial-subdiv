@@ -36,6 +36,8 @@ struct ISurfaceVolumeField
 
     virtual void updateFieldVolume(SampleContainer &samplesVolume) = 0;
 
+    virtual void updateSubdivConfig(const PGLKDTreeArguments &cfg) = 0;
+
     virtual void resetField() = 0;
 
     virtual PGL_SPATIAL_STRUCTURE_TYPE getSpatialStructureType() const = 0;
