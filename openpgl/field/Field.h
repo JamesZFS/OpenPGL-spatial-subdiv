@@ -248,6 +248,13 @@ struct Field
         m_iteration++;
     }
 
+    void updateSubdivConfig(const PGLKDTreeArguments &cfg)
+    {
+        m_useStochasticNNLookUp = cfg.knnLookup;
+        m_useISNNLookUp = cfg.isKnnLookup;
+        m_spatialSubdivBuilderSettings.updateFromConfig(cfg);
+    }
+
     void resetField()
     {
         m_iteration = 0;

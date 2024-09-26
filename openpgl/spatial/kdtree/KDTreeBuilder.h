@@ -79,6 +79,14 @@ struct KDTreePartitionBuilder
             }
             return equal;
         }
+
+        void updateFromConfig(const PGLKDTreeArguments &cfg)
+        {
+            minSamples = cfg.minSamples;
+            maxSamples = cfg.maxSamples;
+            maxDepth = cfg.maxDepth;
+            ceThreshold = cfg.ceThreshold;
+        }
     };
 
     void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
@@ -378,12 +386,16 @@ struct KDTreePartitionBuilder
             mergedSampleStats.merge(sampleStats);
             bool validBoundRange = mergedSampleStats.hasValidBoundRange();
 			size_t total_samples = regionAndRangeData.first.sampleStatistics.numSamples + sampleRange.size();
+            // Split criteria!
             if (validBoundRange && depth < buildSettings.maxDepth && (
                 total_samples > buildSettings.maxSamples ||  // maximum sample count threshold
                 (
                     total_samples > 2 * buildSettings.minSamples &&
                     regionAndRangeData.first.ceStatistics.getNumSamples() > 0 &&
-                    regionAndRangeData.first.parentCE - regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold  // CE threshold: significant reduction
+                    // CE threshold: absolute threshold
+                    regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold
+                    // CE threshold: significant reduction
+                    // regionAndRangeData.first.parentCE - regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold
                 )))
             {
                 nodeSplit = true;

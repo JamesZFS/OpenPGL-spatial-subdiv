@@ -120,6 +120,13 @@ extern "C" OPENPGL_DLLEXPORT PGLField pglDeviceNewFieldFromFile(PGLDevice device
 }
 OPENPGL_CATCH_END(nullptr)
 
+extern "C" OPENPGL_DLLEXPORT void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args) OPENPGL_CATCH_BEGIN
+{
+    auto *gField = (IGuidingField *)field;
+    gField->updateSubdivConfig(args);
+}
+OPENPGL_CATCH_END_VOID
+
 extern "C" OPENPGL_DLLEXPORT void pglReleaseField(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;

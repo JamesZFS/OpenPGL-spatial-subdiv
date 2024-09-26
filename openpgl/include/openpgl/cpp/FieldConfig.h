@@ -71,6 +71,8 @@ struct FieldConfig
      */
     void SetDebugArgFitRegions(const bool fitRegions);
 
+    void *GetSubdivConfig() const;
+
     friend struct openpgl::cpp::Field;
 
    private:
@@ -90,6 +92,11 @@ OPENPGL_INLINE void FieldConfig::Init(const PGL_SPATIAL_STRUCTURE_TYPE spatialTy
 OPENPGL_INLINE void FieldConfig::SetDebugArgFitRegions(const bool fitRegions)
 {
     m_args.debugArguments.fitRegions = fitRegions;
+}
+
+OPENPGL_INLINE void * FieldConfig::GetSubdivConfig() const
+{
+    return m_args.spatialSturctureArguments;
 }
 
 OPENPGL_INLINE void FieldConfig::SetSpatialStructureArgMaxDepth(const size_t maxDepth)
