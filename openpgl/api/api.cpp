@@ -264,10 +264,10 @@ extern "C" OPENPGL_DLLEXPORT PGLFieldStatistics pglFieldGetVolumeStatistics(PGLF
     return (PGLFieldStatistics)gField->getVolumeStatistics();
 }
 
-extern "C" OPENPGL_DLLEXPORT float pglFieldGetCESurface(PGLField field, uint32_t id)
+extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id)
 {
     const auto *gField = (const IGuidingField *)field;
-    return gField->getCESurface(id);
+    return gField->getRegionStatsSurface(id);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -620,18 +620,6 @@ extern "C" OPENPGL_DLLEXPORT uint32_t pglSurfaceSamplingDistributionGetId(PGLSur
 {
     ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
     return gSurfaceSamplingDistribution->getId();
-}
-
-extern "C" OPENPGL_DLLEXPORT float pglSurfaceSamplingDistributionGetFluence(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)
-{
-    ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
-    return gSurfaceSamplingDistribution->getFluence();
-}
-
-extern "C" OPENPGL_DLLEXPORT float pglSurfaceSamplingDistributionGetCE(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)
-{
-    ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
-    return gSurfaceSamplingDistribution->getCE();
 }
 
 extern "C" OPENPGL_DLLEXPORT bool pglSurfaceSamplingDistributionValidate(PGLSurfaceSamplingDistribution surfaceSamplingDistribution)

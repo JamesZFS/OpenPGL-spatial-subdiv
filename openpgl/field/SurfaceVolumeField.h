@@ -262,9 +262,9 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return stats;
     }
 
-    float getCESurface(uint32_t id) const override
+    PGLRegionStatistics getRegionStatsSurface(uint32_t id) const override
     {
-        return m_surfaceField.getCE(id);
+        return m_surfaceField.getRegionStats(id);
     }
 
 private:
