@@ -95,6 +95,7 @@ struct KDTreePartitionBuilder
         kdTree.init(bounds, 4096);
         dataStorage.resize(1);
         dataStorage[0].first.regionBounds = bounds;
+        dataStorage[0].first.depth = 1;
 
         updateTree(kdTree, samples, dataStorage, buildSettings);
     }
@@ -356,6 +357,8 @@ struct KDTreePartitionBuilder
                 regionAndRangeData.first.parentCE = regionAndRangeDataRight.first.parentCE = regionAndRangeData.first.ceStatistics.getCE();
                 regionAndRangeData.first.ceStatistics.decay(0.8f);  // TODO: find an optimal decay ratio
                 regionAndRangeDataRight.first.ceStatistics.decay(0.8f);
+
+                regionAndRangeData.first.depth = regionAndRangeDataRight.first.depth = depth + 1;
 
                 regionAndRangeData.first.splitFlag = true;
                 regionAndRangeDataRight.first.splitFlag = true;

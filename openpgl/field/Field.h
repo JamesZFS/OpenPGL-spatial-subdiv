@@ -273,13 +273,20 @@ struct Field
         return m_iteration;
     }
 
-    float getCE(uint32_t id) const
+    PGLRegionStatistics getRegionStats(uint32_t id) const
     {
-        if (id >= m_regionStorageContainer.size() || m_regionStorageContainer[id].first.sampleStatistics.numSamples == 0)
-        {
-            return std::numeric_limits<float>::quiet_NaN();
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        if (id >= m_regionStorageContainer.size())
+            return stats;
+        auto &region = m_regionStorageContainer[id].first;
+        stats.numSamples = region.sampleStatistics.numSamples;
+        stats.numZeroValueSamples = region.sampleStatistics.numZeroValueSamples;
+        stats.depth = region.depth;
+        if (stats.numSamples > 0) {
+            stats.fluence = region.ceStatistics.getFluence();
+            stats.crossEntropy = region.ceStatistics.getCE();
         }
-        return m_regionStorageContainer[id].first.getCE();
+        return stats;
     }
 
     void serialize(std::ostream &os) const

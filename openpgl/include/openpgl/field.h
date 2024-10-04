@@ -18,6 +18,7 @@
 #include "samplestorage.h"
 #include "surfacesamplingdistribution.h"
 #include "volumesamplingdistribution.h"
+#include "regionstatistics.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -70,7 +71,7 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE PGLFieldStatistics pglFieldGetVolumeStatistics(PGLField field);
 
-    OPENPGL_CORE_INTERFACE float pglFieldGetCESurface(PGLField field, uint32_t id);
+    OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id);
 
 #ifdef __cplusplus
 }  // extern "C"

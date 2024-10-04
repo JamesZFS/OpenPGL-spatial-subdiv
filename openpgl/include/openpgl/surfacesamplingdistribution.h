@@ -35,10 +35,6 @@ typedef ManagedObject SurfaceSamplingDistribution;
 
     OPENPGL_CORE_INTERFACE uint32_t pglSurfaceSamplingDistributionGetId(PGLSurfaceSamplingDistribution surfaceSamplingDistribution);
 
-    OPENPGL_CORE_INTERFACE float pglSurfaceSamplingDistributionGetFluence(PGLSurfaceSamplingDistribution surfaceSamplingDistribution);
-
-    OPENPGL_CORE_INTERFACE float pglSurfaceSamplingDistributionGetCE(PGLSurfaceSamplingDistribution surfaceSamplingDistribution);
-
     OPENPGL_CORE_INTERFACE bool pglSurfaceSamplingDistributionValidate(PGLSurfaceSamplingDistribution surfaceSamplingDistribution);
 
     OPENPGL_CORE_INTERFACE void pglSurfaceSamplingDistributionClear(PGLSurfaceSamplingDistribution surfaceSamplingDistribution);

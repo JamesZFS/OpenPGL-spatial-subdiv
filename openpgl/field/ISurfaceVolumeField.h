@@ -6,6 +6,7 @@
 #include "../data/SampleDataStorage.h"
 #include "../directional/ISurfaceSamplingDistribution.h"
 #include "../directional/IVolumeSamplingDistribution.h"
+#include "../include/openpgl/regionstatistics.h"
 
 namespace openpgl
 {
@@ -60,6 +61,6 @@ struct ISurfaceVolumeField
 
     virtual FieldStatistics *getVolumeStatistics() const = 0;
 
-    virtual float getCESurface(uint32_t id) const = 0;
+    virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;
 };
 }  // namespace openpgl

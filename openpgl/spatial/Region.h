@@ -23,6 +23,7 @@ struct Region : public IRegion
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
     CEStatistics ceStatistics;  // for adaptive subdivision
+    uint32_t depth = 0;  // depth in the tree
     float parentCE = std::numeric_limits<float>::lowest();  // initializes the root
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
@@ -96,6 +97,9 @@ struct Region : public IRegion
 #endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
+        ceStatistics.serialize(stream);
+        stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
+        stream.write(reinterpret_cast<const char *>(&parentCE), sizeof(parentCE));
     }
 
     void deserialize(std::istream &stream)
@@ -110,6 +114,9 @@ struct Region : public IRegion
 #endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
+        ceStatistics.deserialize(stream);
+        stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
+        stream.read(reinterpret_cast<char *>(&parentCE), sizeof(parentCE));
     }
 
     bool isValid() const
