@@ -273,6 +273,11 @@ struct Field
         return m_iteration;
     }
 
+    size_t getRegionCount() const
+    {
+        return m_regionStorageContainer.size();
+    }
+
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
         PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
