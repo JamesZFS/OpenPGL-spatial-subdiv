@@ -264,6 +264,12 @@ extern "C" OPENPGL_DLLEXPORT PGLFieldStatistics pglFieldGetVolumeStatistics(PGLF
     return (PGLFieldStatistics)gField->getVolumeStatistics();
 }
 
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetRegionCountSurface(PGLField field)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getRegionCountSurface();
+}
+
 extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id)
 {
     const auto *gField = (const IGuidingField *)field;
