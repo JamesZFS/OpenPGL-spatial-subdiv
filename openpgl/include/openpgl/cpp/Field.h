@@ -63,6 +63,15 @@ struct Field
     bool Store(const std::string &fieldFileName) const;
 
     /**
+     * @brief Loads Field from serialized representation on disk
+     *
+     * @param device The Device defining the compute architecture and optimization of the Field implementation.
+     * @param fieldFileName path to serialized representation
+     * @return if field could be loaded from file
+     */
+    bool Load(Device *device, const std::string &fieldFileName);
+
+    /**
      * @brief Sets the bounding box of the scenes.
      *
      * Sets the bounding box of the scene. This bounding box is used as
@@ -180,6 +189,17 @@ OPENPGL_INLINE bool Field::Store(const std::string &fieldFileName) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldStoreToFile(m_fieldHandle, fieldFileName.c_str());
+}
+
+OPENPGL_INLINE bool Field::Load(Device *device, const std::string &fieldFileName)
+{
+    this->~Field();
+    OPENPGL_ASSERT(device);
+    OPENPGL_ASSERT(device->m_deviceHandle);
+    m_fieldHandle = pglDeviceNewFieldFromFile(device->m_deviceHandle, fieldFileName.c_str());
+    if (!m_fieldHandle)
+        return false;
+    return true;
 }
 
 OPENPGL_INLINE size_t Field::GetIteration() const
