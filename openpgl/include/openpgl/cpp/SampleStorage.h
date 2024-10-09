@@ -46,6 +46,15 @@ struct SampleStorage
     bool Store(const std::string &sampleStorageFileName) const;
 
     /**
+     * @brief Loads a SampleStorage from a file.
+     *
+     * @param sampleStorageFileName
+     * @return true If loading the SampleStorage was successfull.
+     * @return false Otherwise.
+     */
+    bool Load(const std::string &sampleStorageFileName);
+
+    /**
      * @brief Adds a single sample to the storage container.
      *
      * @param sample
@@ -160,6 +169,15 @@ OPENPGL_INLINE bool SampleStorage::Store(const std::string &sampleStorageFileNam
 {
     OPENPGL_ASSERT(m_sampleStorageHandle);
     return pglSampleStorageStoreToFile(m_sampleStorageHandle, sampleStorageFileName.c_str());
+}
+
+OPENPGL_INLINE bool SampleStorage::Load(const std::string &sampleStorageFileName)
+{
+    this->~SampleStorage();
+    m_sampleStorageHandle = pglNewSampleStorageFromFile(sampleStorageFileName.c_str());
+    if (!m_sampleStorageHandle)
+        return false;
+    return true;
 }
 
 OPENPGL_INLINE void SampleStorage::AddSample(const SampleData &sample)
