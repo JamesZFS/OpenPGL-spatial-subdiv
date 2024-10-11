@@ -37,16 +37,6 @@ struct has_member_weight : std::false_type {};
 template <typename T>
 struct has_member_weight<T, std::void_t<decltype(std::declval<T>().weight)>> : std::true_type {};
 
-template <typename T>
-std::enable_if_t<has_member_weight<T>::value, float> getSampleWeight(const T& obj) {
-    return obj.weight;
-}
-
-template <typename T>
-std::enable_if_t<!has_member_weight<T>::value, float> getSampleWeight(const T&) {
-    return 0;
-}
-
 template <typename TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
 struct KDTreePartitionBuilder
 {
@@ -65,6 +55,7 @@ struct KDTreePartitionBuilder
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
         size_t maxDepth{32};
         float ceThreshold{std::numeric_limits<float>::infinity()};  // nodes' with cross-entropy larger than this gets subdivided
+        float ceDecay{0.8f};
 
         void serialize(std::ostream &stream) const;
         void deserialize(std::istream &stream);
@@ -73,7 +64,8 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings &b) const
         {
             bool equal = true;
-            if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth || ceThreshold != b.ceThreshold)
+            if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth
+                || ceThreshold != b.ceThreshold || ceDecay != b.ceDecay)
             {
                 equal = false;
             }
@@ -86,6 +78,7 @@ struct KDTreePartitionBuilder
             maxSamples = cfg.maxSamples;
             maxDepth = cfg.maxDepth;
             ceThreshold = cfg.ceThreshold;
+            ceDecay = cfg.ceDecay;
         }
     };
 
@@ -164,7 +157,7 @@ struct KDTreePartitionBuilder
     }
 
     template<class TContainer>
-    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage) {
+    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) {
         KDNode &root = kdTree.getRoot();
 
         Range sampleRange;
@@ -173,7 +166,7 @@ struct KDTreePartitionBuilder
 
         size_t depth = 1;
 
-        updateCEStatsNode(&kdTree, root, depth, samples, sampleRange, &dataStorage);
+        updateCEStatsNode(&kdTree, root, depth, samples, sampleRange, &dataStorage, buildSettings);
     }
 
     std::string toString() const;
@@ -355,8 +348,8 @@ struct KDTreePartitionBuilder
                 regionAndRangeData.first.sampleStatistics.split(splitDim, splitPos, 0.25f, false);
                 regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
                 regionAndRangeData.first.parentCE = regionAndRangeDataRight.first.parentCE = regionAndRangeData.first.ceStatistics.getCE();
-                regionAndRangeData.first.ceStatistics.decay(0.8f);  // TODO: find an optimal decay ratio
-                regionAndRangeDataRight.first.ceStatistics.decay(0.8f);
+                // regionAndRangeData.first.ceStatistics.decay(buildSettings.ceDecay);
+                // regionAndRangeDataRight.first.ceStatistics.decay(buildSettings.ceDecay);
 
                 regionAndRangeData.first.depth = regionAndRangeDataRight.first.depth = depth + 1;
 
@@ -524,8 +517,10 @@ struct KDTreePartitionBuilder
 
     template<class TContainer>
     void updateCEStatsNode(KDTree *kdTree, KDNode &node, size_t depth, TContainer &samples, const Range sampleRange,
-                        tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage) const
+                        tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings) const
     {
+        using T = typename TContainer::value_type;
+        constexpr bool sampleHasWeight = has_member_weight<T>::value;
         if (sampleRange.size() == 0)
         {
             return;
@@ -541,9 +536,15 @@ struct KDTreePartitionBuilder
             uint32_t dataIdx = node.getDataIdx();
             std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
             TSamplingDistribution guidingDist;
+            if constexpr(sampleHasWeight) {
+                regionAndRangeData.first.ceStatistics.decay(buildSettings.ceDecay);
+            }
             for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; ++i) {
                 const auto &sample = samples[i];
-                float phi = getSampleWeight(sample);
+                float phi = 0;
+                if constexpr(sampleHasWeight) {
+                    phi = sample.weight;
+                }
                 const auto dist = &regionAndRangeData.first.distribution;
                 Point3 position(sample.position.x, sample.position.y, sample.position.z);
                 guidingDist.init(dist, position);  // Apply parallax shift
@@ -594,10 +595,10 @@ struct KDTreePartitionBuilder
 
         tbb::parallel_invoke(
             [&] {
-                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[0]), depth + 1, samples, sampleRangeLeftRight[0], dataStorage);
+                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[0]), depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings);
             },
             [&] {
-                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[1]), depth + 1, samples, sampleRangeLeftRight[1], dataStorage);
+                updateCEStatsNode(kdTree, kdTree->getNode(nodeIdsLeftRight[1]), depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings);
             });
     }
 };
@@ -619,6 +620,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  maxSamples: " << maxSamples << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  ceThreshold: " << ceThreshold << std::endl;
+    ss << "  ceDecay: " << ceDecay << std::endl;
 
     return ss.str();
 }
@@ -630,6 +632,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char *>(&maxSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxDepth), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&ceThreshold), sizeof(float));
+    stream.write(reinterpret_cast<const char *>(&ceDecay), sizeof(float));
 }
 
 template <class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -639,5 +642,6 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char *>(&maxSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxDepth), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&ceThreshold), sizeof(float));
+    stream.read(reinterpret_cast<char *>(&ceDecay), sizeof(float));
 }
 }  // namespace openpgl

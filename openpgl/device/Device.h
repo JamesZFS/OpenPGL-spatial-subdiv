@@ -104,10 +104,7 @@ struct Device : public IDevice
             PGLKDTreeArguments *spatialSturctureArguments = (PGLKDTreeArguments *)args.spatialSturctureArguments;
             gFieldSettings.settings.useStochasticNNLookUp = spatialSturctureArguments->knnLookup;
             gFieldSettings.settings.useISNNLookUp = spatialSturctureArguments->isKnnLookup;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.updateFromConfig(*spatialSturctureArguments);
             delete spatialSturctureArguments;
 
             PGLVMMFactoryArguments *directionalDistributionArguments = (PGLVMMFactoryArguments *)args.directionalDistributionArguments;
@@ -154,10 +151,7 @@ struct Device : public IDevice
             PGLKDTreeArguments *spatialSturctureArguments = (PGLKDTreeArguments *)args.spatialSturctureArguments;
             gFieldSettings.settings.useStochasticNNLookUp = spatialSturctureArguments->knnLookup;
             gFieldSettings.settings.useISNNLookUp = spatialSturctureArguments->isKnnLookup;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.updateFromConfig(*spatialSturctureArguments);
             delete spatialSturctureArguments;
 
             PGLVMMFactoryArguments *directionalDistributionArguments = (PGLVMMFactoryArguments *)args.directionalDistributionArguments;
@@ -204,10 +198,7 @@ struct Device : public IDevice
             PGLKDTreeArguments *spatialSturctureArguments = (PGLKDTreeArguments *)args.spatialSturctureArguments;
             gFieldSettings.settings.useStochasticNNLookUp = spatialSturctureArguments->knnLookup;
             gFieldSettings.settings.useISNNLookUp = spatialSturctureArguments->isKnnLookup;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.ceThreshold = spatialSturctureArguments->ceThreshold;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.updateFromConfig(*spatialSturctureArguments);
 
             PGLDQTFactoryArguments *directionalDistributionArguments = (PGLDQTFactoryArguments *)args.directionalDistributionArguments;
             gFieldSettings.distributionFactorySettings.leafEstimator = (LeafEstimator)directionalDistributionArguments->leafEstimator;
