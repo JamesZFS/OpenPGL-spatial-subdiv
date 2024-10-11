@@ -799,7 +799,7 @@ extern "C" OPENPGL_DLLEXPORT pgl_vec3f pglVolumeSamplingDistributionFluence(PGLV
 
 extern "C" OPENPGL_DLLEXPORT void pglFieldArgumentsSetDefaults(PGLFieldArguments &fieldArguments, const PGL_SPATIAL_STRUCTURE_TYPE spatialType,
                                                                const PGL_DIRECTIONAL_DISTRIBUTION_TYPE directionalType, const bool deterministic,
-                                                               const size_t maxSamplesPerLeaf, const size_t minSamplesPerLeaf, const size_t maxDepth, const float ceThreshold)
+                                                               const size_t maxSamplesPerLeaf, const size_t minSamplesPerLeaf, const size_t maxDepth)
 {
     switch (spatialType)
     {
@@ -810,7 +810,6 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldArgumentsSetDefaults(PGLFieldArguments
             reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->maxSamples = maxSamplesPerLeaf;
             reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->minSamples = minSamplesPerLeaf;
             reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->maxDepth = maxDepth;
-            reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->ceThreshold = ceThreshold;
             break;
     }
 

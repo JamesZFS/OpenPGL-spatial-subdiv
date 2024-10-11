@@ -252,6 +252,7 @@ struct Field
     {
         m_useStochasticNNLookUp = cfg.knnLookup;
         m_useISNNLookUp = cfg.isKnnLookup;
+        m_decayOnSpatialSplit = cfg.vmmDecay;
         m_spatialSubdivBuilderSettings.updateFromConfig(cfg);
     }
 
@@ -284,6 +285,7 @@ struct Field
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
+        // stats.numSamples = region.ceStatistics.getNumSamples();
         stats.numSamples = region.sampleStatistics.numSamples;
         stats.numZeroValueSamples = region.sampleStatistics.numZeroValueSamples;
         stats.depth = region.depth;
@@ -440,8 +442,8 @@ struct Field
     {
         Timer timer;
         // 1. Evaluate regions with new-coming samples
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer);
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         // 2. Subdivide
         m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);

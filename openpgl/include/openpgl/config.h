@@ -47,6 +47,8 @@ extern "C"
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
         size_t maxDepth{32};
         float ceThreshold{std::numeric_limits<float>::infinity()};
+        float ceDecay{0.8f};
+        float vmmDecay{0.25f};
     };
 
     struct PGLVMMFactoryArguments
@@ -130,7 +132,7 @@ extern "C"
 
     OPENPGL_CORE_INTERFACE void pglFieldArgumentsSetDefaults(PGLFieldArguments &fieldArguments, const PGL_SPATIAL_STRUCTURE_TYPE spatialType,
                                                              const PGL_DIRECTIONAL_DISTRIBUTION_TYPE directionalType, const bool deterministic,
-                                                             const size_t maxSamplesPerLeaf, const size_t minSamplesPerLeaf, const size_t maxDepth, const float ceThreshold);
+                                                             const size_t maxSamplesPerLeaf, const size_t minSamplesPerLeaf, const size_t maxDepth);
 
 #ifdef __cplusplus
 }  // extern "C"
