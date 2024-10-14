@@ -18,6 +18,9 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
         N = 0;
     }
 
+    /// Add a sample to the statistics
+    /// @param phi: the Monte-Carlo weight, i.e., the Li estimate divided by sampling pdf
+    /// @param pdf: the *guiding* pdf
     inline void addSample(float phi, float pdf) {
         N++;
         a += -phi * std::log(pdf);

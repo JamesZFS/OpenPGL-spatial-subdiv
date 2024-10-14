@@ -520,7 +520,7 @@ struct KDTreePartitionBuilder
                         tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings) const
     {
         using T = typename TContainer::value_type;
-        constexpr bool sampleHasWeight = has_member_weight<T>::value;
+        constexpr bool isNonZeroSample = has_member_weight<T>::value;
         if (sampleRange.size() == 0)
         {
             return;
@@ -536,23 +536,31 @@ struct KDTreePartitionBuilder
             uint32_t dataIdx = node.getDataIdx();
             std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
             TSamplingDistribution guidingDist;
-            if constexpr(sampleHasWeight) {
+            if constexpr(isNonZeroSample) {
                 regionAndRangeData.first.ceStatistics.decay(buildSettings.ceDecay);
             }
             for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; ++i) {
                 const auto &sample = samples[i];
                 float phi = 0;
-                if constexpr(sampleHasWeight) {
+                if constexpr(isNonZeroSample)
                     phi = sample.weight;
-                }
+#ifdef OPENPGL_GUIDING_PDF_CACHES
+                float pdf = 1;
+                if constexpr(isNonZeroSample)
+                    pdf = sample.guidingPDF;
+                // if (pdf <= 0.0f) {
+                //     std::cerr << "Invalid guiding PDF: " << pdf << std::endl;
+                // }
+#else
                 const auto dist = &regionAndRangeData.first.distribution;
                 Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                guidingDist.init(dist, position);  // Apply parallax shift
-                // TODO: apply cosine?
+                guidingDist.init(dist, position);  // Applies parallax shift
+                // Apply cosine?
                 auto _dir = pgl_vec3f(sample.direction);
                 Vector3 dir(_dir.x, _dir.y, _dir.z);
                 float pdf = guidingDist.pdf(dir);
                 // float pdf = dist->pdf(dir); // No parallax
+#endif
                 regionAndRangeData.first.ceStatistics.addSample(phi, pdf);
             }
             return;
