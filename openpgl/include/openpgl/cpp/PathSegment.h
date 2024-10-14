@@ -57,6 +57,14 @@ OPENPGL_INLINE void SetPDFDirectionIn(PathSegment *pathSegment, const float &pdf
     pathSegment->pdfDirectionIn = pdfDirectionIn;
 }
 
+#ifdef OPENPGL_GUIDING_PDF_CACHES
+OPENPGL_INLINE void SetPDFGuidingDirectionIn(PathSegment *pathSegment, const float &pdfGuidingDirectionIn)
+{
+    OPENPGL_ASSERT(pathSegment);
+    pathSegment->pdfGuidingDirectionIn = pdfGuidingDirectionIn;
+}
+#endif
+
 OPENPGL_INLINE void SetDirectionOut(PathSegment *pathSegment, const pgl_vec3f &directionOut)
 {
     OPENPGL_ASSERT(pathSegment);

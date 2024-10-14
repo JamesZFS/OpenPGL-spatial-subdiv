@@ -377,6 +377,9 @@ struct PathSegmentDataStorage
                         dsd.radianceInMISWeight = misWeight;
 #endif
                         dsd.pdf = pdf;
+#ifdef OPENPGL_GUIDING_PDF_CACHES
+                        dsd.guidingPDF = currentPathSegment.pdfGuidingDirectionIn;
+#endif
                         dsd.distance = distance;
                         dsd.flags = flags;
 #if defined(OPENPGL_PATHSEGMENT_STORAGE_USE_ARRAY)

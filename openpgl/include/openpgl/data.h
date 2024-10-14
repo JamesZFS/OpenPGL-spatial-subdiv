@@ -50,6 +50,11 @@ struct PGLSampleData
     /// the PDF used for sampling @ref direction at @ref position
     float pdf;
 
+#ifdef OPENPGL_GUIDING_PDF_CACHES
+    /// the PDF of the guiding field at @ref position (possibly with parallax compensation and cosine)
+    float guidingPDF;
+#endif
+
     /// the distance to the source of the incident radiance
     float distance;
 
@@ -100,6 +105,13 @@ struct PGLPathSegmentData
 
     /// The PDF of sampling @ref directionIn at @ref position towards the next segment
     float pdfDirectionIn{1.0f};
+
+#ifdef OPENPGL_GUIDING_PDF_CACHES
+    /// The PDF of the guiding field at @ref position (possibly with parallax compensation and cosine)
+    float pdfGuidingDirectionIn{1.0f};
+
+    // TODO: guidingPDF of the lookahead child region
+#endif
 
     /// If the scattering interaction at @ref position was a delta Dirac (e.g., perfect mirror or glass).
     bool isDelta{false};
