@@ -23,9 +23,32 @@ struct Region : public IRegion
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
-    CEStatistics ceStatistics;  // for adaptive subdivision
+    CEStatistics ceStatistics;        // for adaptive subdivision
+    CEStatistics parentCEStatistics;  // for the lookahead child to point to the parent region
+    struct CandidateSplit {
+        float pos;
+        uint8_t dim : 2;
+        uint32_t nodeIdx : 30;  // index into the KD tree nodes, not region storage!
+
+        CandidateSplit() : pos(0), dim(3), nodeIdx(0) {}
+
+        inline bool isValid() const { return dim < 3; }  // an invalid dim means no candidate split
+
+        void serialize(std::ostream &stream) const
+        {
+            stream.write(reinterpret_cast<const char *>(&pos), sizeof(pos));
+            auto dimAndNodeIdx = reinterpret_cast<const uint32_t *>(&pos + 1);
+            stream.write(reinterpret_cast<const char *>(dimAndNodeIdx), sizeof(uint32_t));
+        }
+
+        void deserialize(std::istream &stream)
+        {
+            stream.read(reinterpret_cast<char *>(&pos), sizeof(pos));
+            auto dimAndNodeIdx = reinterpret_cast<uint32_t *>(&pos + 1);
+            stream.read(reinterpret_cast<char *>(dimAndNodeIdx), sizeof(uint32_t));
+        }
+    } candidateSplit;
     uint32_t depth = 0;  // depth in the tree
-    float parentCE = std::numeric_limits<float>::lowest();  // initializes the root
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
@@ -37,6 +60,16 @@ struct Region : public IRegion
 
     float getCE() const override {
         return ceStatistics.getCE();
+    }
+
+    bool hasCandidateSplit() const {
+        return candidateSplit.isValid();
+    }
+
+    void setCandidateSplit(float pos, uint8_t dim, uint32_t nodeIdx) {
+        candidateSplit.pos = pos;
+        candidateSplit.dim = dim;
+        candidateSplit.nodeIdx = nodeIdx;
     }
 
     inline const BBox &getRegionBounds() const
@@ -101,8 +134,9 @@ struct Region : public IRegion
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
         ceStatistics.serialize(stream);
+        parentCEStatistics.serialize(stream);
+        candidateSplit.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
-        stream.write(reinterpret_cast<const char *>(&parentCE), sizeof(parentCE));
     }
 
     void deserialize(std::istream &stream)
@@ -120,8 +154,9 @@ struct Region : public IRegion
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
         ceStatistics.deserialize(stream);
+        parentCEStatistics.deserialize(stream);
+        candidateSplit.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
-        stream.read(reinterpret_cast<char *>(&parentCE), sizeof(parentCE));
     }
 
     bool isValid() const
