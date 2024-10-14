@@ -333,8 +333,6 @@ struct KDTreePartitionBuilder
                     regionAndRangeData.first.ceStatistics.getNumSamples() > 0 &&
                     // CE threshold: absolute threshold
                     regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold
-                    // CE threshold: significant reduction
-                    // regionAndRangeData.first.parentCE - regionAndRangeData.first.ceStatistics.getCE() > buildSettings.ceThreshold
                 )))
             {
                 SampleStatistics mergedSampleStats = regionAndRangeData.first.sampleStatistics;
@@ -347,7 +345,6 @@ struct KDTreePartitionBuilder
                 // merge split handling
                 regionAndRangeData.first.sampleStatistics.split(splitDim, splitPos, 0.25f, false);
                 regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
-                regionAndRangeData.first.parentCE = regionAndRangeDataRight.first.parentCE = regionAndRangeData.first.ceStatistics.getCE();
                 // regionAndRangeData.first.ceStatistics.decay(buildSettings.ceDecay);
                 // regionAndRangeDataRight.first.ceStatistics.decay(buildSettings.ceDecay);
 
