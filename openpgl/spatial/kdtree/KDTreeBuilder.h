@@ -609,6 +609,7 @@ struct KDTreePartitionBuilder
             if constexpr(isNonZeroSample) {
                 regionAndRangeData.first.ceStatistics.decay(buildSettings.ceDecay);
             }
+            // TODO: maybe need to move this for loop to sth like Field::updateRegions and set range pointers here
             for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; ++i) {
                 const auto &sample = samples[i];
                 float phi = 0;

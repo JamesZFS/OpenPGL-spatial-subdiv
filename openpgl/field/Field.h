@@ -446,6 +446,7 @@ struct Field
         m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         // 2. Subdivide
+        timer.reset();
         m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         m_spatialSubdivBuilder.insertTree(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
         if (m_useStochasticNNLookUp)
@@ -457,6 +458,7 @@ struct Field
                 m_regionKNNSearchTree.buildRegionNeighbours();
             }
         }
+        std::cout << "updateTree() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
     }
 
     inline void fitRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)

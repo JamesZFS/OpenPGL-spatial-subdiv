@@ -39,7 +39,10 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_volumeField.setIsSurface(false);
     }
 
-    ~SurfaceVolumeField() override {}
+    ~SurfaceVolumeField() override
+    {
+        std::cout << "SurfaceVolumeField::updateField() took " << m_timeUpdateField << " ms in total" << std::endl;
+    }
 
     ISurfaceSamplingDistribution *newSurfaceSamplingDistribution() const override
     {
@@ -100,6 +103,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 
     void updateField(SampleContainer &samplesSurface, SampleContainer &samplesVolume) override
     {
+        Timer timer;
 #if TBB_INTERFACE_VERSION < 12010
         // we need to initialize the task_scheduler in the context to avoid
         // asyncronous deconsrution of the implicit initialized tbb::arenas and tbb::streams
@@ -128,10 +132,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
             }
         }
         m_iteration++;
+        m_timeUpdateField += timer.elapsed() * 1e-3f;
     }
 
     void updateFieldSurface(SampleContainer &samplesSurface) override
     {
+        Timer timer;
         if (samplesSurface.samples.size() > 0)
         {
             if (!m_surfaceField.isInitialized())
@@ -144,10 +150,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
             }
         }
         m_iteration++;
+        m_timeUpdateField += timer.elapsed() * 1e-3f;
     }
 
     void updateFieldVolume(SampleContainer &samplesVolume) override
     {
+        Timer timer;
         if (samplesVolume.samples.size() > 0)
         {
             if (!m_volumeField.isInitialized())
@@ -160,6 +168,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
             }
         }
         m_iteration++;
+        m_timeUpdateField += timer.elapsed() * 1e-3f;
     }
 
     void updateSubdivConfig(const PGLKDTreeArguments &cfg) override
@@ -275,6 +284,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 private:
     size_t m_iteration{0};
     size_t m_totalSPP{0};
+    float m_timeUpdateField{0.0f};
 
     SurfaceFieldType m_surfaceField;
     VolumeFieldType m_volumeField;
