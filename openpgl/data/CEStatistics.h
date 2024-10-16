@@ -39,6 +39,15 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
         return N;
     }
 
+    static float weightedAverageCE(const CEStatistics &l, const CEStatistics &r) {
+        return (l.getCE() * l.getNumSamples() + r.getCE() * r.getNumSamples()) /
+               (l.getNumSamples() + r.getNumSamples());
+    }
+
+    static float weightedAverageFluence(const CEStatistics &l, const CEStatistics &r) {
+        return (l.f + r.f) / (l.N + r.N);
+    }
+
     inline void decay(const float lambda) {
         a *= lambda;
         f *= lambda;

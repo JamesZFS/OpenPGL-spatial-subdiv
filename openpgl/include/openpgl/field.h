@@ -75,6 +75,10 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id);
 
+    OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetCoarseRegionStatsSurface(PGLField field, pgl_point3f position);
+
+    OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetLookaheadRegionStatsSurface(PGLField field, pgl_point3f position);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
