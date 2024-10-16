@@ -31,8 +31,10 @@ struct Field
     using DirectionalDistribution = typename TDirectionalDistributionFactory::Distribution;
 
     using SampleContainer = SampleDataStorage::SampleContainer;
-    using SampleContainerInternal = ContainerInternal<SampleData>;
-    using ZeroValueSampleContainerInternal = ContainerInternal<ZeroValueSampleData>;
+    // using SampleContainerInternal = ContainerInternal<SampleData>;
+    // using ZeroValueSampleContainerInternal = ContainerInternal<ZeroValueSampleData>;
+    using SampleContainerInternal = std::vector<SampleData>;
+    using ZeroValueSampleContainerInternal = std::vector<ZeroValueSampleData>;
 
     typedef Region<DirectionalDistribution, typename TDirectionalDistributionFactory::Statistics> RegionType;
     typedef openpgl::Range RangeType;
@@ -82,7 +84,6 @@ struct Field
         m_spatialSubdivBuilderSettings = settings.settings.spatialSubdivBuilderSettings;
 
         m_distributionFactorySettings = settings.distributionFactorySettings;
-        samples_.reserve(1e6);
     }
 
     ~Field()
@@ -142,6 +143,14 @@ struct Field
         {
             return nullptr;
         }
+    }
+
+    uint32_t getRegionId(const openpgl::Point3 &p) const
+    {
+        float sample = -1;
+        uint32_t id;
+        auto region = getRegion(p, &sample, id);
+        return region ? id : -1;
     }
 
     void buildField(const SampleContainer &samples)
@@ -290,10 +299,35 @@ struct Field
         stats.numZeroValueSamples = region.sampleStatistics.numZeroValueSamples;
         stats.depth = region.depth;
         if (stats.numSamples > 0) {
-            stats.fluence = region.ceStatistics.getFluence();
-            stats.crossEntropy = region.ceStatistics.getCE();
+            stats.fluence = region.ceStatistics.self.getFluence();
+            stats.crossEntropy = region.ceStatistics.self.getCE();
         }
+        stats.hasCandidateSplit = region.hasCandidateSplit();
         return stats;
+    }
+
+    PGLRegionStatistics getCoarseRegionStats(const openpgl::Point3 &pos) const
+    {
+        uint32_t id = getRegionId(pos);
+        return getRegionStats(id);
+    }
+
+    PGLRegionStatistics getLookaheadRegionStats(const openpgl::Point3 &pos) const
+    {
+        uint32_t id = getRegionId(pos);
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        if (id >= m_regionStorageContainer.size())
+            return stats;
+        auto &coarse = m_regionStorageContainer[id].first;
+        if (coarse.hasCandidateSplit()) {
+            id = coarse.candidateSplit.dataIdx;
+            if (pos[coarse.candidateSplit.dim] >= coarse.candidateSplit.pos)
+                id++;  // right child
+            return getRegionStats(id);
+        } else {
+            stats.id = -1;
+            return stats;
+        }
     }
 
     void serialize(std::ostream &os) const
@@ -442,8 +476,8 @@ struct Field
     {
         Timer timer;
         // 1. Evaluate regions with new-coming samples
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        // m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        // m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         // 2. Subdivide
         timer.reset();
@@ -461,8 +495,10 @@ struct Field
         std::cout << "updateTree() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
     }
 
-    inline void fitRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
+    inline void fitRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
     {
+        thread_local SampleContainerInternal threadSamples;
+        std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "fitRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
@@ -481,23 +517,28 @@ struct Field
                 openpgl::Point3 sampleMean = regionStorage.first.sampleStatistics.getMean();
                 if (regionStorage.second.size() > 0)
                 {
+                    Timer timer;
+                    // Copy to thread temporary vector
+                    threadSamples.resize(regionStorage.second.size());
+                    memcpy(threadSamples.data(), samples.data() + regionStorage.second.m_begin, regionStorage.second.size() * sizeof(SampleData));
+                    timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
-                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
+                        std::sort(threadSamples.begin(), threadSamples.end(), SampleDataLess);
                     }
 
                     if (m_fitRegions)
                     {
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
-                        m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
+                        m_distributionFactory.prepareSamples(threadSamples.data(), regionStorage.second.size(),
                                                              regionStorage.first.sampleStatistics, m_distributionFactorySettings);
-                        m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
-                                                  regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
+                        m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, threadSamples.data(),
+                                                  regionStorage.second.size(), m_distributionFactorySettings, fittingStats);
 #ifdef OPENPGL_RADIANCE_CACHES
-                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
-                                                                    regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
+                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, threadSamples.data(),
+                                                                    regionStorage.second.size(), regionStorage.first.numZeroValueSamples,
                                                                     regionStorage.first.sampleStatistics);
-                        regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
+                        regionStorage.first.outRadianceHist.update(threadSamples.data(), regionStorage.second.size(),
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);
 #endif
@@ -523,12 +564,15 @@ struct Field
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
+        m_timeLastUpdateCopySamples += timeCopySamples;
         m_initialized = true;
         OPENPGL_ASSERT(this->isValid());
     }
 
-    void updateRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
+    void updateRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
     {
+        thread_local SampleContainerInternal threadSamples;
+        std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "updateRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
@@ -559,9 +603,14 @@ struct Field
 #ifdef OPENPGL_DEBUG_MODE
                     RegionType oldRegion = regionStorage.first;
 #endif
+                    Timer timer;
+                    // Copy to thread temporary vector
+                    threadSamples.resize(regionStorage.second.size());
+                    memcpy(threadSamples.data(), samples.data() + regionStorage.second.m_begin, regionStorage.second.size() * sizeof(SampleData));
+                    timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
-                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
+                        std::sort(threadSamples.begin(), threadSamples.end(), SampleDataLess);
                     }
 
                     if (m_fitRegions)
@@ -576,24 +625,24 @@ struct Field
                             OPENPGL_ASSERT(regionStorage.first.trainingStatistics.sufficientStatistics.isValid());
                         }
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
-                        m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
+                        m_distributionFactory.prepareSamples(threadSamples.data(), regionStorage.second.size(),
                                                              regionStorage.first.sampleStatistics, m_distributionFactorySettings);
                         if (regionStorage.first.initialized)
                         {
-                            m_distributionFactory.update(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
-                                                         regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
+                            m_distributionFactory.update(regionStorage.first.distribution, regionStorage.first.trainingStatistics, threadSamples.data(),
+                                                     regionStorage.second.size(), m_distributionFactorySettings, fittingStats);
                         }
                         else
                         {
-                            m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
-                                                      regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
+                            m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, threadSamples.data(),
+                                                     regionStorage.second.size(), m_distributionFactorySettings, fittingStats);
                             regionStorage.first.initialized = true;
                         }
 #ifdef OPENPGL_RADIANCE_CACHES
-                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
-                                                                    regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
+                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, threadSamples.data(),
+                                                                    regionStorage.second.size(), regionStorage.first.numZeroValueSamples,
                                                                     regionStorage.first.sampleStatistics);
-                        regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
+                        regionStorage.first.outRadianceHist.update(threadSamples.data(), regionStorage.second.size(),
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);
 #endif
@@ -623,6 +672,7 @@ struct Field
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
+        m_timeLastUpdateCopySamples += timeCopySamples;
         OPENPGL_ASSERT(this->isValid());
     }
 

@@ -142,6 +142,12 @@ struct Field
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
 
+    /// API for non-lookahead regions
+    PGLRegionStatistics GetCoarseRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
+
+    /// API for lookahead regions
+    PGLRegionStatistics GetLookaheadRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
+
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
 
@@ -281,6 +287,18 @@ OPENPGL_INLINE PGLRegionStatistics Field::GetRegionStatisticsSurface(uint32_t id
 {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetRegionStatsSurface(m_fieldHandle, id);
+}
+
+OPENPGL_INLINE PGLRegionStatistics Field::GetCoarseRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetCoarseRegionStatsSurface(m_fieldHandle, pos);
+}
+
+OPENPGL_INLINE PGLRegionStatistics Field::GetLookaheadRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetLookaheadRegionStatsSurface(m_fieldHandle, pos);
 }
 
 }  // namespace cpp

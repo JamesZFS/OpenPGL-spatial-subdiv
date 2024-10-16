@@ -23,16 +23,15 @@ struct Region : public IRegion
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
-    CEStatistics ceStatistics;        // for adaptive subdivision
-    CEStatistics parentCEStatistics;  // for the lookahead child to point to the parent region
-    struct CandidateSplit {
+    bool isLookahead{false};
+    struct CandidateSplit {  // for non-lookahead regions
         float pos;
         uint8_t dim : 2;
-        uint32_t nodeIdx : 30;  // index into the KD tree nodes, not region storage!
+        uint32_t dataIdx : 30;  // left child's index into the region storage, not the tree nodes!
 
-        CandidateSplit() : pos(0), dim(3), nodeIdx(0) {}
+        CandidateSplit() : pos(0), dim(3), dataIdx(0) {}
 
-        inline bool isValid() const { return dim < 3; }  // an invalid dim means no candidate split
+        bool valid() const { return dim < 3; }
 
         void serialize(std::ostream &stream) const
         {
@@ -48,28 +47,46 @@ struct Region : public IRegion
             stream.read(reinterpret_cast<char *>(dimAndNodeIdx), sizeof(uint32_t));
         }
     } candidateSplit;
+
+    struct SelfAndParentCEStatistics {  // for lookahead regions
+        CEStatistics self;
+        CEStatistics parent;
+
+        void serialize(std::ostream &stream) const
+        {
+            self.serialize(stream);
+            parent.serialize(stream);
+        }
+
+        void deserialize(std::istream &stream)
+        {
+            self.deserialize(stream);
+            parent.deserialize(stream);
+        }
+    } ceStatistics;
     uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
     // bool valid{true};
-
-    float getFluence() const override {
-        return ceStatistics.getFluence();
+    void setLookahead() {
+        isLookahead = true;
     }
 
-    float getCE() const override {
-        return ceStatistics.getCE();
+    void unsetLookahead() {
+        isLookahead = false;
+        candidateSplit.dim = 3; // invalid
     }
 
     bool hasCandidateSplit() const {
-        return candidateSplit.isValid();
+        return !isLookahead && candidateSplit.valid();
     }
 
-    void setCandidateSplit(float pos, uint8_t dim, uint32_t nodeIdx) {
+    void setCandidateSplit(uint8_t dim, float pos, uint32_t leftDataIdx) {
+        isLookahead = false;
         candidateSplit.pos = pos;
         candidateSplit.dim = dim;
-        candidateSplit.nodeIdx = nodeIdx;
+        candidateSplit.dataIdx = leftDataIdx;
     }
 
     inline const BBox &getRegionBounds() const
@@ -133,8 +150,8 @@ struct Region : public IRegion
 #endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
+        stream.write(reinterpret_cast<const char *>(&isLookahead), sizeof(isLookahead));
         ceStatistics.serialize(stream);
-        parentCEStatistics.serialize(stream);
         candidateSplit.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
@@ -153,8 +170,8 @@ struct Region : public IRegion
 #endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
+        stream.read(reinterpret_cast<char *>(&isLookahead), sizeof(isLookahead));
         ceStatistics.deserialize(stream);
-        parentCEStatistics.deserialize(stream);
         candidateSplit.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
