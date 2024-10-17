@@ -158,8 +158,6 @@ struct KDTreePartitionBuilder
 
     template<class TContainer>
     void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) {
-        using T = typename TContainer::value_type;
-        constexpr bool isNonZeroSample = has_member_weight<T>::value;
         KDNode &root = kdTree.getRoot();
 
         Range sampleRange;
@@ -459,7 +457,6 @@ struct KDTreePartitionBuilder
             nodesLeftRight[1] = &kdTree->getNode(nodeIdLeft + 1);
         }
 
-        OPENPGL_ASSERT(!node.isLeaf());
         OPENPGL_ASSERT(sampleRange.size() > 0);
         OPENPGL_ASSERT(splitDim < 3);
         // TODO: update sample stats
@@ -640,7 +637,6 @@ struct KDTreePartitionBuilder
             nodesLeftRight[1] = &kdTree->getNode(nodeIdLeft + 1);
         }
 
-        OPENPGL_ASSERT(!node.isLeaf());
         OPENPGL_ASSERT(sampleRange.size() > 0);
         OPENPGL_ASSERT(splitDim < 3);
 
@@ -659,18 +655,19 @@ struct KDTreePartitionBuilder
         sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
 
         if (hasLookahead) {
+            // Update CE only at the lookahead regions
             const auto parentDist = &dataStorage->operator[](dataIdx).first.distribution;
             for (int i: {0, 1}) {
                 OPENPGL_ASSERT(nodesLeftRight[i] == nullptr);
                 TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[i]).first;
-                OPENPGL_ASSERT(regionAndRangeData.first.isLookahead);
+                OPENPGL_ASSERT(childRegion.isLookahead);
                 if constexpr (isNonZeroSample) {
                     childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);
                     childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
                 }
                 TSamplingDistribution guidingDist;
                 // !! This can be slow
-                for (size_t j = sampleRangeLeftRight[j].m_begin; j < sampleRangeLeftRight[j].m_end; j++) {
+                for (size_t j = sampleRangeLeftRight[i].m_begin; j < sampleRangeLeftRight[i].m_end; j++) {
                     const T &sample = samples[j];
                     float weight = 0, qc = 1, qp = 1;
                     if constexpr (isNonZeroSample) {
