@@ -626,7 +626,30 @@ struct KDTreePartitionBuilder
                 dataIndsLeftRight[0] = region.candidateSplit.dataIdx;
                 dataIndsLeftRight[1] = dataIndsLeftRight[0] + 1;
             }
-            else return;
+            else {
+                // Update CE for leaf regions without lookaheads
+                if constexpr (isNonZeroSample) {
+                    TSamplingDistribution guidingDist;
+                    region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
+                    // !! This can be slow
+                    for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
+                        const T &sample = samples[i];
+                        float weight = sample.weight;
+                        // Evaluate pdf
+                        const auto dist = &region.distribution;
+                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
+                        auto _dir = pgl_vec3f(sample.direction);
+                        Vector3 dir(_dir.x, _dir.y, _dir.z);
+                        guidingDist.init(dist, position); // Applied parallax shift
+                        // TODO: apply cosine?
+                        float pdf = guidingDist.pdf(dir);
+                        region.ceStatistics.self.addSample(weight, pdf);
+                    }
+                } else {
+                    region.ceStatistics.self.addZeroWeightSamples(sampleRange.size());
+                }
+                return;
+            }
         }
         else
         {
@@ -655,39 +678,39 @@ struct KDTreePartitionBuilder
         sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
 
         if (hasLookahead) {
-            // Update CE only at the lookahead regions
+            // Update CE for lookaheads
             const auto parentDist = &dataStorage->operator[](dataIdx).first.distribution;
-            for (int i: {0, 1}) {
-                OPENPGL_ASSERT(nodesLeftRight[i] == nullptr);
-                TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[i]).first;
+            for (int c: {0, 1}) {
+                OPENPGL_ASSERT(nodesLeftRight[c] == nullptr);
+                TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[c]).first;
                 OPENPGL_ASSERT(childRegion.isLookahead);
                 if constexpr (isNonZeroSample) {
-                    childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);
+                    TSamplingDistribution guidingDist;
+                    childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
-                }
-                TSamplingDistribution guidingDist;
-                // !! This can be slow
-                for (size_t j = sampleRangeLeftRight[i].m_begin; j < sampleRangeLeftRight[i].m_end; j++) {
-                    const T &sample = samples[j];
-                    float weight = 0, qc = 1, qp = 1;
-                    if constexpr (isNonZeroSample) {
-                        weight = sample.weight;
+                    // !! This can be slow
+                    for (size_t i = sampleRangeLeftRight[c].m_begin; i < sampleRangeLeftRight[c].m_end; i++) {
+                        const T &sample = samples[i];
+                        float weight = sample.weight;
                         // Evaluate pdf
                         const auto childDist = &childRegion.distribution;
                         Point3 position(sample.position.x, sample.position.y, sample.position.z);
                         auto _dir = pgl_vec3f(sample.direction);
                         Vector3 dir(_dir.x, _dir.y, _dir.z);
 
-                        guidingDist.init(parentDist, position);  // Applied parallax shift
+                        guidingDist.init(parentDist, position); // Applied parallax shift
                         // TODO: apply cosine?
-                        qp = guidingDist.pdf(dir);
+                        float qp = guidingDist.pdf(dir);
                         childRegion.ceStatistics.parent.addSample(weight, qp);
 
-                        guidingDist.init(childDist, position);  // Applied parallax shift
+                        guidingDist.init(childDist, position); // Applied parallax shift
                         // TODO: apply cosine?
-                        qc = guidingDist.pdf(dir);
+                        float qc = guidingDist.pdf(dir);
                         childRegion.ceStatistics.self.addSample(weight, qc);
                     }
+                } else {
+                    childRegion.ceStatistics.parent.addZeroWeightSamples(sampleRangeLeftRight[c].size());
+                    childRegion.ceStatistics.self.addZeroWeightSamples(sampleRangeLeftRight[c].size());
                 }
             }
         }
