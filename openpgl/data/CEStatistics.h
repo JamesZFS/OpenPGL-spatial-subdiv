@@ -27,6 +27,10 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
         f += phi;
     }
 
+    inline void addZeroWeightSamples(size_t numSamples) {
+        N += (float) numSamples;
+    }
+
     inline float getFluence() const {
         return N > 0 ? f / N : 0;
     }
