@@ -146,7 +146,9 @@ struct Field
     PGLRegionStatistics GetCoarseRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
     /// API for lookahead regions
-    PGLRegionStatistics GetLookaheadRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
+    PGLRegionStatistics GetFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
+
+    std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
@@ -295,10 +297,16 @@ OPENPGL_INLINE PGLRegionStatistics Field::GetCoarseRegionStatisticsSurface(openp
     return pglFieldGetCoarseRegionStatsSurface(m_fieldHandle, pos);
 }
 
-OPENPGL_INLINE PGLRegionStatistics Field::GetLookaheadRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
+OPENPGL_INLINE PGLRegionStatistics Field::GetFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetLookaheadRegionStatsSurface(m_fieldHandle, pos);
+    return pglFieldGetFineRegionStatsSurface(m_fieldHandle, pos);
+}
+
+OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
 }
 
 }  // namespace cpp

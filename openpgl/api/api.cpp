@@ -283,11 +283,18 @@ extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetCoarseRegionStatsSur
     return gField->getCoarseRegionStatsSurface(pos);
 }
 
-extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetLookaheadRegionStatsSurface(PGLField field, pgl_point3f position)
+extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetFineRegionStatsSurface(PGLField field, pgl_point3f position)
 {
     const auto *gField = (const IGuidingField *)field;
     const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getLookaheadRegionStatsSurface(pos);
+    return gField->getFineRegionStatsSurface(pos);
+}
+
+extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position)
+{
+    const auto *gField = (const IGuidingField *)field;
+    const openpgl::Point3 pos(position.x, position.y, position.z);
+    return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

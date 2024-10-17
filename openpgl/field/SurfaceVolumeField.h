@@ -286,10 +286,16 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getCoarseRegionStats(pos);
     }
 
-    PGLRegionStatistics getLookaheadRegionStatsSurface(const openpgl::Point3 &pos) const override
+    PGLRegionStatistics getFineRegionStatsSurface(const openpgl::Point3 &pos) const override
     {
-        return m_surfaceField.getLookaheadRegionStats(pos);
+        return m_surfaceField.getFineRegionStats(pos);
     }
+
+    std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const openpgl::Point3 &pos) const
+    {
+        return m_surfaceField.getCoarseFineRegionStats(pos);
+    }
+
 
 private:
     size_t m_iteration{0};

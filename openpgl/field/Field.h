@@ -312,7 +312,7 @@ struct Field
         return getRegionStats(id);
     }
 
-    PGLRegionStatistics getLookaheadRegionStats(const openpgl::Point3 &pos) const
+    PGLRegionStatistics getFineRegionStats(const openpgl::Point3 &pos) const
     {
         uint32_t id = getRegionId(pos);
         PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
@@ -328,6 +328,46 @@ struct Field
             stats.id = -1;
             return stats;
         }
+    }
+
+    std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStats(const openpgl::Point3 &pos) const
+    {
+        PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics fStats = cStats;
+        uint32_t cId = getRegionId(pos);
+        if (cId >= m_regionStorageContainer.size())
+            return {cStats, fStats};
+        cStats.id = cId;
+        auto &cRegion = m_regionStorageContainer[cId].first;
+        cStats.numSamples = cRegion.sampleStatistics.numSamples;
+        cStats.numZeroValueSamples = cRegion.sampleStatistics.numZeroValueSamples;
+        cStats.depth = cRegion.depth;
+        cStats.hasCandidateSplit = cRegion.hasCandidateSplit();
+        if (cStats.hasCandidateSplit) {
+            uint32_t fId = cRegion.candidateSplit.dataIdx;
+            if (pos[cRegion.candidateSplit.dim] >= cRegion.candidateSplit.pos)
+                fId++;  // right child
+            OPENPGL_ASSERT(fId < m_regionStorageContainer.size());
+            fStats.id = fId;
+            auto &fRegion = m_regionStorageContainer[fId].first;
+            fStats.numSamples = fRegion.sampleStatistics.numSamples;
+            fStats.numZeroValueSamples = fRegion.sampleStatistics.numZeroValueSamples;
+            fStats.depth = fRegion.depth;
+            fStats.hasCandidateSplit = fRegion.hasCandidateSplit();
+            OPENPGL_ASSERT(!fStats.hasCandidateSplit);
+            if (fRegion.ceStatistics.parent.getNumSamples() > 0) {
+                cStats.fluence = fRegion.ceStatistics.parent.getFluence();  // parent stats come from the child.parent
+                cStats.crossEntropy = fRegion.ceStatistics.parent.getCE();
+            }
+            if (fRegion.ceStatistics.self.getNumSamples() > 0) {
+                fStats.fluence = fRegion.ceStatistics.self.getFluence();
+                fStats.crossEntropy = fRegion.ceStatistics.self.getCE();
+            }
+        } else if (cRegion.ceStatistics.self.getNumSamples() > 0) {
+            cStats.fluence = cRegion.ceStatistics.self.getFluence();
+            cStats.crossEntropy = cRegion.ceStatistics.self.getCE();
+        }
+        return {cStats, fStats};
     }
 
     void serialize(std::ostream &os) const
@@ -476,8 +516,8 @@ struct Field
     {
         Timer timer;
         // 1. Evaluate regions with new-coming samples
-        // m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-        // m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         // 2. Subdivide
         timer.reset();
