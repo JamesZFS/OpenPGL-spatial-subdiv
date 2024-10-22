@@ -379,6 +379,7 @@ struct PathSegmentDataStorage
                         dsd.pdf = pdf;
 #ifdef OPENPGL_GUIDING_PDF_CACHES
                         dsd.guidingPDF = currentPathSegment.pdfGuidingDirectionIn;
+                        dsd.normal = currentPathSegment.normal;
 #endif
                         dsd.distance = distance;
                         dsd.flags = flags;
