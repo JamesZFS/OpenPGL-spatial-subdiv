@@ -53,7 +53,9 @@ struct PGLSampleData
 #ifdef OPENPGL_GUIDING_PDF_CACHES
     /// the PDF of the guiding field at @ref position (possibly with parallax compensation and cosine)
     float guidingPDF;
-    // TODO normal
+
+    /// The surface normal at the current @ref position.
+    pgl_direction normal;
 #endif
 
     /// the distance to the source of the incident radiance

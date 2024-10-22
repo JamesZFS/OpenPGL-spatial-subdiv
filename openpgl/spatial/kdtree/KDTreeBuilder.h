@@ -37,6 +37,12 @@ struct has_member_weight : std::false_type {};
 template <typename T>
 struct has_member_weight<T, std::void_t<decltype(std::declval<T>().weight)>> : std::true_type {};
 
+template <typename T, typename = std::void_t<>>
+struct has_function_applyCosineProduct : std::false_type {};
+
+template <typename T>
+struct has_function_applyCosineProduct<T, std::void_t<decltype(std::declval<T>().applyCosineProduct(std::declval<Vector3>()))>> : std::true_type {};
+
 template <typename TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
 struct KDTreePartitionBuilder
 {
@@ -603,6 +609,7 @@ struct KDTreePartitionBuilder
         OPENPGL_ASSERT(node != nullptr);
         using T = typename TContainer::value_type;
         constexpr bool isNonZeroSample = has_member_weight<T>::value;
+        constexpr bool isSurfaceDist = has_function_applyCosineProduct<TSamplingDistribution>::value;
         if (sampleRange.size() == 0)
         {
             return;
@@ -641,8 +648,13 @@ struct KDTreePartitionBuilder
                         auto _dir = pgl_vec3f(sample.direction);
                         Vector3 dir(_dir.x, _dir.y, _dir.z);
                         guidingDist.init(dist, position); // Applied parallax shift
-                        // TODO: apply cosine?
+                        if constexpr (isSurfaceDist) {
+                            auto _normal = pgl_vec3f(sample.normal);
+                            Vector3 normal(_normal.x, _normal.y, _normal.z);
+                            guidingDist.applyCosineProduct(normal);
+                        }
                         float pdf = guidingDist.pdf(dir);
+                        // float pdf = sample.guidingPDF;
                         region.ceStatistics.self.addSample(weight, pdf);
                     }
                 } else {
@@ -697,14 +709,19 @@ struct KDTreePartitionBuilder
                         Point3 position(sample.position.x, sample.position.y, sample.position.z);
                         auto _dir = pgl_vec3f(sample.direction);
                         Vector3 dir(_dir.x, _dir.y, _dir.z);
+                        auto _normal = pgl_vec3f(sample.normal);
+                        Vector3 normal(_normal.x, _normal.y, _normal.z);
 
                         guidingDist.init(parentDist, position); // Applied parallax shift
-                        // TODO: apply cosine?
+                        if constexpr (isSurfaceDist)
+                            guidingDist.applyCosineProduct(normal);
                         float qp = guidingDist.pdf(dir);
+                        // float qp = sample.guidingPDF;
                         childRegion.ceStatistics.parent.addSample(weight, qp);
 
                         guidingDist.init(childDist, position); // Applied parallax shift
-                        // TODO: apply cosine?
+                        if constexpr (isSurfaceDist)
+                            guidingDist.applyCosineProduct(normal);
                         float qc = guidingDist.pdf(dir);
                         childRegion.ceStatistics.self.addSample(weight, qc);
                     }
