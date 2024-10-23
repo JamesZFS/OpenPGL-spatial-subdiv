@@ -23,6 +23,7 @@ struct Region : public IRegion
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
     bool isLookahead{false};
+    bool removed{false};
     struct CandidateSplit {  // for non-lookahead regions
         float pos;
         uint8_t dim : 2;

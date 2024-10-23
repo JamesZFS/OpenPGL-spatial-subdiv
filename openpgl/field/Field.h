@@ -294,6 +294,7 @@ struct Field
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
+        stats.removed = region.removed;
         // stats.numSamples = region.ceStatistics.getNumSamples();
         stats.numSamples = region.sampleStatistics.numSamples;
         stats.numZeroValueSamples = region.sampleStatistics.numZeroValueSamples;
@@ -339,6 +340,8 @@ struct Field
             return {cStats, fStats};
         cStats.id = cId;
         auto &cRegion = m_regionStorageContainer[cId].first;
+        cStats.removed = cRegion.removed;
+        OPENPGL_ASSERT(!cStats.removed);
         cStats.numSamples = cRegion.sampleStatistics.numSamples;
         cStats.numZeroValueSamples = cRegion.sampleStatistics.numZeroValueSamples;
         cStats.depth = cRegion.depth;
@@ -350,6 +353,8 @@ struct Field
             OPENPGL_ASSERT(fId < m_regionStorageContainer.size());
             fStats.id = fId;
             auto &fRegion = m_regionStorageContainer[fId].first;
+            fStats.removed = fRegion.removed;
+            OPENPGL_ASSERT(!fStats.removed);
             fStats.numSamples = fRegion.sampleStatistics.numSamples;
             fStats.numZeroValueSamples = fRegion.sampleStatistics.numZeroValueSamples;
             fStats.depth = fRegion.depth;
