@@ -53,6 +53,7 @@ struct SurfaceSamplingDistribution
      * @return true
      * @return false
      */
+    template <bool lookahead=false>
     bool Init(const Field *field, const pgl_point3f &pos, float &sample1D);
 
     /**
@@ -236,11 +237,15 @@ OPENPGL_INLINE void SurfaceSamplingDistribution::Clear()
     return pglSurfaceSamplingDistributionClear(m_surfaceSamplingDistributionHandle);
 }
 
+template <bool lookahead>
 OPENPGL_INLINE bool SurfaceSamplingDistribution::Init(const Field *field, const pgl_point3f &pos, float &sample1D)
 {
     OPENPGL_ASSERT(m_surfaceSamplingDistributionHandle);
     OPENPGL_ASSERT(field->m_fieldHandle);
-    return pglFieldInitSurfaceSamplingDistribution(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, &sample1D);
+    if constexpr(lookahead)
+        return pglFieldInitSurfaceSamplingDistributionFine(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, &sample1D);
+    else
+        return pglFieldInitSurfaceSamplingDistribution(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, &sample1D);
 }
 
 OPENPGL_INLINE void SurfaceSamplingDistribution::ApplyCosineProduct(const pgl_vec3f &normal)
