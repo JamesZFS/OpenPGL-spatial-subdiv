@@ -153,6 +153,20 @@ struct Field
         return region ? id : -1;
     }
 
+    inline const RegionType *getFineRegion(const openpgl::Point3 &p, float *sample1D, uint32_t &id) const
+    {
+        auto coarse = getRegion(p, sample1D, id);
+        if (!coarse) return nullptr;
+        if (coarse->hasCandidateSplit()) {
+            id = coarse->candidateSplit.dataIdx;
+            if (p[coarse->candidateSplit.dim] >= coarse->candidateSplit.pos)
+                id++;  // right child
+            return &m_regionStorageContainer[id].first;
+        } else {
+            return nullptr;
+        }
+    }
+
     void buildField(const SampleContainer &samples)
     {
         m_iteration = 0;

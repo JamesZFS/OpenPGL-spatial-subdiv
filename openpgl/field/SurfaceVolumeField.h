@@ -51,9 +51,22 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 
     bool initSurfaceSamplingDistribution(ISurfaceSamplingDistribution *surfaceSamplingDistribution, const Point3 &position, float *sample1D) const override
     {
+        return _initSurfaceSamplingDistribution<false>(surfaceSamplingDistribution, position, sample1D);
+    }
+
+    bool initSurfaceSamplingDistributionFine(ISurfaceSamplingDistribution *surfaceSamplingDistribution, const Point3 &position, float *sample1D) const override
+    {
+        return _initSurfaceSamplingDistribution<true>(surfaceSamplingDistribution, position, sample1D);
+    }
+
+    template<bool fine>
+    bool _initSurfaceSamplingDistribution(ISurfaceSamplingDistribution *surfaceSamplingDistribution, const Point3 &position, float *sample1D) const
+    {
         TSurfaceSamplingDistribution *_surfaceSamplingDistribution = (TSurfaceSamplingDistribution *)surfaceSamplingDistribution;
         uint32_t id = -1;
-        const SurfaceRegionType *region = m_surfaceField.getRegion(position, sample1D, id);
+        const SurfaceRegionType *region;
+        if constexpr(fine) region = m_surfaceField.getFineRegion(position, sample1D, id);
+        else region = m_surfaceField.getRegion(position, sample1D, id);
         if (!region || !region->valid)
         {
             return false;

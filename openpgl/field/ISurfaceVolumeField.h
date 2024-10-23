@@ -23,6 +23,8 @@ struct ISurfaceVolumeField
 
     virtual bool initSurfaceSamplingDistribution(ISurfaceSamplingDistribution *surfaceSamplingDistribution, const Point3 &position, float *sample1D) const = 0;
 
+    virtual bool initSurfaceSamplingDistributionFine(ISurfaceSamplingDistribution *surfaceSamplingDistribution, const Point3 &position, float *sample1D) const = 0;
+
     virtual IVolumeSamplingDistribution *newVolumeSamplingDistribution() const = 0;
 
     virtual bool initVolumeSamplingDistribution(IVolumeSamplingDistribution *volumeSamplingDistribution, const Point3 &position, float *sample1D) const = 0;
