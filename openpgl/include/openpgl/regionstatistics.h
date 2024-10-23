@@ -6,11 +6,11 @@
 struct PGLRegionStatistics
 {
     uint32_t id = -1;
+    bool removed = false;
     uint32_t numSamples = 0;
     uint32_t numZeroValueSamples = 0;
     uint32_t depth = 0;
     float fluence = 0;
     float crossEntropy = 0;
     bool hasCandidateSplit = false;
-    // TODO: valid flag
 };

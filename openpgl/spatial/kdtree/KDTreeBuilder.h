@@ -413,6 +413,7 @@ struct KDTreePartitionBuilder
                     nodesLeftRight[1]->setDataNodeIdx(dataIndsLeftRight[1]);
                     node->setToInnerNode(splitDim, splitPos, nodeIdLeft);
                     // TODO: lazily remove dataIdx
+                    region.removed = true;
                     // Fallthrough to update children
                 }
                 else {
