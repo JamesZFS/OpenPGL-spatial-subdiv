@@ -476,6 +476,18 @@ struct KDTree
         return 0;
     }
 
+    uint32_t getNumLeafs() const {
+        uint32_t numLeafs = 0;
+        for (const KDNode &node : m_nodes)
+        {
+            if (node.isLeaf())
+            {
+                numLeafs++;
+            }
+        }
+        return numLeafs;
+    }
+
     std::string toString() const
     {
         std::stringstream ss;

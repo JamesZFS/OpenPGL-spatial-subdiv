@@ -341,6 +341,10 @@ struct Field
         return m_regionStorageContainer.size();
     }
 
+    size_t getLeafCount() const {
+        return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
+    }
+
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
         PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};

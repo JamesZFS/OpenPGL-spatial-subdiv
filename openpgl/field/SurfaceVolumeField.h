@@ -307,6 +307,10 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getRegionCount();
     }
 
+    size_t getLeafCountSurface() const override {
+        return m_surfaceField.getLeafCount();
+    }
+
     PGLRegionStatistics getRegionStatsSurface(uint32_t id) const override
     {
         return m_surfaceField.getRegionStats(id);
