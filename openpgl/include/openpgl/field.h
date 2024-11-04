@@ -47,6 +47,8 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdate(PGLField field, PGLSampleStorage sampleStorage);
 
+    OPENPGL_CORE_INTERFACE void pglFieldEvaluate(PGLField field, PGLSampleStorage sampleStorage);
+
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSurface(PGLField field, PGLSampleStorage sampleStorage);
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdateVolume(PGLField field, PGLSampleStorage sampleStorage);

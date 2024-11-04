@@ -35,6 +35,8 @@ struct ISurfaceVolumeField
 
     virtual void updateField(SampleContainer &samplesSurface, SampleContainer &samplesVolume) = 0;
 
+    virtual void evaluateField(SampleContainer &samplesSurface, SampleContainer &samplesVolume) = 0;
+
     virtual void updateFieldSurface(SampleContainer &samplesSurface) = 0;
 
     virtual void updateFieldVolume(SampleContainer &samplesVolume) = 0;

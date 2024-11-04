@@ -271,6 +271,45 @@ struct Field
         m_iteration++;
     }
 
+    void evaluateField(const SampleContainer &samples) {
+        if (samples.samples.size() > 0)
+        {
+            if (samples_.capacity() < samples.samples.size())
+            {
+                samples_.reserve(2 * samples.samples.size());
+            }
+            samples_.resize(samples.samples.size());
+#ifdef USE_EMBREE_PARALLEL
+            embree::parallel_for(size_t(0), samples.samples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
+#else
+            tbb::parallel_for(tbb::blocked_range<int>(0, samples.samples.size()), [&](tbb::blocked_range<int> r) {
+#endif
+                for (size_t i = r.begin(); i < r.end(); i++)
+                    samples_[i] = samples.samples[i];
+            });
+
+            if (zeroValueSamples_.capacity() < samples.zeroValueSamples.size())
+            {
+                zeroValueSamples_.reserve(2 * samples.zeroValueSamples.size());
+            }
+            zeroValueSamples_.resize(samples.zeroValueSamples.size());
+#ifdef USE_EMBREE_PARALLEL
+            embree::parallel_for(size_t(0), samples.zeroValueSamples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
+#else
+            tbb::parallel_for(tbb::blocked_range<int>(0, samples.zeroValueSamples.size()), [&](tbb::blocked_range<int> r) {
+#endif
+                for (size_t i = r.begin(); i < r.end(); i++)
+                    zeroValueSamples_[i] = samples.zeroValueSamples[i];
+            });
+
+            Timer timer;
+            // Only update CE stats, no subdivision or fitting
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
+        }
+    }
+
     void updateSubdivConfig(const PGLKDTreeArguments &cfg)
     {
         m_useStochasticNNLookUp = cfg.knnLookup;

@@ -101,6 +101,13 @@ struct Field
     void Update(const SampleStorage &sampleStorage);
 
     /**
+     * @brief Evaluates the current field without making subdivision/fitting
+     *
+     * @param sampleStorage
+     */
+    void Evaluate(const SampleStorage &sampleStorage);
+
+    /**
      * @brief Updates the current approximation of the surface radiance field.
      *
      * @param sampleStorage
@@ -232,6 +239,12 @@ OPENPGL_INLINE void Field::Update(const SampleStorage &sampleStorage)
 {
     OPENPGL_ASSERT(m_fieldHandle);
     pglFieldUpdate(m_fieldHandle, sampleStorage.m_sampleStorageHandle);
+}
+
+OPENPGL_INLINE void Field::Evaluate(const SampleStorage &sampleStorage)
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    pglFieldEvaluate(m_fieldHandle, sampleStorage.m_sampleStorageHandle);
 }
 
 OPENPGL_INLINE void Field::UpdateSurface(const SampleStorage &sampleStorage)
