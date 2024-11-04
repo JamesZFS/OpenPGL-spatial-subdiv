@@ -183,6 +183,14 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldUpdate(PGLField field, PGLSampleStorag
 }
 OPENPGL_CATCH_END_VOID
 
+extern "C" OPENPGL_DLLEXPORT void pglFieldEvaluate(PGLField field, PGLSampleStorage sampleStorage) OPENPGL_CATCH_BEGIN
+{
+    auto *gField = (IGuidingField *)field;
+    auto *gSampleStorage = (openpgl::SampleDataStorage *)sampleStorage;
+    gField->evaluateField(gSampleStorage->m_surfaceContainer, gSampleStorage->m_volumeContainer);
+}
+OPENPGL_CATCH_END_VOID
+
 extern "C" OPENPGL_DLLEXPORT void pglFieldUpdateSurface(PGLField field, PGLSampleStorage sampleStorage) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;

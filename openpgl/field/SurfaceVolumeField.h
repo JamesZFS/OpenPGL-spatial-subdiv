@@ -148,6 +148,24 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_timeUpdateField += timer.elapsed() * 1e-3f;
     }
 
+    void evaluateField(SampleContainer &samplesSurface, SampleContainer &samplesVolume) override
+    {
+        if (samplesSurface.samples.size() > 0)
+        {
+            if (m_surfaceField.isInitialized())
+            {
+                m_surfaceField.evaluateField(samplesSurface);
+            }
+        }
+        if (samplesVolume.samples.size() > 0)
+        {
+            if (m_volumeField.isInitialized())
+            {
+                m_volumeField.evaluateField(samplesVolume);
+            }
+        }
+    }
+
     void updateFieldSurface(SampleContainer &samplesSurface) override
     {
         Timer timer;
