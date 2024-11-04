@@ -574,9 +574,11 @@ struct Field
     {
         Timer timer;
         // 1. Evaluate regions with new-coming samples
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-        m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-        std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
+        if (m_spatialSubdivBuilderSettings.enableCE) {
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
+        }
         // 2. Subdivide
         timer.reset();
         m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
