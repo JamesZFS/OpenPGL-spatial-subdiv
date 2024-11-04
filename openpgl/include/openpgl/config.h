@@ -47,6 +47,7 @@ extern "C"
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
         size_t maxDepth{32};
         size_t maxDepthWithSampleCount{32};
+        bool enableCE{true};
         float ceThreshold{std::numeric_limits<float>::infinity()};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
