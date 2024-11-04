@@ -60,6 +60,7 @@ struct KDTreePartitionBuilder
         size_t minSamples{100};
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
         size_t maxDepth{32};
+        size_t maxDepthWithSampleCount{32};
         float ceThreshold{std::numeric_limits<float>::infinity()};  // nodes' with cross-entropy larger than this gets subdivided
         float ceDecay{0.8f};
 
@@ -71,7 +72,7 @@ struct KDTreePartitionBuilder
         {
             bool equal = true;
             if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth
-                || ceThreshold != b.ceThreshold || ceDecay != b.ceDecay)
+                || maxDepthWithSampleCount != b.maxDepthWithSampleCount || ceThreshold != b.ceThreshold || ceDecay != b.ceDecay)
             {
                 equal = false;
             }
@@ -83,6 +84,7 @@ struct KDTreePartitionBuilder
             minSamples = cfg.minSamples;
             maxSamples = cfg.maxSamples;
             maxDepth = cfg.maxDepth;
+            maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             ceThreshold = cfg.ceThreshold;
             ceDecay = cfg.ceDecay;
         }
@@ -400,7 +402,7 @@ struct KDTreePartitionBuilder
 
                 // Promote candidate split?
                 if (// Max sample count criterion:
-                    totalSamples > buildSettings.maxSamples ||
+                    (depth < buildSettings.maxDepthWithSampleCount && totalSamples > buildSettings.maxSamples) ||
                     // CE criterion:
                     ceParent - ceChild > buildSettings.ceThreshold) {
                     left.unsetLookahead();
@@ -426,7 +428,7 @@ struct KDTreePartitionBuilder
                 SampleStatistics mergedSampleStats = region.sampleStatistics;
                 mergedSampleStats.merge(sampleStats);
                 // Real split: max sample count criterion
-                if (depth < buildSettings.maxDepth && totalSamples > buildSettings.maxSamples) {
+                if (depth < buildSettings.maxDepth && depth < buildSettings.maxDepthWithSampleCount && totalSamples > buildSettings.maxSamples) {
                     getSplitDimensionAndPosition(mergedSampleStats, splitDim, splitPos);
 
                     // parent.onSplit();
@@ -822,6 +824,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamples: " << minSamples << std::endl;
     ss << "  maxSamples: " << maxSamples << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
+    ss << "  maxDepthWithSampleCount: " << maxDepthWithSampleCount << std::endl;
     ss << "  ceThreshold: " << ceThreshold << std::endl;
     ss << "  ceDecay: " << ceDecay << std::endl;
 
@@ -834,6 +837,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char *>(&minSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxDepth), sizeof(size_t));
+    stream.write(reinterpret_cast<const char *>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
     stream.write(reinterpret_cast<const char *>(&ceThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char *>(&ceDecay), sizeof(float));
 }
@@ -844,6 +848,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char *>(&minSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxDepth), sizeof(size_t));
+    stream.read(reinterpret_cast<char *>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
     stream.read(reinterpret_cast<char *>(&ceThreshold), sizeof(float));
     stream.read(reinterpret_cast<char *>(&ceDecay), sizeof(float));
 }
