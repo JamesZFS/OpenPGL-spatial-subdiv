@@ -67,6 +67,8 @@ struct ISurfaceVolumeField
 
     virtual size_t getRegionCountSurface() const = 0;
 
+    virtual size_t getLeafCountSurface() const = 0;
+
     virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;
 
     virtual PGLRegionStatistics getCoarseRegionStatsSurface(const Point3 &position) const = 0;

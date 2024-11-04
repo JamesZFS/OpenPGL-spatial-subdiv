@@ -286,6 +286,12 @@ extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetRegionCountSurface(PGLField field
     return gField->getRegionCountSurface();
 }
 
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetLeafCountSurface(PGLField field)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getLeafCountSurface();
+}
+
 extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id)
 {
     const auto *gField = (const IGuidingField *)field;

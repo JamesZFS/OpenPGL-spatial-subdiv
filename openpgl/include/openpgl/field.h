@@ -78,6 +78,8 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE size_t pglFieldGetRegionCountSurface(PGLField field);
 
+    OPENPGL_CORE_INTERFACE size_t pglFieldGetLeafCountSurface(PGLField field);
+
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id);
 
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetCoarseRegionStatsSurface(PGLField field, pgl_point3f position);

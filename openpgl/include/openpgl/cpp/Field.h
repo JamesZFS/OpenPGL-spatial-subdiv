@@ -143,8 +143,8 @@ struct Field
      */
     FieldStatistics GetVolumeStatistics() const;
 
-    /// Returns the number of regions in the surface guiding Field.
-    size_t GetRegionCountSurface() const;
+    /// Returns the number of regions (including invalid and lookahead or just leafs) in the surface guiding Field.
+    size_t GetRegionCountSurface(bool all = true) const;
 
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
@@ -292,10 +292,13 @@ OPENPGL_INLINE FieldStatistics Field::GetVolumeStatistics() const
     return FieldStatistics(fieldStats);
 }
 
-OPENPGL_INLINE size_t Field::GetRegionCountSurface() const
+OPENPGL_INLINE size_t Field::GetRegionCountSurface(bool all) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetRegionCountSurface(m_fieldHandle);
+    if (all)
+        return pglFieldGetRegionCountSurface(m_fieldHandle);
+    else
+        return pglFieldGetLeafCountSurface(m_fieldHandle);
 }
 
 OPENPGL_INLINE PGLRegionStatistics Field::GetRegionStatisticsSurface(uint32_t id) const
