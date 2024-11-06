@@ -5,6 +5,7 @@
 
 #include "../../data/Range.h"
 #include "../../data/SampleStatistics.h"
+#include "../../data/CEStatistics.h"
 #include "../../include/openpgl/types.h"
 #include "../../openpgl_common.h"
 #include "KDTree.h"
@@ -168,8 +169,8 @@ struct KDTreePartitionBuilder
         insertTreeNode(&kdTree, root, depth, samples, sampleRange, &dataStorage);
     }
 
-    template<class TContainer>
-    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) {
+    template<class TContainer, class FieldType>
+    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings, const FieldType &field) {
         KDNode &root = kdTree.getRoot();
 
         Range sampleRange;
@@ -178,7 +179,7 @@ struct KDTreePartitionBuilder
 
         size_t depth = 1;
 
-        updateCEStatsNode(&kdTree, &root, depth, samples, sampleRange, &dataStorage, buildSettings);
+        updateCEStatsNode(&kdTree, &root, depth, samples, sampleRange, &dataStorage, buildSettings, field);
     }
 
     std::string toString() const;
@@ -628,8 +629,8 @@ struct KDTreePartitionBuilder
             });
     }
 
-    template<class TContainer>
-    void updateCEStatsNode(KDTree *kdTree, KDNode *node, size_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings) const
+    template<class TContainer, class FieldType>
+    void updateCEStatsNode(KDTree *kdTree, KDNode *node, size_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings, const FieldType &field) const
     {
         OPENPGL_ASSERT(node != nullptr);
         using T = typename TContainer::value_type;
@@ -661,6 +662,7 @@ struct KDTreePartitionBuilder
             else {
                 // Update CE for leaf regions without lookaheads
                 if constexpr (isNonZeroSample) {
+#if COMPUTE_CE_STYLE == 0
                     // TSamplingDistribution guidingDist;
                     // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     // !! This can be slow
@@ -668,8 +670,8 @@ struct KDTreePartitionBuilder
                         const T &sample = samples[i];
                         float weight = sample.weight;
                         // Evaluate pdf
-                        const auto dist = &region.distribution;
-                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
+                        // const auto dist = &region.distribution;
+                        // Point3 position(sample.position.x, sample.position.y, sample.position.z);
                         // auto _dir = pgl_vec3f(sample.direction);
                         // Vector3 dir(_dir.x, _dir.y, _dir.z);
                         // guidingDist.init(dist, position); // Applied parallax shift
@@ -682,6 +684,9 @@ struct KDTreePartitionBuilder
                         float pdf = sample.guidingPDF;
                         region.ceStatistics.self.addSample(weight, pdf);
                     }
+#else
+                    field.updateCE(region, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
+#endif
                 } else {
                     region.ceStatistics.self.addZeroWeightSamples(sampleRange.size());
                 }
@@ -716,12 +721,14 @@ struct KDTreePartitionBuilder
 
         if (hasLookahead) {
             // Update CE for lookaheads
-            const auto parentDist = &dataStorage->operator[](dataIdx).first.distribution;
+            const auto &parentRegion = dataStorage->operator[](dataIdx).first;
+            // const auto parentDist = &parentRegion.distribution;
             for (int c: {0, 1}) {
                 OPENPGL_ASSERT(nodesLeftRight[c] == nullptr);
                 TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[c]).first;
                 OPENPGL_ASSERT(childRegion.isLookahead);
                 if constexpr (isNonZeroSample) {
+#if COMPUTE_CE_STYLE == 0
                     TSamplingDistribution guidingDist;
                     // childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     // childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
@@ -750,6 +757,9 @@ struct KDTreePartitionBuilder
                         float qc = guidingDist.pdf(dir);
                         childRegion.ceStatistics.self.addSample(weight, qc);
                     }
+#else
+                    field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
+#endif
                 } else {
                     childRegion.ceStatistics.parent.addZeroWeightSamples(sampleRangeLeftRight[c].size());
                     childRegion.ceStatistics.self.addZeroWeightSamples(sampleRangeLeftRight[c].size());
@@ -759,10 +769,10 @@ struct KDTreePartitionBuilder
         else {
             tbb::parallel_invoke(
             [&] {
-                updateCEStatsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings);
+                updateCEStatsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field);
             },
             [&] {
-                updateCEStatsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings);
+                updateCEStatsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field);
             });
         }
     }

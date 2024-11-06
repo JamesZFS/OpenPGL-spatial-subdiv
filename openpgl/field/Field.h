@@ -22,6 +22,8 @@
 namespace openpgl
 {
 
+thread_local static std::vector<SampleData> threadSamples;
+
 template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename, typename> class TSpatialStructureBuilder, typename TSamplingDistribution>
 struct Field
 {
@@ -304,8 +306,8 @@ struct Field
 
             Timer timer;
             // Only update CE stats, no subdivision or fitting
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         }
     }
@@ -521,6 +523,22 @@ struct Field
         return m_initialized;
     }
 
+#if COMPUTE_CE_STYLE == 1
+    void updateCE(RegionType &region, const RegionType &parent, SampleContainerInternal::iterator begin, SampleContainerInternal::iterator end) const
+    {
+        threadSamples.assign(begin, end);  // make a temporary copy
+        m_distributionFactory.prepareSamples(threadSamples.data(), threadSamples.size(), region.sampleStatistics, m_distributionFactorySettings);
+        region.updateCE(parent, threadSamples.begin(), threadSamples.end());
+    }
+
+    void updateCE(RegionType &region, SampleContainerInternal::iterator begin, SampleContainerInternal::iterator end) const
+    {
+        threadSamples.assign(begin, end);  // make a temporary copy
+        m_distributionFactory.prepareSamples(threadSamples.data(), threadSamples.size(), region.sampleStatistics, m_distributionFactorySettings);
+        region.updateCE(threadSamples.begin(), threadSamples.end());
+    }
+#endif
+
    private:
     void estimateSceneBounds(const SampleContainerInternal &samples)
     {
@@ -579,8 +597,8 @@ struct Field
         Timer timer;
         // 1. Evaluate regions with new-coming samples
         if (m_spatialSubdivBuilderSettings.enableCE) {
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         }
         // 2. Subdivide
@@ -601,7 +619,6 @@ struct Field
 
     inline void fitRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        thread_local SampleContainerInternal threadSamples;
         std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
@@ -622,8 +639,7 @@ struct Field
                 {
                     Timer timer;
                     // Copy to thread temporary vector
-                    threadSamples.resize(regionStorage.second.size());
-                    memcpy(threadSamples.data(), samples.data() + regionStorage.second.m_begin, regionStorage.second.size() * sizeof(SampleData));
+                    threadSamples.assign(samples.data() + regionStorage.second.m_begin, samples.data() + regionStorage.second.m_end);
                     timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
@@ -672,7 +688,6 @@ struct Field
 
     void updateRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        thread_local SampleContainerInternal threadSamples;
         std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
@@ -705,8 +720,7 @@ struct Field
 #endif
                     Timer timer;
                     // Copy to thread temporary vector
-                    threadSamples.resize(regionStorage.second.size());
-                    memcpy(threadSamples.data(), samples.data() + regionStorage.second.m_begin, regionStorage.second.size() * sizeof(SampleData));
+                    threadSamples.assign(samples.data() + regionStorage.second.m_begin, samples.data() + regionStorage.second.m_end);
                     timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
