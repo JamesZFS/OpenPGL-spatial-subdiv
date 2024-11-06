@@ -371,6 +371,13 @@ struct KDTreePartitionBuilder
                 else {
                     region.sampleStatistics.merge(sampleStats);
                     regionAndRangeData.second = sampleRange;
+                    // TODO? Re-propose a split
+                    getSplitDimensionAndPosition(region.sampleStatistics, splitDim, splitPos);
+                    region.candidateSplit.dim = splitDim;
+                    region.candidateSplit.pos = splitPos;
+                    // TODO?
+                    left.splitFlag = true;
+                    right.splitFlag = true;
                     // Fallthrough to update lookaheads
                 }
             }
