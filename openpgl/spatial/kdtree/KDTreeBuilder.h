@@ -641,7 +641,7 @@ struct KDTreePartitionBuilder
             else {
                 // Update CE for leaf regions without lookaheads
                 if constexpr (isNonZeroSample) {
-                    TSamplingDistribution guidingDist;
+                    // TSamplingDistribution guidingDist;
                     region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     // !! This can be slow
                     for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
@@ -650,16 +650,16 @@ struct KDTreePartitionBuilder
                         // Evaluate pdf
                         const auto dist = &region.distribution;
                         Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                        auto _dir = pgl_vec3f(sample.direction);
-                        Vector3 dir(_dir.x, _dir.y, _dir.z);
-                        guidingDist.init(dist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist) {
-                            auto _normal = pgl_vec3f(sample.normal);
-                            Vector3 normal(_normal.x, _normal.y, _normal.z);
-                            guidingDist.applyCosineProduct(normal);
-                        }
-                        float pdf = guidingDist.pdf(dir);
-                        // float pdf = sample.guidingPDF;
+                        // auto _dir = pgl_vec3f(sample.direction);
+                        // Vector3 dir(_dir.x, _dir.y, _dir.z);
+                        // guidingDist.init(dist, position); // Applied parallax shift
+                        // if constexpr (isSurfaceDist) {
+                        //     auto _normal = pgl_vec3f(sample.normal);
+                        //     Vector3 normal(_normal.x, _normal.y, _normal.z);
+                        //     guidingDist.applyCosineProduct(normal);
+                        // }
+                        // float pdf = guidingDist.pdf(dir);
+                        float pdf = sample.guidingPDF;
                         region.ceStatistics.self.addSample(weight, pdf);
                     }
                 } else {
@@ -717,11 +717,11 @@ struct KDTreePartitionBuilder
                         auto _normal = pgl_vec3f(sample.normal);
                         Vector3 normal(_normal.x, _normal.y, _normal.z);
 
-                        guidingDist.init(parentDist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist)
-                            guidingDist.applyCosineProduct(normal);
-                        float qp = guidingDist.pdf(dir);
-                        // float qp = sample.guidingPDF;
+                        // guidingDist.init(parentDist, position); // Applied parallax shift
+                        // if constexpr (isSurfaceDist)
+                        //     guidingDist.applyCosineProduct(normal);
+                        // float qp = guidingDist.pdf(dir);
+                        float qp = sample.guidingPDF;
                         childRegion.ceStatistics.parent.addSample(weight, qp);
 
                         guidingDist.init(childDist, position); // Applied parallax shift
