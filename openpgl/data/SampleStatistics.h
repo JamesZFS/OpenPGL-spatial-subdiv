@@ -5,6 +5,8 @@
 
 #include "../openpgl_common.h"
 
+// 0 - original, 1 - assume uniform distr.
+#define STATS_HANDLE_UPON_SPLIT 1
 namespace openpgl
 {
 struct SampleStatistics
@@ -96,30 +98,52 @@ struct SampleStatistics
 
     void split(const uint8_t &splitDim, const float &splitPos, const float &decay, const bool &splitLower)
     {
-        OPENPGL_ASSERT(decay > 0.0f && decay <= 1.0f);
+        OPENPGL_ASSERT(decay >0.0f && decay <= 1.0f) ;
 
-        if (numSamples > 0.f)
+        if(numSamples > 0.f)
         {
-            float newVariance = variance[splitDim];
-            const float stdDerivation = newVariance > 0.f ? std::sqrt(newVariance) : 0.f;
-
-            newVariance = newVariance - newVariance / 4.0f;
+            const float tmpVariance = variance[splitDim];
+#if STATS_HANDLE_UPON_SPLIT == 0
+            const float stdDerivation = std::sqrt(tmpVariance);
+            float const newVariance = tmpVariance - tmpVariance / 4.0f;
             variance[splitDim] = newVariance;
-            if (splitLower)
+#endif
+
+            if(splitLower)
             {
+#if STATS_HANDLE_UPON_SPLIT == 1
+                float scale = (sampleBounds.upper[splitDim] - splitPos) / (sampleBounds.upper[splitDim] - sampleBounds.lower[splitDim]);
+                scale = embree::clamp(scale, 0.0f, 1.0f);
+                float const newVariance = scale * scale * tmpVariance;
+                variance[splitDim] = newVariance;
+                mean[splitDim] = embree::lerp(sampleBounds.upper[splitDim], mean[splitDim], scale);
+#endif
+
                 sampleBounds.lower[splitDim] = std::max(splitPos, sampleBounds.lower[splitDim]);
+#if STATS_HANDLE_UPON_SPLIT == 0
                 mean[splitDim] = std::min(sampleBounds.upper[splitDim], mean[splitDim] + stdDerivation / 2.0f);
+#endif
                 // TODO: there are rare ocasions where this can happen (boarder of the head scene)
                 // find a way to handle these
-                // OPENPGL_ASSERT(mean[splitDim] >= sampleBounds.lower[splitDim]);
-                // mean[splitDim] += stdDerivation / 2.0f;
+                //OPENPGL_ASSERT(mean[splitDim] >= sampleBounds.lower[splitDim]);
+                //mean[splitDim] += stdDerivation / 2.0f;
             }
             else
             {
+#if STATS_HANDLE_UPON_SPLIT == 1
+                float scale = (splitPos - sampleBounds.lower[splitDim]) / (sampleBounds.upper[splitDim] - sampleBounds.lower[splitDim]);
+                scale = embree::clamp(scale, 0.0f, 1.0f);
+                float const newVariance = scale * scale * tmpVariance;
+                variance[splitDim] = newVariance;
+                mean[splitDim] = embree::lerp(sampleBounds.lower[splitDim], mean[splitDim], scale);
+#endif
+
                 sampleBounds.upper[splitDim] = std::min(splitPos, sampleBounds.upper[splitDim]);
+#if STATS_HANDLE_UPON_SPLIT == 0
                 mean[splitDim] = std::max(sampleBounds.lower[splitDim], mean[splitDim] - stdDerivation / 2.0f);
-                // OPENPGL_ASSERT(mean[splitDim] <= sampleBounds.upper[splitDim]);
-                // mean[splitDim] -= stdDerivation / 2.0f;
+#endif
+                //OPENPGL_ASSERT(mean[splitDim] <= sampleBounds.upper[splitDim]);
+                //mean[splitDim] -= stdDerivation / 2.0f;
             }
 
             numSamples *= decay;

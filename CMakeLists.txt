@@ -54,6 +54,8 @@ try_compile(COMPILER_SUPPORTS_ARM_NEON "${CMAKE_BINARY_DIR}" "${PROJECT_SOURCE_D
 OPTION(OPENPGL_EF_RADIANCE_CACHES "Enables experimental feature (ir)radiance caches." OFF)
 OPTION(OPENPGL_EF_IMAGE_SPACE_GUIDING_BUFFER "Enables experimental feature ImageSpaceGuidignBuffer." OFF)
 
+OPTION(OPENPGL_EF_GUIDING_PDF_CACHES "Some stuff for spatial splitting stats." ON)
+
 OPTION(OPENPGL_DIRECTION_COMPRESSION "Using 32-Bit compression to represent directions." OFF)
 OPTION(OPENPGL_RADIANCE_COMPRESSION "Using RGBE 32-Bit compression to represent radiance data (linear RGB)." OFF)
 
