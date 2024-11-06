@@ -90,6 +90,27 @@ struct Region : public IRegion
         candidateSplit.dataIdx = leftDataIdx;
     }
 
+#if COMPUTE_CE_STYLE == 1
+    template<typename SampleIterator>
+    void updateCE(const Region &parent, SampleIterator begin, SampleIterator end) {
+        for (auto it = begin; it != end; ++it) {
+            auto _dir = pgl_vec3f(it->direction);
+            Vector3 dir{_dir.x, _dir.y, _dir.z};
+            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
+            ceStatistics.parent.addSample(it->weight, parent.distribution.pdf(dir));
+        }
+    }
+
+    template<typename SampleIterator>
+    void updateCE(SampleIterator begin, SampleIterator end) {
+        for (auto it = begin; it != end; ++it) {
+            auto _dir = pgl_vec3f(it->direction);
+            Vector3 dir{_dir.x, _dir.y, _dir.z};
+            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
+        }
+    }
+#endif
+
     inline const BBox &getRegionBounds() const
     {
         return regionBounds;
