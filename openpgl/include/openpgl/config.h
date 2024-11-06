@@ -48,6 +48,7 @@ extern "C"
         size_t maxDepth{32};
         size_t maxDepthWithSampleCount{32};
         bool enableCE{true};
+        bool failureDecay{false};
         float ceThreshold{std::numeric_limits<float>::infinity()};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};

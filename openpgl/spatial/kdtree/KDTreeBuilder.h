@@ -62,6 +62,7 @@ struct KDTreePartitionBuilder
         size_t maxDepth{32};
         size_t maxDepthWithSampleCount{32};
         bool enableCE{true};
+        bool failureDecay{false};  // decay the lookaheads when promotion fails
         float ceThreshold{std::numeric_limits<float>::infinity()};  // nodes' with cross-entropy larger than this gets subdivided
         float ceDecay{0.8f};
 
@@ -73,7 +74,7 @@ struct KDTreePartitionBuilder
         {
             bool equal = true;
             if (minSamples != b.minSamples || maxSamples != b.maxSamples || maxDepth != b.maxDepth || maxDepthWithSampleCount != b.maxDepthWithSampleCount
-                || enableCE != b.enableCE || ceThreshold != b.ceThreshold || ceDecay != b.ceDecay)
+                || enableCE != b.enableCE || failureDecay != b.failureDecay || ceThreshold != b.ceThreshold || ceDecay != b.ceDecay)
             {
                 equal = false;
             }
@@ -87,6 +88,7 @@ struct KDTreePartitionBuilder
             maxDepth = cfg.maxDepth;
             maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             enableCE = cfg.enableCE;
+            failureDecay = cfg.failureDecay;
             ceThreshold = cfg.ceThreshold;
             ceDecay = cfg.ceDecay;
         }
@@ -371,13 +373,20 @@ struct KDTreePartitionBuilder
                 else {
                     region.sampleStatistics.merge(sampleStats);
                     regionAndRangeData.second = sampleRange;
-                    // TODO? Re-propose a split
-                    getSplitDimensionAndPosition(region.sampleStatistics, splitDim, splitPos);
-                    region.candidateSplit.dim = splitDim;
-                    region.candidateSplit.pos = splitPos;
-                    // TODO?
-                    left.splitFlag = true;
-                    right.splitFlag = true;
+                    // // TODO Fail to promote? Re-propose a split
+                    // getSplitDimensionAndPosition(region.sampleStatistics, splitDim, splitPos);
+                    // region.candidateSplit.dim = splitDim;
+                    // region.candidateSplit.pos = splitPos;
+                    if (buildSettings.failureDecay) {
+                        left.ceStatistics.parent.decay(buildSettings.ceDecay);
+                        left.ceStatistics.self.decay(buildSettings.ceDecay);
+                        right.ceStatistics.parent.decay(buildSettings.ceDecay);
+                        right.ceStatistics.self.decay(buildSettings.ceDecay);
+                    }
+                    // left.sampleStatistics.decay(0.25f);
+                    // right.sampleStatistics.decay(0.25f);
+                    // left.splitFlag = true;
+                    // right.splitFlag = true;
                     // Fallthrough to update lookaheads
                 }
             }
@@ -396,8 +405,9 @@ struct KDTreePartitionBuilder
                     regionAndRangeDataRight.first.sampleStatistics.split(splitDim, splitPos, 0.25f, true);
                     regionAndRangeData.first.ceStatistics.parent = regionAndRangeData.first.ceStatistics.self;
                     regionAndRangeDataRight.first.ceStatistics.parent = regionAndRangeDataRight.first.ceStatistics.self;
-                    // regionAndRangeData.first.ceStatistics.self.decay(buildSettings.ceDecay);
-                    // regionAndRangeDataRight.first.ceStatistics.self.decay(buildSettings.ceDecay);
+                    // TODO
+                    regionAndRangeData.first.ceStatistics.self.decay(buildSettings.ceDecay);
+                    regionAndRangeDataRight.first.ceStatistics.self.decay(buildSettings.ceDecay);
 
                     regionAndRangeData.first.depth = regionAndRangeDataRight.first.depth = depth + 1;
 
@@ -444,6 +454,9 @@ struct KDTreePartitionBuilder
                     right.ceStatistics.parent = right.ceStatistics.self;
                     // left.ceStatistics.self.decay(buildSettings.ceDecay);
                     // right.ceStatistics.self.decay(buildSettings.ceDecay);
+                    // TODO
+                    left.ceStatistics.self.decay(buildSettings.ceDecay);
+                    right.ceStatistics.self.decay(buildSettings.ceDecay);
 
                     left.depth = right.depth = depth + 1;
 
@@ -649,7 +662,7 @@ struct KDTreePartitionBuilder
                 // Update CE for leaf regions without lookaheads
                 if constexpr (isNonZeroSample) {
                     // TSamplingDistribution guidingDist;
-                    region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
+                    // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     // !! This can be slow
                     for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
                         const T &sample = samples[i];
@@ -710,8 +723,8 @@ struct KDTreePartitionBuilder
                 OPENPGL_ASSERT(childRegion.isLookahead);
                 if constexpr (isNonZeroSample) {
                     TSamplingDistribution guidingDist;
-                    childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                    childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
+                    // childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
+                    // childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
                     // !! This can be slow
                     for (size_t i = sampleRangeLeftRight[c].m_begin; i < sampleRangeLeftRight[c].m_end; i++) {
                         const T &sample = samples[i];
@@ -773,6 +786,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  maxDepthWithSampleCount: " << maxDepthWithSampleCount << std::endl;
     ss << "  enableCE: " << enableCE << std::endl;
+    ss << "  failureDecay: " << failureDecay << std::endl;
     ss << "  ceThreshold: " << ceThreshold << std::endl;
     ss << "  ceDecay: " << ceDecay << std::endl;
 
@@ -787,6 +801,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char *>(&maxDepth), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&maxDepthWithSampleCount), sizeof(size_t));
     stream.write(reinterpret_cast<const char *>(&enableCE), sizeof(bool));
+    stream.write(reinterpret_cast<const char *>(&failureDecay), sizeof(bool));
     stream.write(reinterpret_cast<const char *>(&ceThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char *>(&ceDecay), sizeof(float));
 }
@@ -799,6 +814,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char *>(&maxDepth), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&maxDepthWithSampleCount), sizeof(size_t));
     stream.read(reinterpret_cast<char *>(&enableCE), sizeof(bool));
+    stream.read(reinterpret_cast<char *>(&failureDecay), sizeof(bool));
     stream.read(reinterpret_cast<char *>(&ceThreshold), sizeof(float));
     stream.read(reinterpret_cast<char *>(&ceDecay), sizeof(float));
 }
