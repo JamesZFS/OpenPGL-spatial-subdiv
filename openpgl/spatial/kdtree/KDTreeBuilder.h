@@ -435,11 +435,11 @@ struct KDTreePartitionBuilder
                         left.ceStatistics.self.decay(buildSettings.ceDecay);
                         right.ceStatistics.parent.decay(buildSettings.ceDecay);
                         right.ceStatistics.self.decay(buildSettings.ceDecay);
+                        // left.splitFlag = true;
+                        // right.splitFlag = true;
                     }
                     // left.sampleStatistics.decay(0.25f);
                     // right.sampleStatistics.decay(0.25f);
-                    // left.splitFlag = true;
-                    // right.splitFlag = true;
                     // Fallthrough to update lookaheads
                 }
             }
