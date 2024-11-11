@@ -14,7 +14,8 @@
 #include "directional/vmm/VMMVolumeSamplingDistribution.h"
 #include "field/ISurfaceVolumeField.h"
 #include "field/SurfaceVolumeField.h"
-#include "spatial/kdtree/KDTreeBuilder.h"
+// #include "spatial/kdtree/KDTreeBuilder.h"
+#include "spatial/kdtree/AdaptiveSTreeBuilder.h"
 #include "tbb/tbb.h"
 
 #define OPENPGL_TASK_CONTROL
