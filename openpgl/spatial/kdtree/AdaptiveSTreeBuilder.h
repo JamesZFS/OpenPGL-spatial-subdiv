@@ -65,6 +65,7 @@ struct KDTreePartitionBuilder
         float maxDivReductionRate{0.05f}; // split if the parent's divergence - child's divergence goes beyond this
         float gainThreshold {1.0f};  // force a split if the gain is above this threshold
         bool enableCE {true};
+        bool failureDecay {true};
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -73,7 +74,7 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings& b) const {
             return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth
                 && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness && maxDivReductionRate == b.maxDivReductionRate && gainThreshold == b.gainThreshold
-                && enableCE == b.enableCE;
+                && enableCE == b.enableCE && failureDecay == b.failureDecay;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -83,7 +84,7 @@ struct KDTreePartitionBuilder
             maxDepth = cfg.maxDepth;
             maxDepthSPLThreshold = cfg.maxDepthWithSampleCount;
             enableCE = cfg.enableCE;
-            // failureDecay = cfg.failureDecay;
+            failureDecay = cfg.failureDecay;
             maxDivReductionRate = cfg.ceThreshold;
             decayRatio = cfg.ceDecay;
         }
@@ -248,14 +249,16 @@ struct KDTreePartitionBuilder
                         [&]{updateTreeNode(kdTree, *nodeLR[1], depth + 1, candidate.dim, boundsLR[1], samples, sampleRangeLR[1], dataStorage, settings);}
                     );
                 } else {  // Decay the candidate children and update them
-                    for (int i: {0, 1}) {
-                        // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
-                        // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                        regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                        // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
-                        regionLR[i]->decayDivergence(settings.decayRatio);
-                        regionLR[i]->splitFlag = true;
-                        // regionBounds already adjusted
+                    if (settings.failureDecay) {
+                        for (int i: {0, 1}) {
+                            // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
+                            // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
+                            regionLR[i]->sampleStatistics.decay(settings.decayRatio);
+                            // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
+                            regionLR[i]->decayDivergence(settings.decayRatio);
+                            regionLR[i]->splitFlag = true;
+                            // regionBounds already adjusted
+                        }
                     }
 
                     // Merge in new samples
@@ -500,25 +503,25 @@ struct KDTreePartitionBuilder
                 // Update CE for leaf regions without lookaheads
                 if constexpr (isNonZeroSample) {
 #if COMPUTE_CE_STYLE == 0
-                    // TSamplingDistribution guidingDist;
+                    TSamplingDistribution guidingDist;
                     // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
                     // !! This can be slow
                     for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
                         const T &sample = samples[i];
                         float weight = sample.weight;
                         // Evaluate pdf
-                        // const auto dist = &region.distribution;
-                        // Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                        // auto _dir = pgl_vec3f(sample.direction);
-                        // Vector3 dir(_dir.x, _dir.y, _dir.z);
-                        // guidingDist.init(dist, position); // Applied parallax shift
-                        // if constexpr (isSurfaceDist) {
-                        //     auto _normal = pgl_vec3f(sample.normal);
-                        //     Vector3 normal(_normal.x, _normal.y, _normal.z);
-                        //     guidingDist.applyCosineProduct(normal);
-                        // }
-                        // float pdf = guidingDist.pdf(dir);
-                        float pdf = sample.guidingPDF;
+                        const auto dist = &region.distribution;
+                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
+                        auto _dir = pgl_vec3f(sample.direction);
+                        Vector3 dir(_dir.x, _dir.y, _dir.z);
+                        guidingDist.init(dist, position); // Applied parallax shift
+                        if constexpr (isSurfaceDist) {
+                            auto _normal = pgl_vec3f(sample.normal);
+                            Vector3 normal(_normal.x, _normal.y, _normal.z);
+                            guidingDist.applyCosineProduct(normal);
+                        }
+                        float pdf = guidingDist.pdf(dir);
+                        // float pdf = sample.guidingPDF;
                         region.ceStatistics.self.addSample(weight, sample.pdf, pdf);
                     }
 #else
@@ -559,7 +562,7 @@ struct KDTreePartitionBuilder
         if (hasLookahead) {
             // Update CE for lookaheads
             const auto &parentRegion = dataStorage->operator[](dataIdx).first;
-            // const auto parentDist = &parentRegion.distribution;
+            const auto parentDist = &parentRegion.distribution;
             for (int c: {0, 1}) {
                 OPENPGL_ASSERT(nodesLeftRight[c] == nullptr);
                 TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[c]).first;
@@ -581,11 +584,11 @@ struct KDTreePartitionBuilder
                         auto _normal = pgl_vec3f(sample.normal);
                         Vector3 normal(_normal.x, _normal.y, _normal.z);
 
-                        // guidingDist.init(parentDist, position); // Applied parallax shift
-                        // if constexpr (isSurfaceDist)
-                        //     guidingDist.applyCosineProduct(normal);
-                        // float qp = guidingDist.pdf(dir);
-                        float qp = sample.guidingPDF;
+                        guidingDist.init(parentDist, position); // Applied parallax shift
+                        if constexpr (isSurfaceDist)
+                            guidingDist.applyCosineProduct(normal);
+                        float qp = guidingDist.pdf(dir);
+                        // float qp = sample.guidingPDF;
                         childRegion.ceStatistics.parent.addSample(weight, sample.pdf, qp);
 
                         guidingDist.init(childDist, position); // Applied parallax shift
@@ -1272,6 +1275,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&maxDivReductionRate), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&gainThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&enableCE), sizeof(bool));
+    stream.write(reinterpret_cast<const char*>(&failureDecay), sizeof(bool));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1287,6 +1291,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&maxDivReductionRate), sizeof(float));
     stream.read(reinterpret_cast<char*>(&gainThreshold), sizeof(float));
     stream.read(reinterpret_cast<char*>(&enableCE), sizeof(bool));
+    stream.read(reinterpret_cast<char*>(&failureDecay), sizeof(bool));
 }
 
 }
