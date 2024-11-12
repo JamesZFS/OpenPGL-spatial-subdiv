@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../openpgl_common.h"
-#define COMPUTE_CE_STYLE 1  // 0: instantiating (parallaxed, cosined) guiding distributions at each sample location; 1: projecting samples to the center of the region
+#define COMPUTE_CE_STYLE 0  // 0: instantiating (parallaxed, cosined) guiding distributions at each sample location; 1: projecting samples to the center of the region
 
 namespace openpgl
 {
