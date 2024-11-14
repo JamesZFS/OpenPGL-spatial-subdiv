@@ -50,7 +50,9 @@ namespace openpgl
 
         inline float getCE() const
         {
-            return eSum / (wSum + 1e-3f);
+            return wSum == 0 ? 0 : eSum / wSum;  // CE
+            // return numSamples == 0 ? 0 : eSum / numSamples;  // unnormalized CE
+            // return wSum == 0 ? 0 : numSamples * dSum / (wSum * wSum) - 1;  // chi2
         }
 
         inline float getChi2Div() const
