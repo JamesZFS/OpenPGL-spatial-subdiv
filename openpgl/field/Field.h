@@ -312,6 +312,13 @@ struct Field
         }
     }
 
+    void clearCEStats() {
+        for (auto &region : m_regionStorageContainer) {
+            region.first.ceStatistics.self.clear();
+            region.first.ceStatistics.parent.clear();
+        }
+    }
+
     void updateSubdivConfig(const PGLKDTreeArguments &cfg)
     {
         m_useStochasticNNLookUp = cfg.knnLookup;

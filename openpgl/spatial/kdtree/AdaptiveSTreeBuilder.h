@@ -64,7 +64,8 @@ struct KDTreePartitionBuilder
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         float maxDivReductionRate{0.05f}; // split if the parent's divergence - child's divergence goes beyond this
         float gainThreshold {1.0f};  // force a split if the gain is above this threshold
-        bool enableCE {true};
+        bool enableCE {true};  // enable creation of lookahead children
+        bool enablePromotion {true};
         bool failureDecay {true};
 
         void serialize(std::ostream& stream) const;
@@ -74,7 +75,7 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings& b) const {
             return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth
                 && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness && maxDivReductionRate == b.maxDivReductionRate && gainThreshold == b.gainThreshold
-                && enableCE == b.enableCE && failureDecay == b.failureDecay;
+                && enableCE == b.enableCE && enablePromotion == b.enablePromotion && failureDecay == b.failureDecay;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -84,6 +85,7 @@ struct KDTreePartitionBuilder
             maxDepth = cfg.maxDepth;
             maxDepthSPLThreshold = cfg.maxDepthWithSampleCount;
             enableCE = cfg.enableCE;
+            enablePromotion = cfg.enablePromotion;
             failureDecay = cfg.failureDecay;
             maxDivReductionRate = cfg.ceThreshold;
             decayRatio = cfg.ceDecay;
@@ -199,11 +201,11 @@ struct KDTreePartitionBuilder
                     if constexpr (true) {
                         float childEntropy = (childStatsLR[0]->getCE() * childStatsLR[0]->getNumSamples() + childStatsLR[1]->getCE() * childStatsLR[1]->getNumSamples()) / (childStatsLR[0]->getNumSamples() + childStatsLR[1]->getNumSamples());
                         float parentEntropy = (parentStatsLR[0]->getCE() * parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getCE() * parentStatsLR[1]->getNumSamples()) / (parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getNumSamples());
-                        shouldPromote = parentEntropy - childEntropy > settings.maxDivReductionRate || ALWAYS_PROMOTE;
+                        shouldPromote = settings.enablePromotion && parentEntropy - childEntropy > settings.maxDivReductionRate || ALWAYS_PROMOTE;
                     } else {  // Chi2 divergence criterion
                         float childChi2 = (childStatsLR[0]->getChi2Div() * childStatsLR[0]->getNumSamples() + childStatsLR[1]->getChi2Div() * childStatsLR[1]->getNumSamples()) / (childStatsLR[0]->getNumSamples() + childStatsLR[1]->getNumSamples());
                         float parentChi2 = (parentStatsLR[0]->getChi2Div() * parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getChi2Div() * parentStatsLR[1]->getNumSamples()) / (parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getNumSamples());
-                        shouldPromote = parentChi2 - childChi2 > settings.maxDivReductionRate || ALWAYS_PROMOTE;
+                        shouldPromote = settings.enablePromotion && parentChi2 - childChi2 > settings.maxDivReductionRate || ALWAYS_PROMOTE;
                     }
                 }
                 if (!shouldPromote) {  // Last chance: re-propose a split position and check if we should promote based on the gain
@@ -1275,6 +1277,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&maxDivReductionRate), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&gainThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&enableCE), sizeof(bool));
+    stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(bool));
     stream.write(reinterpret_cast<const char*>(&failureDecay), sizeof(bool));
 }
 
@@ -1291,6 +1294,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&maxDivReductionRate), sizeof(float));
     stream.read(reinterpret_cast<char*>(&gainThreshold), sizeof(float));
     stream.read(reinterpret_cast<char*>(&enableCE), sizeof(bool));
+    stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(bool));
     stream.read(reinterpret_cast<char*>(&failureDecay), sizeof(bool));
 }
 

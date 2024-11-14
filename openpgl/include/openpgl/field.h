@@ -33,6 +33,8 @@ typedef ManagedObject Field;
 
     typedef Field *PGLField;
 
+    OPENPGL_CORE_INTERFACE void pglFieldClearCEStatistics(PGLField field);
+
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args);
 
     OPENPGL_CORE_INTERFACE void pglReleaseField(PGLField field);

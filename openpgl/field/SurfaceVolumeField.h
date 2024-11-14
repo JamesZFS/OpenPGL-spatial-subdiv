@@ -202,6 +202,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_timeUpdateField += timer.elapsed() * 1e-3f;
     }
 
+    void clearCEStatistics() override
+    {
+        m_surfaceField.clearCEStats();
+        m_volumeField.clearCEStats();
+    }
+
     void updateSubdivConfig(const PGLKDTreeArguments &cfg) override
     {
         m_surfaceField.updateSubdivConfig(cfg);
