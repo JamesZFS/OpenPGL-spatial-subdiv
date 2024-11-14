@@ -37,7 +37,7 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
     }
 
     inline float getCE() const {
-        return a / (f + 1e-3f);
+        return f > 0 ? a / f : 0;
     }
 
     inline float getNumSamples() const {

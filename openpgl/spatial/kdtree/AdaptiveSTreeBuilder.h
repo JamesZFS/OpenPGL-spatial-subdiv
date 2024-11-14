@@ -20,7 +20,6 @@
 #define THRESHOLD_VAR_RATIO         1e-4
 #define MIN_SAMPLES_PER_SIDE        16
 #define GAMMA_CUT                   0.1
-#define ALWAYS_PROMOTE              false
 
 namespace openpgl
 {
@@ -190,23 +189,13 @@ struct KDTreePartitionBuilder
                 // field.updateAdaptiveMetrics(*regionLR[0], regionRange.first, begin, rPivotItr);
                 // field.updateAdaptiveMetrics(*regionLR[1], regionRange.first, rPivotItr, end);
 
-                DivergenceStatistics *childStatsLR[2] = {&regionLR[0]->ceStatistics.self, &regionLR[1]->ceStatistics.self};
-                DivergenceStatistics *parentStatsLR[2] = {&regionLR[0]->ceStatistics.parent, &regionLR[1]->ceStatistics.parent};
-                // auto childStats = childStatsLR[0]->merge(*childStatsLR[1]);
-                // auto parentStats = parentStatsLR[0]->merge(*parentStatsLR[1]);
                 bool shouldPromote = false;
                 if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                     shouldPromote = true;
-                } else {  // Check if we should promote based on the divergence reduction
-                    if constexpr (true) {
-                        float childEntropy = (childStatsLR[0]->getCE() * childStatsLR[0]->getNumSamples() + childStatsLR[1]->getCE() * childStatsLR[1]->getNumSamples()) / (childStatsLR[0]->getNumSamples() + childStatsLR[1]->getNumSamples());
-                        float parentEntropy = (parentStatsLR[0]->getCE() * parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getCE() * parentStatsLR[1]->getNumSamples()) / (parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getNumSamples());
-                        shouldPromote = settings.enablePromotion && parentEntropy - childEntropy > settings.maxDivReductionRate || ALWAYS_PROMOTE;
-                    } else {  // Chi2 divergence criterion
-                        float childChi2 = (childStatsLR[0]->getChi2Div() * childStatsLR[0]->getNumSamples() + childStatsLR[1]->getChi2Div() * childStatsLR[1]->getNumSamples()) / (childStatsLR[0]->getNumSamples() + childStatsLR[1]->getNumSamples());
-                        float parentChi2 = (parentStatsLR[0]->getChi2Div() * parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getChi2Div() * parentStatsLR[1]->getNumSamples()) / (parentStatsLR[0]->getNumSamples() + parentStatsLR[1]->getNumSamples());
-                        shouldPromote = settings.enablePromotion && parentChi2 - childChi2 > settings.maxDivReductionRate || ALWAYS_PROMOTE;
-                    }
+                } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
+                    float childEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.self, regionLR[1]->ceStatistics.self);
+                    float parentEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.parent, regionLR[1]->ceStatistics.parent);
+                    shouldPromote = parentEntropy - childEntropy > settings.maxDivReductionRate;
                 }
                 if (!shouldPromote) {  // Last chance: re-propose a split position and check if we should promote based on the gain
                     uint8_t splitDim = -1;
@@ -524,7 +513,7 @@ struct KDTreePartitionBuilder
                         }
                         float pdf = guidingDist.pdf(dir);
                         // float pdf = sample.guidingPDF;
-                        region.ceStatistics.self.addSample(weight, sample.pdf, pdf);
+                        region.ceStatistics.self.addSample(weight, pdf);
                     }
 #else
                     field.updateCE(region, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
@@ -591,13 +580,13 @@ struct KDTreePartitionBuilder
                             guidingDist.applyCosineProduct(normal);
                         float qp = guidingDist.pdf(dir);
                         // float qp = sample.guidingPDF;
-                        childRegion.ceStatistics.parent.addSample(weight, sample.pdf, qp);
+                        childRegion.ceStatistics.parent.addSample(weight, qp);
 
                         guidingDist.init(childDist, position); // Applied parallax shift
                         if constexpr (isSurfaceDist)
                             guidingDist.applyCosineProduct(normal);
                         float qc = guidingDist.pdf(dir);
-                        childRegion.ceStatistics.self.addSample(weight, sample.pdf, qc);
+                        childRegion.ceStatistics.self.addSample(weight, qc);
                     }
 #else
                     field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
