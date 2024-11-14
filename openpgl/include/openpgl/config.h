@@ -50,6 +50,7 @@ extern "C"
         bool enableCE{true};
         bool enablePromotion{true};
         bool failureDecay{false};
+        bool singleSidePromotion{true};
         float ceThreshold{std::numeric_limits<float>::infinity()};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
