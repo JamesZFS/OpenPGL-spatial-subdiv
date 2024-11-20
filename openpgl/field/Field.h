@@ -325,6 +325,7 @@ struct Field
         m_useISNNLookUp = cfg.isKnnLookup;
         m_decayOnSpatialSplit = cfg.vmmDecay;
         m_spatialSubdivBuilderSettings.updateFromConfig(cfg);
+        CEStatistics::clampValue = cfg.ceClampValue;
     }
 
     void resetField()

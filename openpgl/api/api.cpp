@@ -979,4 +979,6 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
     gImageSpaceGuidingBuffer->reset();
 }
 
+float CEStatistics::clampValue = 1e5f;
+
 #endif
