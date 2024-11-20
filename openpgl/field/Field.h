@@ -371,6 +371,8 @@ struct Field
             stats.crossEntropy = region.ceStatistics.self.getCE();
         }
         stats.hasCandidateSplit = region.hasCandidateSplit();
+        stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
+        stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
         return stats;
     }
 
@@ -413,6 +415,8 @@ struct Field
         cStats.numZeroValueSamples = cRegion.sampleStatistics.numZeroValueSamples;
         cStats.depth = cRegion.depth;
         cStats.hasCandidateSplit = cRegion.hasCandidateSplit();
+        cStats.lowerBounds = {cRegion.regionBounds.lower.x, cRegion.regionBounds.lower.y, cRegion.regionBounds.lower.z};
+        cStats.upperBounds = {cRegion.regionBounds.upper.x, cRegion.regionBounds.upper.y, cRegion.regionBounds.upper.z};
         if (cStats.hasCandidateSplit) {
             uint32_t fId = cRegion.candidateSplit.dataIdx;
             if (pos[cRegion.candidateSplit.dim] >= cRegion.candidateSplit.pos)
@@ -426,6 +430,8 @@ struct Field
             fStats.numZeroValueSamples = fRegion.sampleStatistics.numZeroValueSamples;
             fStats.depth = fRegion.depth;
             fStats.hasCandidateSplit = fRegion.hasCandidateSplit();
+            fStats.lowerBounds = {fRegion.regionBounds.lower.x, fRegion.regionBounds.lower.y, fRegion.regionBounds.lower.z};
+            fStats.upperBounds = {fRegion.regionBounds.upper.x, fRegion.regionBounds.upper.y, fRegion.regionBounds.upper.z};
             OPENPGL_ASSERT(!fStats.hasCandidateSplit);
             if (fRegion.ceStatistics.parent.getNumSamples() > 0) {
                 cStats.fluence = fRegion.ceStatistics.parent.getFluence();  // parent stats come from the child.parent
