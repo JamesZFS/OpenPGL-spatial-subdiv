@@ -9,6 +9,8 @@
 namespace openpgl {
 struct CEStatistics // Sufficient statistics for marginalized cross-entropies per region
 {
+    static float clampValue;
+
     float a = 0; // - <phi> * log q
     float f = 0; // <phi>
     float N = 0; // number of samples
@@ -20,12 +22,15 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
     }
 
     /// Add a sample to the statistics
-    /// @param phi: the Monte-Carlo weight, i.e., the Li estimate divided by sampling pdf
+    /// @param weight: the Monte-Carlo weight, i.e., the Li estimate divided by sampling pdf
     /// @param pdf: the *guiding* pdf
-    inline void addSample(float phi, float pdf) {
+    inline void addSample(float weight, float pdf) {
         N++;
-        a += -phi * std::log(pdf);
-        f += phi;
+        weight = std::min(weight, clampValue);
+        a += -weight * std::log(pdf + 1e-3f);
+        f += weight;
+        // a += std::min(-phi * std::log(pdf), clampValue);
+        // f += std::min(phi, clampValue);
     }
 
     inline void addZeroWeightSamples(size_t numSamples) {

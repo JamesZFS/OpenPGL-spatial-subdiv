@@ -54,6 +54,7 @@ extern "C"
         float ceThreshold{std::numeric_limits<float>::infinity()};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
+        float ceClampValue{1e5f};
     };
 
     struct PGLVMMFactoryArguments
