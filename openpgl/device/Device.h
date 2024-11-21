@@ -15,7 +15,8 @@
 #include "field/ISurfaceVolumeField.h"
 #include "field/SurfaceVolumeField.h"
 // #include "spatial/kdtree/KDTreeBuilder.h"
-#include "spatial/kdtree/AdaptiveSTreeBuilder.h"
+// #include "spatial/kdtree/CESTreeBuilder.h"
+#include "spatial/kdtree/EmbeddingSTreeBuilder.h"
 #include "tbb/tbb.h"
 
 #define OPENPGL_TASK_CONTROL

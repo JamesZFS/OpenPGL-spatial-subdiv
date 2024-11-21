@@ -78,5 +78,7 @@ struct ISurfaceVolumeField
     virtual PGLRegionStatistics getFineRegionStatsSurface(const Point3 &position) const = 0;
 
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;
+
+    virtual PGLDirectionalEmbedding getDirectionalEmbedding(uint32_t id) const = 0;
 };
 }  // namespace openpgl
