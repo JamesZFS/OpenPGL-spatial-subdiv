@@ -2,6 +2,8 @@
 
 #include "common.h"
 
+#define PGL_EMBEDDING_SIZE 8u
+
 /// Helper struct to communicate between OpenPGL and the renderer/visualizer to output debug information.
 struct PGLRegionStatistics
 {
@@ -15,4 +17,9 @@ struct PGLRegionStatistics
     bool hasCandidateSplit = false;
     pgl_point3f lowerBounds {0, 0, 0};
     pgl_point3f upperBounds {0, 0, 0};
+};
+
+struct PGLDirectionalEmbedding
+{
+    float embedding[PGL_EMBEDDING_SIZE] = {};
 };

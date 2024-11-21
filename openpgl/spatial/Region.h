@@ -12,11 +12,12 @@
 #endif
 #include "IRegion.h"
 
+#define OCTAHEDRAL_MAP_RESOLUTION 64u
+
 namespace openpgl
 {
 template <typename TDistribution, typename TTrainingStatistics>
-struct Region : public IRegion
-{
+struct Region : public IRegion {
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
@@ -66,6 +67,9 @@ struct Region : public IRegion
             parent.deserialize(stream);
         }
     } ceStatistics;
+
+    float embedding[PGL_EMBEDDING_SIZE] = {};
+    float binCount[PGL_EMBEDDING_SIZE] = {};
     uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
@@ -112,6 +116,43 @@ struct Region : public IRegion
             auto _dir = pgl_vec3f(it->direction);
             Vector3 dir{_dir.x, _dir.y, _dir.z};
             ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
+        }
+    }
+
+    void resetEmbedding() {
+        memset(embedding, 0, sizeof(embedding));
+        memset(binCount, 0, sizeof(binCount));
+    }
+
+    PGLDirectionalEmbedding getEmbedding() const {
+        PGLDirectionalEmbedding ret;
+        for (size_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+            ret.embedding[i] = embedding[i] / binCount[i];
+        }
+        return ret;
+    }
+
+    uint8_t getEmbeddingIndex(const pgl_direction &dir) {
+        // 1. Convert the sample.direction into [0, 1] representation
+        auto uv_ = pgl_vec2f(dir);  // [-1, 1]
+        float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
+        float y = uv_.y * 0.5f + 0.5f;
+
+        // 2. Find the histogram bin on the (conceptual) octahedral map
+        uint32_t ix = std::clamp((uint32_t)(x * OCTAHEDRAL_MAP_RESOLUTION), 0u, OCTAHEDRAL_MAP_RESOLUTION - 1);
+        uint32_t iy = std::clamp((uint32_t)(y * OCTAHEDRAL_MAP_RESOLUTION), 0u, OCTAHEDRAL_MAP_RESOLUTION - 1);
+
+        // 3. Hash (ix, iy) to a single index between 0 and EMBEDDING_SIZE - 1
+        uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);
+        return hash % PGL_EMBEDDING_SIZE;
+    }
+
+    template<typename SampleIterator>
+    void updateEmbedding(SampleIterator begin, SampleIterator end) {
+        for (auto it = begin; it != end; ++it) {
+            uint8_t idx = getEmbeddingIndex(it->direction);
+            embedding[idx] += it->weight;
+            ++binCount[idx];
         }
     }
 
@@ -179,6 +220,8 @@ struct Region : public IRegion
         stream.write(reinterpret_cast<const char *>(&isLookahead), sizeof(isLookahead));
         ceStatistics.serialize(stream);
         candidateSplit.serialize(stream);
+        stream.write(reinterpret_cast<const char *>(embedding), sizeof(embedding));
+        stream.write(reinterpret_cast<const char *>(binCount), sizeof(binCount));
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
 
@@ -199,6 +242,8 @@ struct Region : public IRegion
         stream.read(reinterpret_cast<char *>(&isLookahead), sizeof(isLookahead));
         ceStatistics.deserialize(stream);
         candidateSplit.deserialize(stream);
+        stream.read(reinterpret_cast<char *>(embedding), sizeof(embedding));
+        stream.read(reinterpret_cast<char *>(binCount), sizeof(binCount));
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
 

@@ -332,11 +332,15 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getFineRegionStats(pos);
     }
 
-    std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const openpgl::Point3 &pos) const
+    std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const openpgl::Point3 &pos) const override
     {
         return m_surfaceField.getCoarseFineRegionStats(pos);
     }
 
+    PGLDirectionalEmbedding getDirectionalEmbedding(uint32_t id) const override
+    {
+        return m_surfaceField.getDirectionalEmbedding(id);
+    }
 
 private:
     size_t m_iteration{0};

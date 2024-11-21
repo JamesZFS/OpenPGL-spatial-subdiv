@@ -160,6 +160,8 @@ struct Field
 
     std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
+    PGLDirectionalEmbedding GetDirectionalEmbedding(uint32_t id) const;
+
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
 
@@ -332,6 +334,12 @@ OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoa
 {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
+}
+
+OPENPGL_INLINE PGLDirectionalEmbedding Field::GetDirectionalEmbedding(uint32_t id) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetDirectionalEmbedding(m_fieldHandle, id);
 }
 
 }  // namespace cpp

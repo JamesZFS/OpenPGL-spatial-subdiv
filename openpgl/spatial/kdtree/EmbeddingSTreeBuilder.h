@@ -18,8 +18,6 @@
 #include <limits>
 
 #define THRESHOLD_VAR_RATIO         1e-4
-#define MIN_SAMPLES_PER_SIDE        16
-#define GAMMA_CUT                   0.1
 
 namespace openpgl
 {
@@ -150,7 +148,7 @@ struct KDTreePartitionBuilder
     }
 
     template<class TContainer, class FieldType>
-    void updateCEStats(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings, const FieldType &field) {
+    void evaluateRegions(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings, const FieldType &field) {
         KDNode &root = kdTree.getRoot();
 
         Range sampleRange;
@@ -159,7 +157,7 @@ struct KDTreePartitionBuilder
 
         size_t depth = 1;
 
-        updateCEStatsNode(&kdTree, &root, depth, samples, sampleRange, &dataStorage, buildSettings, field);
+        evaluateRegionsNode(&kdTree, &root, depth, samples, sampleRange, &dataStorage, buildSettings, field);
     }
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, size_t depth, uint8_t prevSplitDim, const BBox &bounds, TSamplesContainer &samples, const Range sampleRange, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings) const
@@ -265,11 +263,14 @@ struct KDTreePartitionBuilder
 
                         // Merge in new samples
                         regionRange.first.sampleStatistics = mergedStats;
+                        regionRange.first.updateEmbedding(begin, end);
                         regionRange.second = sampleRange;
 
                         // Update the lookahead children
                         regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
+                        regionLR[0]->updateEmbedding(begin, rPivotItr);
                         regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
+                        regionLR[1]->updateEmbedding(rPivotItr, end);
                         Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
 
                         *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
@@ -316,7 +317,7 @@ struct KDTreePartitionBuilder
                         Range sampleRangeLR[2] = {
                             Range(std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)),
                             Range(std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end))
-                    };
+                        };
 
                         BBox boundsLR[2] = {bounds, bounds};
                         boundsLR[0].upper[candidate.dim] = candidate.pos;
@@ -341,11 +342,14 @@ struct KDTreePartitionBuilder
 
                         // Merge in new samples
                         regionRange.first.sampleStatistics = mergedStats;
+                        regionRange.first.updateEmbedding(begin, end);
                         regionRange.second = sampleRange;
 
                         // Update the lookahead children
                         regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
+                        regionLR[0]->updateEmbedding(begin, rPivotItr);
                         regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
+                        regionLR[1]->updateEmbedding(rPivotItr, end);
                         Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
 
                         *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
@@ -370,6 +374,9 @@ struct KDTreePartitionBuilder
                     regionRange.first.ceStatistics.parent = rDataItr->first.ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
                     regionRange.first.decayDivergence(settings.decayRatio);
                     rDataItr->first.decayDivergence(settings.decayRatio);
+
+                    regionRange.first.resetEmbedding();
+                    rDataItr->first.resetEmbedding();
 
                     regionRange.first.depth = rDataItr->first.depth = depth + 1;
 
@@ -418,6 +425,7 @@ struct KDTreePartitionBuilder
                         regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
                         regionLR[i]->ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
                         regionLR[i]->decayDivergence(settings.decayRatio);
+                        regionLR[i]->resetEmbedding();
                         regionLR[i]->splitFlag = true;
                         if (i == 0) {
                             regionLR[i]->regionBounds.upper[splitDim] = splitPos;
@@ -430,23 +438,28 @@ struct KDTreePartitionBuilder
 
                     // Merge in new samples to the current region
                     regionRange.first.sampleStatistics = mergedStats;
+                    regionRange.first.updateEmbedding(begin, end);
                     regionRange.second = sampleRange;
 
                     // Merge in new samples to the lookahead children
                     regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
+                    regionLR[0]->updateEmbedding(begin, rPivotItr);
                     regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
+                    regionLR[1]->updateEmbedding(rPivotItr, end);
 
                     *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
                     *sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
                 } else {
                     // No split. Just merge in new samples
                     regionRange.first.sampleStatistics = mergedStats;
+                    regionRange.first.updateEmbedding(begin, end);
                     regionRange.second = sampleRange;
                 }
             }
             else {
                 // No split. Just merge in new samples
                 regionRange.first.sampleStatistics = mergedStats;
+                regionRange.first.updateEmbedding(begin, end);
                 regionRange.second = sampleRange;
             }
         }
@@ -549,7 +562,7 @@ struct KDTreePartitionBuilder
     }
 
     template<class TContainer, class FieldType>
-    void updateCEStatsNode(KDTree *kdTree, KDNode *node, size_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings, const FieldType &field) const
+    void evaluateRegionsNode(KDTree *kdTree, KDNode *node, size_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage, const Settings &buildSettings, const FieldType &field) const
     {
         OPENPGL_ASSERT(node != nullptr);
         using T = typename TContainer::value_type;
@@ -688,10 +701,10 @@ struct KDTreePartitionBuilder
         else {
             tbb::parallel_invoke(
             [&] {
-                updateCEStatsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field);
+                evaluateRegionsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field);
             },
             [&] {
-                updateCEStatsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field);
+                evaluateRegionsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field);
             });
         }
     }
@@ -1380,6 +1393,3 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
 }
 
 #undef THRESHOLD_VAR_RATIO
-#undef MIN_SAMPLES_PER_SIDE
-#undef GAMMA_CUT
-#undef SINGLE_SIDE_PROMOTION

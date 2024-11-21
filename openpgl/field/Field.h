@@ -306,9 +306,9 @@ struct Field
 
             Timer timer;
             // Only update CE stats, no subdivision or fitting
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         }
     }
 
@@ -353,6 +353,11 @@ struct Field
 
     size_t getLeafCount() const {
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
+    }
+
+    PGLDirectionalEmbedding getDirectionalEmbedding(uint32_t id) const {
+        if (id >= m_regionStorageContainer.size()) return {};
+        return m_regionStorageContainer[id].first.getEmbedding();
     }
 
     PGLRegionStatistics getRegionStats(uint32_t id) const
@@ -612,9 +617,9 @@ struct Field
         // 1. Evaluate regions with new-coming samples
         // if (m_spatialSubdivBuilderSettings.enableCE) {
         if (true) {
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         }
         // 2. Subdivide
         timer.reset();

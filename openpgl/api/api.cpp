@@ -326,6 +326,12 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics>
     return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
+extern "C" OPENPGL_DLLEXPORT PGLDirectionalEmbedding pglFieldGetDirectionalEmbedding(PGLField field, uint32_t id)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getDirectionalEmbedding(id);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SampleStorage //////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

@@ -245,6 +245,17 @@ struct pgl_direction
     {
         return dequantize_direction(compressed_direction);
     }
+
+    operator pgl_vec2f() const
+    {
+        uint32_t word = compressed_direction;
+        int32_t ix = word & 0xFFFF;
+        ix -= 0x8000;
+        int32_t iy = word >> 16;
+        iy -= 0x8000;
+        const float f = 1.f / float(uint32_t(0x7FFF));
+        return {float(ix) * f, float(iy) * f};  // to [-1, 1]^2
+    }
 #endif
 };
 #else
