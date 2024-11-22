@@ -69,7 +69,7 @@ struct Region : public IRegion {
     } ceStatistics;
 
     float embedding[PGL_EMBEDDING_SIZE] = {};
-    float binCount[PGL_EMBEDDING_SIZE] = {};
+    float embeddingNormalizer = 0;
     uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
@@ -121,13 +121,13 @@ struct Region : public IRegion {
 
     void resetEmbedding() {
         memset(embedding, 0, sizeof(embedding));
-        memset(binCount, 0, sizeof(binCount));
+        embeddingNormalizer = 0;
     }
 
     PGLDirectionalEmbedding getEmbedding() const {
         PGLDirectionalEmbedding ret;
         for (size_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
-            ret.embedding[i] = embedding[i] / binCount[i];
+            ret.embedding[i] = embedding[i] / embeddingNormalizer;
         }
         return ret;
     }
@@ -152,7 +152,7 @@ struct Region : public IRegion {
         for (auto it = begin; it != end; ++it) {
             uint8_t idx = getEmbeddingIndex(it->direction);
             embedding[idx] += it->weight;
-            ++binCount[idx];
+            ++embeddingNormalizer;
         }
     }
 
@@ -221,7 +221,7 @@ struct Region : public IRegion {
         ceStatistics.serialize(stream);
         candidateSplit.serialize(stream);
         stream.write(reinterpret_cast<const char *>(embedding), sizeof(embedding));
-        stream.write(reinterpret_cast<const char *>(binCount), sizeof(binCount));
+        stream.write(reinterpret_cast<const char *>(&embeddingNormalizer), sizeof(embeddingNormalizer));
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
 
@@ -243,7 +243,7 @@ struct Region : public IRegion {
         ceStatistics.deserialize(stream);
         candidateSplit.deserialize(stream);
         stream.read(reinterpret_cast<char *>(embedding), sizeof(embedding));
-        stream.read(reinterpret_cast<char *>(binCount), sizeof(binCount));
+        stream.read(reinterpret_cast<char *>(&embeddingNormalizer), sizeof(embeddingNormalizer));
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
 
