@@ -263,14 +263,11 @@ struct KDTreePartitionBuilder
 
                         // Merge in new samples
                         regionRange.first.sampleStatistics = mergedStats;
-                        regionRange.first.updateEmbedding(begin, end);
                         regionRange.second = sampleRange;
 
                         // Update the lookahead children
                         regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                        regionLR[0]->updateEmbedding(begin, rPivotItr);
                         regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-                        regionLR[1]->updateEmbedding(rPivotItr, end);
                         Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
 
                         *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
@@ -342,14 +339,11 @@ struct KDTreePartitionBuilder
 
                         // Merge in new samples
                         regionRange.first.sampleStatistics = mergedStats;
-                        regionRange.first.updateEmbedding(begin, end);
                         regionRange.second = sampleRange;
 
                         // Update the lookahead children
                         regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                        regionLR[0]->updateEmbedding(begin, rPivotItr);
                         regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-                        regionLR[1]->updateEmbedding(rPivotItr, end);
                         Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
 
                         *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
@@ -438,28 +432,23 @@ struct KDTreePartitionBuilder
 
                     // Merge in new samples to the current region
                     regionRange.first.sampleStatistics = mergedStats;
-                    regionRange.first.updateEmbedding(begin, end);
                     regionRange.second = sampleRange;
 
                     // Merge in new samples to the lookahead children
                     regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                    regionLR[0]->updateEmbedding(begin, rPivotItr);
                     regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-                    regionLR[1]->updateEmbedding(rPivotItr, end);
 
                     *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
                     *sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
                 } else {
                     // No split. Just merge in new samples
                     regionRange.first.sampleStatistics = mergedStats;
-                    regionRange.first.updateEmbedding(begin, end);
                     regionRange.second = sampleRange;
                 }
             }
             else {
                 // No split. Just merge in new samples
                 regionRange.first.sampleStatistics = mergedStats;
-                regionRange.first.updateEmbedding(begin, end);
                 regionRange.second = sampleRange;
             }
         }
@@ -619,8 +608,10 @@ struct KDTreePartitionBuilder
 #else
                     field.updateCE(region, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
 #endif
+                    region.updateEmbedding(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
                 } else {
                     region.ceStatistics.self.addZeroWeightSamples(sampleRange.size());
+                    region.updateEmbeddingZeroWeight(sampleRange.size());
                 }
                 return;
             }
@@ -653,7 +644,7 @@ struct KDTreePartitionBuilder
 
         if (hasLookahead) {
             // Update CE for lookaheads
-            const auto &parentRegion = dataStorage->operator[](dataIdx).first;
+            auto &parentRegion = dataStorage->operator[](dataIdx).first;
             const auto parentDist = &parentRegion.distribution;
             for (int c: {0, 1}) {
                 OPENPGL_ASSERT(nodesLeftRight[c] == nullptr);
@@ -692,10 +683,17 @@ struct KDTreePartitionBuilder
 #else
                     field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
 #endif
+                    childRegion.updateEmbedding(samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
                 } else {
                     childRegion.ceStatistics.parent.addZeroWeightSamples(sampleRangeLeftRight[c].size());
                     childRegion.ceStatistics.self.addZeroWeightSamples(sampleRangeLeftRight[c].size());
+                    childRegion.updateEmbeddingZeroWeight(sampleRangeLeftRight[c].size());
                 }
+            }
+            if constexpr (isNonZeroSample) {
+                parentRegion.updateEmbedding(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
+            } else {
+                parentRegion.updateEmbeddingZeroWeight(sampleRange.size());
             }
         }
         else {

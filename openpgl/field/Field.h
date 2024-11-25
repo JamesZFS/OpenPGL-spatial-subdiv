@@ -25,9 +25,8 @@ namespace openpgl
 thread_local static std::vector<SampleData> threadSamples;
 
 template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename, typename> class TSpatialStructureBuilder, typename TSamplingDistribution>
-struct Field
-{
-   public:
+struct Field {
+public:
     using DirectionalDistributionFactory = TDirectionalDistributionFactory;
     using DirectionalDistributionFactorySettings = typename TDirectionalDistributionFactory::Configuration;
     using DirectionalDistribution = typename TDirectionalDistributionFactory::Distribution;
@@ -71,7 +70,7 @@ struct Field
         std::string toString() const;
     };
 
-   public:
+public:
     Field() = default;
 
     Field(const Field &) = delete;
@@ -305,7 +304,7 @@ struct Field
             });
 
             Timer timer;
-            // Only update CE stats, no subdivision or fitting
+            // Only update CE stats and embeddings, no subdivision or fitting
             m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
@@ -316,6 +315,12 @@ struct Field
         for (auto &region : m_regionStorageContainer) {
             region.first.ceStatistics.self.clear();
             region.first.ceStatistics.parent.clear();
+        }
+    }
+
+    void clearEmbeddings() {
+        for (auto &region : m_regionStorageContainer) {
+            region.first.resetEmbedding();
         }
     }
 

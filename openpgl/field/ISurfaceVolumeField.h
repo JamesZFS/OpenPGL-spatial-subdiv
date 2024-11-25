@@ -43,6 +43,8 @@ struct ISurfaceVolumeField
 
     virtual void clearCEStatistics() = 0;
 
+    virtual void clearEmbeddings() = 0;
+
     virtual void updateSubdivConfig(const PGLKDTreeArguments &cfg) = 0;
 
     virtual void resetField() = 0;
