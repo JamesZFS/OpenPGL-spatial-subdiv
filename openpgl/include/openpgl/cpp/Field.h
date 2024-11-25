@@ -54,6 +54,9 @@ struct Field
     /// Clears the CE statistics of all regions of the Field.
     void ClearCEStatistics();
 
+    /// Clears the embeddings of all regions of the Field.
+    void ClearEmbeddings();
+
     /// Updates the spatial subdivision configuration of the Field.
     void UpdateSubdivConfig(const PGLKDTreeArguments &args);
 
@@ -203,6 +206,12 @@ OPENPGL_INLINE void Field::ClearCEStatistics()
 {
     OPENPGL_ASSERT(m_fieldHandle);
     pglFieldClearCEStatistics(m_fieldHandle);
+}
+
+OPENPGL_INLINE void Field::ClearEmbeddings()
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    pglFieldClearEmbeddings(m_fieldHandle);
 }
 
 OPENPGL_INLINE void Field::UpdateSubdivConfig(const PGLKDTreeArguments &args)

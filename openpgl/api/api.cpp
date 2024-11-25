@@ -127,6 +127,13 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPEN
 }
 OPENPGL_CATCH_END_VOID
 
+extern "C" OPENPGL_DLLEXPORT void pglFieldClearEmbeddings(PGLField field) OPENPGL_CATCH_BEGIN
+{
+    auto *gField = (IGuidingField *)field;
+    gField->clearEmbeddings();
+}
+OPENPGL_CATCH_END_VOID
+
 extern "C" OPENPGL_DLLEXPORT void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;

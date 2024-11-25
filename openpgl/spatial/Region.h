@@ -138,6 +138,10 @@ struct Region : public IRegion {
         }
     }
 
+    void updateEmbeddingZeroWeight(size_t numSamples) {
+        embeddingNormalizer += (float) numSamples;
+    }
+
     inline const BBox &getRegionBounds() const
     {
         return regionBounds;

@@ -208,6 +208,12 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_volumeField.clearCEStats();
     }
 
+    void clearEmbeddings() override
+    {
+        m_surfaceField.clearEmbeddings();
+        m_volumeField.clearEmbeddings();
+    }
+
     void updateSubdivConfig(const PGLKDTreeArguments &cfg) override
     {
         m_surfaceField.updateSubdivConfig(cfg);
