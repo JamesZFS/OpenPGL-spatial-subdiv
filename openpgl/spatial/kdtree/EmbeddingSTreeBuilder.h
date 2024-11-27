@@ -57,23 +57,19 @@ struct KDTreePartitionBuilder
         size_t maxSamples {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
         size_t maxDepth {32};
         size_t maxDepthSPLThreshold {1};  // maximum depth with Samples-Per-Leaf threshold. Setting this to 1 means disabling it
+        float embeddingDistanceThreshold {1.0f};  // triggers promotion if the distance between the embeddings of the left and right children is greater than this threshold
         float decayRatio {0.25f};  // set from field
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
-        float maxDivReductionRate{0.05f}; // split if the parent's divergence - child's divergence goes beyond this
-        float gainThreshold {1.0f};  // force a split if the gain is above this threshold
-        bool enableCE {true};  // enable creation of lookahead children
         bool enablePromotion {true};
-        bool failureDecay {true};
-        bool singleSidePromotion {true};
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
         std::string toString() const;
 
         bool operator==(const Settings& b) const {
-            return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth
-                && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness && maxDivReductionRate == b.maxDivReductionRate && gainThreshold == b.gainThreshold
-                && enableCE == b.enableCE && enablePromotion == b.enablePromotion && failureDecay == b.failureDecay && singleSidePromotion == b.singleSidePromotion;
+            return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth &&
+                   maxDepthSPLThreshold == b.maxDepthSPLThreshold && embeddingDistanceThreshold == b.embeddingDistanceThreshold &&
+                   decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -82,31 +78,25 @@ struct KDTreePartitionBuilder
             maxSamples = cfg.maxSamples;
             maxDepth = cfg.maxDepth;
             maxDepthSPLThreshold = cfg.maxDepthWithSampleCount;
-            enableCE = cfg.enableCE;
+            embeddingDistanceThreshold = cfg.embeddingDistanceThreshold;
             enablePromotion = cfg.enablePromotion;
-            failureDecay = cfg.failureDecay;
-            singleSidePromotion = cfg.singleSidePromotion;
-            maxDivReductionRate = cfg.ceThreshold;
             decayRatio = cfg.ceDecay;
         }
     };
 
-    void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
+    void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
     {
         std::cout << buildSettings.toString() << std::endl;
-        if (buildSettings.minSamples > buildSettings.maxSamples / 3) {
-            throw std::runtime_error("KDTreePartitionBuilder::build() minSamples must be less than maxSamples/3");
-        }
 
         kdTree.init(bounds, 4096);
         dataStorage.resize(1);
         dataStorage[0].first.regionBounds = bounds;
         dataStorage[0].first.depth = 1;
 
-        updateTree(kdTree, samples, dataStorage, buildSettings);
+        update(kdTree, samples, zeroSamples, dataStorage, buildSettings);
     }
 
-    void updateTree(KDTree &kdTree, TSamplesContainer &samples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
+    void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
     {
         Timer timer;
         int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.maxSamples+32;
@@ -128,23 +118,10 @@ struct KDTreePartitionBuilder
         }
         std::cout << "Total bounds " << bounds << std::endl;
 
-        updateTreeNode(kdTree, root, 1, 2, bounds, samples, {0, samples.size()}, dataStorage, buildSettings);
+        updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, buildSettings);
         kdTree.finalize();
         double elapsedMicroSec = timer.elapsed();
         std::cout << "KDTreePartitionBuilder::update() took " << elapsedMicroSec * 1e-6 << " seconds, total valid regions: " << kdTree.getNumLeafs() << std::endl;
-    }
-
-    void insertTree(KDTree &kdTree, TZeroValueSamplesContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage) const
-    {
-        KDNode &root = kdTree.getRoot();
-
-        Range sampleRange;
-        sampleRange.m_begin = 0;
-        sampleRange.m_end = samples.size();
-
-        size_t depth = 1;
-
-        insertTreeNode(&kdTree, root, depth, samples, sampleRange, &dataStorage);
     }
 
     template<class TContainer, class FieldType>
@@ -160,394 +137,124 @@ struct KDTreePartitionBuilder
         evaluateRegionsNode(&kdTree, &root, depth, samples, sampleRange, &dataStorage, buildSettings, field);
     }
 
-    void updateTreeNode(KDTree &kdTree, KDNode &node, size_t depth, uint8_t prevSplitDim, const BBox &bounds, TSamplesContainer &samples, const Range sampleRange, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings) const
+    void updateTreeNode(KDTree &kdTree, KDNode &node, size_t depth, uint8_t prevSplitDim, const BBox &bounds,
+        TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
+        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings) const
     {
-        const auto begin = samples.begin() + sampleRange.m_begin, end = samples.begin() + sampleRange.m_end;  // for the current node
-        if (node.isLeaf())
-        {
+        uint8_t splitDim;
+        float splitPos;
+
+        if (node.isLeaf()) {
             uint32_t dataIdx = node.getDataIdx();
-            std::pair<TRegion, Range> &regionRange = dataStorage[dataIdx];
+            auto &[region, range] = dataStorage[dataIdx];
+            SampleStatistics mergedStats = computeStats(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
+            mergedStats.merge(region.sampleStatistics);
 
-            auto mergedStats = computeStats(begin, end);
-            mergedStats.merge(regionRange.first.sampleStatistics);
-
-            bool exceedSPLThreshold = depth < std::min(settings.maxDepth, settings.maxDepthSPLThreshold) && mergedStats.getNumSamples() > settings.maxSamples;
-            bool canProposeSplit = depth < settings.maxDepth && mergedStats.getNumSamples() > 2 * settings.minSamples;  // so that a candidate split results in regions with sufficient training samples
-
-            OPENPGL_ASSERT(!exceedSPLThreshold || canProposeSplit);  // if SPL threshold is exceeded, we must be able to propose a split
-
-            if (regionRange.first.hasCandidateSplit()) {
-                OPENPGL_ASSERT(canProposeSplit);
-                // Update the candidate split and try promotion
-                auto &candidate = regionRange.first.candidateSplit;
-                OPENPGL_ASSERT(candidate.dataIdx + 1 < dataStorage.size());
-                TRegion *regionLR[2] = {&dataStorage[candidate.dataIdx].first, &dataStorage[candidate.dataIdx + 1].first};
-                OPENPGL_ASSERT(!regionLR[0]->hasCandidateSplit() && !regionLR[1]->hasCandidateSplit());
-
-                // First update the divergence statistics of the children
-                auto rPivotItr = pivotSplitSamples(begin, end, candidate.dim, candidate.pos);
-                // field.updateAdaptiveMetrics(*regionLR[0], regionRange.first, begin, rPivotItr);
-                // field.updateAdaptiveMetrics(*regionLR[1], regionRange.first, rPivotItr, end);
-
-                if (settings.singleSidePromotion) {
-                    // 1. Decide to promote or not
-                    // 2. If yes, decide which side(s) should inherit from the parent
-                    // 3. If not, decay the candidate children and update them
-                    bool promoteLR[2] = {false, false};
-                    // 1.
-                    if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
-                        promoteLR[0] = promoteLR[1] = true;
-                    } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        for (int i: {0, 1})
-                            promoteLR[i] = regionLR[i]->ceStatistics.parent.getCE() - regionLR[i]->ceStatistics.self.getCE() > settings.maxDivReductionRate;
-                    }
-                    if (promoteLR[0] || promoteLR[1]) {
-                        // 2.
-                        for (int i: {0, 1}) {
-                            regionLR[i]->unsetLookahead();
-                            if (!promoteLR[i]) {
-                                // Inherits the parent's distribution
-                                regionLR[i]->distribution = regionRange.first.distribution;
-                                regionLR[i]->trainingStatistics = regionRange.first.trainingStatistics;
+            if (region.hasCandidateSplit()) {
+                splitDim = region.candidateSplit.dim, splitPos = region.candidateSplit.pos;
+            } else {
+                if (depth < settings.maxDepth && mergedStats.getNumSamples() > settings.minSamples) {
+                    // Create a candidate split
+                    proposeSplit(prevSplitDim, bounds, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, mergedStats, splitDim, splitPos, settings);
+                    OPENPGL_ASSERT(splitDim < 3);
+                    region.setCandidateSplit(splitDim, splitPos);
+                    // Fallthrough
+                } else {
+                    // Keep accumulating samples
+                    region.sampleStatistics = mergedStats;
+                    region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
+                    region.numZeroValueSamples = zeroSampleRange.size();
+                    range = sampleRange;
 #ifdef OPENPGL_RADIANCE_CACHES
-                                regionLR[i]->outRadianceHist = regionRange.first.outRadianceHist;
+                    range.m_is_begin = zeroSampleRange.m_begin;
+                    range.m_is_end = zeroSampleRange.m_end;
 #endif
-                                regionLR[i]->splitFlag = true;
-
-                                // Inherit CE stats to a tie position
-                                regionLR[i]->ceStatistics.self = regionLR[i]->ceStatistics.parent;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
-                            }
-                        }
-
-                        // Extend KD tree
-                        uint32_t nodeIdsLR[2];
-                        nodeIdsLR[0] = kdTree.addChildrenPair();
-                        nodeIdsLR[1] = nodeIdsLR[0] + 1;
-                        node.setToInnerNode(candidate.dim, candidate.pos, nodeIdsLR[0]);
-                        KDNode *nodeLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
-                        nodeLR[0]->setDataNodeIdx(candidate.dataIdx);
-                        nodeLR[1]->setDataNodeIdx(candidate.dataIdx + 1);
-
-                        // This region data is no-longer needed
-                        // dataStorage.erase(dataIdx);
-                        regionRange.first.removed = true;
-
-                        // Recurse
-                        Range sampleRangeLR[2] = {
-                            Range(std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)),
-                            Range(std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end))
-                        };
-
-                        BBox boundsLR[2] = {bounds, bounds};
-                        boundsLR[0].upper[candidate.dim] = candidate.pos;
-                        boundsLR[1].lower[candidate.dim] = candidate.pos;
-
-                        tbb::parallel_invoke(
-                            [&]{updateTreeNode(kdTree, *nodeLR[0], depth + 1, candidate.dim, boundsLR[0], samples, sampleRangeLR[0], dataStorage, settings);},
-                            [&]{updateTreeNode(kdTree, *nodeLR[1], depth + 1, candidate.dim, boundsLR[1], samples, sampleRangeLR[1], dataStorage, settings);}
-                        );
-                    } else {
-                        // 3.
-                        if (settings.failureDecay) {
-                            for (int i: {0, 1}) {
-                                // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
-                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                                regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
-                                regionLR[i]->splitFlag = true;
-                                // regionBounds already adjusted
-                            }
-                        }
-
-                        // Merge in new samples
-                        regionRange.first.sampleStatistics = mergedStats;
-                        regionRange.second = sampleRange;
-
-                        // Update the lookahead children
-                        regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                        regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-                        Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
-
-                        *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
-                        *sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
-                    }
-                } else {
-                    bool shouldPromote = false;
-                    if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
-                        shouldPromote = true;
-                    } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        float childEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.self, regionLR[1]->ceStatistics.self);
-                        float parentEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.parent, regionLR[1]->ceStatistics.parent);
-                        shouldPromote = parentEntropy - childEntropy > settings.maxDivReductionRate;
-                    }
-                    // if (!shouldPromote) {  // Last chance: re-propose a split position and check if we should promote based on the gain
-                    //     uint8_t splitDim = -1;
-                    //     float splitPos;
-                    //     float gain = proposeSplit(prevSplitDim, bounds, begin, end, mergedStats, splitDim, splitPos, settings);
-                    //     candidate.dim = splitDim;
-                    //     candidate.pos = splitPos;
-                    //     OPENPGL_ASSERT(candidate.dim < 3);
-                    //     rPivotItr = pivotSplitSamples(begin, end, candidate.dim, candidate.pos);
-                    //     regionLR[0]->regionBounds.upper[candidate.dim] = candidate.pos;
-                    //     regionLR[1]->regionBounds.lower[candidate.dim] = candidate.pos;
-                    //     shouldPromote = gain > settings.gainThreshold;
-                    // }
-                    if (shouldPromote) {
-                        regionLR[0]->unsetLookahead();
-                        regionLR[1]->unsetLookahead();
-                        // Extend KD tree
-                        uint32_t nodeIdsLR[2];
-                        nodeIdsLR[0] = kdTree.addChildrenPair();
-                        nodeIdsLR[1] = nodeIdsLR[0] + 1;
-                        node.setToInnerNode(candidate.dim, candidate.pos, nodeIdsLR[0]);
-                        KDNode *nodeLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
-                        nodeLR[0]->setDataNodeIdx(candidate.dataIdx);
-                        nodeLR[1]->setDataNodeIdx(candidate.dataIdx + 1);
-
-                        // This region data is no-longer needed
-                        // dataStorage.erase(dataIdx);
-                        regionRange.first.removed = true;
-
-                        // Recurse
-                        Range sampleRangeLR[2] = {
-                            Range(std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)),
-                            Range(std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end))
-                        };
-
-                        BBox boundsLR[2] = {bounds, bounds};
-                        boundsLR[0].upper[candidate.dim] = candidate.pos;
-                        boundsLR[1].lower[candidate.dim] = candidate.pos;
-
-                        tbb::parallel_invoke(
-                            [&]{updateTreeNode(kdTree, *nodeLR[0], depth + 1, candidate.dim, boundsLR[0], samples, sampleRangeLR[0], dataStorage, settings);},
-                            [&]{updateTreeNode(kdTree, *nodeLR[1], depth + 1, candidate.dim, boundsLR[1], samples, sampleRangeLR[1], dataStorage, settings);}
-                        );
-                    } else {  // Decay the candidate children and update them
-                        if (settings.failureDecay) {
-                            for (int i: {0, 1}) {
-                                // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
-                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                                regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
-                                regionLR[i]->splitFlag = true;
-                                // regionBounds already adjusted
-                            }
-                        }
-
-                        // Merge in new samples
-                        regionRange.first.sampleStatistics = mergedStats;
-                        regionRange.second = sampleRange;
-
-                        // Update the lookahead children
-                        regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                        regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-                        Range *sampleRangeLR[2] = {&dataStorage[candidate.dataIdx].second, &dataStorage[candidate.dataIdx + 1].second};
-
-                        *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
-                        *sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
-                    }
+                    return;
                 }
             }
-            else if (canProposeSplit) {
-                uint8_t splitDim = -1;
-                float splitPos;
-                float gain = proposeSplit(prevSplitDim, bounds, begin, end, mergedStats, splitDim, splitPos, settings);
-                OPENPGL_ASSERT(splitDim < 3);
-                
-                if (exceedSPLThreshold || gain > settings.gainThreshold) {  // Create a real split if SPL or gain threshold is exceeded
-                    auto rPivotItr = pivotSplitSamples(begin, end, splitDim, splitPos);
-                    // Left inherits self
-                    auto rDataItr = dataStorage.push_back(regionRange);
-
-                    regionRange.first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, false);
-                    rDataItr->first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, true);
-
-                    regionRange.first.ceStatistics.parent = rDataItr->first.ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                    regionRange.first.decayDivergence(settings.decayRatio);
-                    rDataItr->first.decayDivergence(settings.decayRatio);
-
-                    regionRange.first.resetEmbedding();
-                    rDataItr->first.resetEmbedding();
-
-                    regionRange.first.depth = rDataItr->first.depth = depth + 1;
-
-                    regionRange.first.splitFlag = true;
-                    rDataItr->first.splitFlag = true;
-
-                    regionRange.first.regionBounds.upper[splitDim] = splitPos;
-                    rDataItr->first.regionBounds.lower[splitDim] = splitPos;
-
-                    // Extend KD tree
-                    uint32_t nodeIdsLR[2];
-                    nodeIdsLR[0] = kdTree.addChildrenPair();
-                    nodeIdsLR[1] = nodeIdsLR[0] + 1;
-                    node.setToInnerNode(splitDim, splitPos, nodeIdsLR[0]);
-                    KDNode *nodeLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
-                    nodeLR[0]->setDataNodeIdx(dataIdx);
-                    nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
-
-                    // Recurse
-                    Range sampleRangeLR[2] = {
-                            Range(std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)),
-                            Range(std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end))
-                    };
-
-                    BBox boundsLR[2] = {bounds, bounds};
-                    boundsLR[0].upper[splitDim] = splitPos;
-                    boundsLR[1].lower[splitDim] = splitPos;
-
-                    tbb::parallel_invoke(
-                            [&]{updateTreeNode(kdTree, *nodeLR[0], depth + 1, splitDim, boundsLR[0], samples, sampleRangeLR[0], dataStorage, settings);},
-                            [&]{updateTreeNode(kdTree, *nodeLR[1], depth + 1, splitDim, boundsLR[1], samples, sampleRangeLR[1], dataStorage, settings);}
-                    );
-                } else if (settings.enableCE) {  // Create a candidate split, resulting in two lookahead children
-                    auto rPivotItr = pivotSplitSamples(begin, end, splitDim, splitPos);
-
-                    // Copy current region to left/right child regions
-                    auto lDataItr = dataStorage.grow_by(2);
-                    regionRange.first.setCandidateSplit(splitDim, splitPos, std::distance(dataStorage.begin(), lDataItr));
-
-                    TRegion *regionLR[2] = {&lDataItr->first, &std::next(lDataItr)->first};
-                    Range *sampleRangeLR[2] = {&lDataItr->second, &std::next(lDataItr)->second};
-
-                    // Child data handling
-                    for (int i: {0, 1}) {
-                        *regionLR[i] = regionRange.first;
-                        regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                        regionLR[i]->ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                        regionLR[i]->decayDivergence(settings.decayRatio);
-                        regionLR[i]->resetEmbedding();
-                        regionLR[i]->splitFlag = true;
-                        if (i == 0) {
-                            regionLR[i]->regionBounds.upper[splitDim] = splitPos;
-                        } else {
-                            regionLR[i]->regionBounds.lower[splitDim] = splitPos;
-                        }
-                        regionLR[i]->setLookahead();
-                        regionLR[i]->depth = depth + 1;
-                    }
-
-                    // Merge in new samples to the current region
-                    regionRange.first.sampleStatistics = mergedStats;
-                    regionRange.second = sampleRange;
-
-                    // Merge in new samples to the lookahead children
-                    regionLR[0]->sampleStatistics.merge(computeStats(begin, rPivotItr));
-                    regionLR[1]->sampleStatistics.merge(computeStats(rPivotItr, end));
-
-                    *sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
-                    *sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
-                } else {
-                    // No split. Just merge in new samples
-                    regionRange.first.sampleStatistics = mergedStats;
-                    regionRange.second = sampleRange;
+            OPENPGL_ASSERT(region.hasCandidateSplit());
+            OPENPGL_ASSERT(splitDim < 3);
+            // Split samples
+            auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
+            auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, splitDim, splitPos);
+            // Update the LR embeddings
+            region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+            region.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+            region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+            region.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+            // Check the split condition
+            if (settings.enablePromotion && Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]) > settings.embeddingDistanceThreshold) {
+                // Promote!
+                auto rChildIter = dataStorage.emplace_back(region, Range());
+                TRegion *regionsLR[2] = {&region, &rChildIter->first};
+                for (int c: {0, 1}) {
+                    auto &childRegion = *regionsLR[c];
+                    childRegion.unsetCandidateSplit();  // also clears the embeddings
+                    childRegion.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) c);
+                    childRegion.ceStatistics.decay(settings.decayRatio);
+                    childRegion.splitFlag = true;
+                    childRegion.depth = depth + 1;
+                    if (c == 0)
+                        childRegion.regionBounds.upper[splitDim] = splitPos;
+                    else
+                        childRegion.regionBounds.lower[splitDim] = splitPos;
                 }
+
+                // Extend KD tree
+                uint32_t nodeIdsLR[2];
+                nodeIdsLR[0] = kdTree.addChildrenPair(), nodeIdsLR[1] = nodeIdsLR[0] + 1;
+                node.setToInnerNode(splitDim, splitPos, nodeIdsLR[0]);
+                KDNode *nodesLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
+                nodesLR[0]->setDataNodeIdx(dataIdx), nodesLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rChildIter));
+
+                // Recurse
+                auto boundsLR = splitBBox(bounds, splitDim, splitPos);
+                Range sampleRangesLR[2] = {Range(sampleRange.m_begin, std::distance(samples.begin(), samplesMid)),
+                                           Range(std::distance(samples.begin(), samplesMid), sampleRange.m_end)};
+                Range zeroSampleRangesLR[2] = {Range(zeroSampleRange.m_begin, std::distance(zeroSamples.begin(), zeroSamplesMid)),
+                                               Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
+
+                tbb::parallel_invoke(
+                    [&]{ updateTreeNode(kdTree, *nodesLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings); },
+                    [&]{ updateTreeNode(kdTree, *nodesLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings); }
+                );
+            } else {
+                // Stops! Just merge in new samples
+                region.sampleStatistics = mergedStats;
+                region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
+                region.numZeroValueSamples = zeroSampleRange.size();
+                range = sampleRange;
+#ifdef OPENPGL_RADIANCE_CACHES
+                range.m_is_begin = zeroSampleRange.m_begin;
+                range.m_is_end = zeroSampleRange.m_end;
+#endif
             }
-            else {
-                // No split. Just merge in new samples
-                regionRange.first.sampleStatistics = mergedStats;
-                regionRange.second = sampleRange;
-            }
-        }
-        else  // Internal node
-        {
+        } else {
+            // Internal node
             uint32_t nodeIdsLR[2];
-            nodeIdsLR[0] = node.getLeftChildIdx();
-            nodeIdsLR[1] = nodeIdsLR[0] + 1;
-
-            KDNode *nodeLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
-
-            uint8_t splitDim = node.getSplitDim();
-            float splitPos = node.getSplitPivot();
-
-            BBox boundsLR[2] = {bounds, bounds};
-            boundsLR[0].upper[splitDim] = splitPos;
-            boundsLR[1].lower[splitDim] = splitPos;
-
-            Range sampleRangeLR[2];
-            auto rPivotItr = pivotSplitSamples(begin, end, splitDim, splitPos);  // [begin, rPivotItr) < splitPos, [rPivotItr, end) >= splitPos]
-
-            sampleRangeLR[0] = {std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)};
-            sampleRangeLR[1] = {std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end)};
+            nodeIdsLR[0] = node.getLeftChildIdx(), nodeIdsLR[1] = nodeIdsLR[0] + 1;
+            splitDim = node.getSplitDim(), splitPos = node.getSplitPivot();
+            auto boundsLR = splitBBox(bounds, splitDim, splitPos);
+            auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
+            auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, splitDim, splitPos);
+            Range sampleRangesLR[2] = {Range(sampleRange.m_begin, std::distance(samples.begin(), samplesMid)),
+                                       Range(std::distance(samples.begin(), samplesMid), sampleRange.m_end)};
+            Range zeroSampleRangesLR[2] = {Range(zeroSampleRange.m_begin, std::distance(zeroSamples.begin(), zeroSamplesMid)),
+                                           Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
             tbb::parallel_invoke(
-                [&]{updateTreeNode(kdTree, *nodeLR[0], depth + 1, splitDim, boundsLR[0], samples, sampleRangeLR[0], dataStorage, settings);},
-                [&]{updateTreeNode(kdTree, *nodeLR[1], depth + 1, splitDim, boundsLR[1], samples, sampleRangeLR[1], dataStorage, settings);}
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings); },
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings); }
             );
         }
     }
 
-    void insertTreeNode(KDTree *kdTree, KDNode &node, size_t depth, TZeroValueSamplesContainer &samples, const Range sampleRange,
-                        tbb::concurrent_vector<std::pair<TRegion, Range> > *dataStorage) const
+    static std::pair<BBox, BBox> splitBBox(const BBox &bounds, uint8_t splitDim, float splitPos)
     {
-        if (sampleRange.size() == 0)
-        {
-            return;
-        }
-        uint8_t splitDim = {0};
-        float splitPos = {0.0f};
-
-        uint32_t nodeIdsLeftRight[2];
-        Range sampleRangeLeftRight[2];
-
-        if (node.isLeaf())
-        {
-            uint32_t dataIdx = node.getDataIdx();
-            std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
-            regionAndRangeData.first.sampleStatistics.addNumZeroValueSamples(sampleRange.size());
-            regionAndRangeData.first.numZeroValueSamples = sampleRange.size();
-#ifdef OPENPGL_RADIANCE_CACHES
-            regionAndRangeData.second.m_is_begin = sampleRange.m_begin;
-            regionAndRangeData.second.m_is_end = sampleRange.m_end;
-#endif
-            return;
-        }
-        else
-        {
-            splitDim = node.getSplitDim();
-            splitPos = node.getSplitPivot();
-            nodeIdsLeftRight[0] = node.getLeftChildIdx();
-            nodeIdsLeftRight[1] = nodeIdsLeftRight[0] + 1;
-        }
-
-        OPENPGL_ASSERT(!node.isLeaf());
-        OPENPGL_ASSERT(sampleRange.size() > 0);
-
-#ifdef USE_EMBREE_PARALLEL
-        size_t rPivotItr = 0;
-#else
-        typename TZeroValueSamplesContainer::iterator rPivotItr;
-        auto begin = samples.begin() + sampleRange.m_begin, end = samples.begin() + sampleRange.m_end;
-#endif
-#ifdef USE_EMBREE_PARALLEL
-        rPivotItr = pivotSplitSamples2<typename TZeroValueSamplesContainer::value_type>(samples.data(), sampleRange.m_begin, sampleRange.m_end, splitDim, splitPos);
-#else
-        rPivotItr = pivotSplitSamples<TZeroValueSamplesContainer>(begin, end, splitDim, splitPos);
-#endif
-
-#ifdef USE_EMBREE_PARALLEL
-        sampleRangeLeftRight[0] = Range(sampleRange.m_begin, rPivotItr);
-        sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
-#else
-        sampleRangeLeftRight[0] = Range(sampleRange.m_begin, std::distance(samples.begin(), rPivotItr));
-        sampleRangeLeftRight[1] = Range(std::distance(samples.begin(), rPivotItr), sampleRange.m_end);
-#endif
-        /* This assert is a sanity check which is only valid with the assumption that the number of samples grows at same pace
-           as the number of spatial nodes: in practice this is not the case (e.g., after many 1spp iterations)
-        */
-        // OPENPGL_ASSERT(sampleRangeLeftRight[0].size() > 1);
-        // OPENPGL_ASSERT(sampleRangeLeftRight[1].size() > 1);
-
-        tbb::parallel_invoke(
-            [&] {
-                insertTreeNode(kdTree, kdTree->getNode(nodeIdsLeftRight[0]), depth + 1, samples, sampleRangeLeftRight[0], dataStorage);
-            },
-            [&] {
-                insertTreeNode(kdTree, kdTree->getNode(nodeIdsLeftRight[1]), depth + 1, samples, sampleRangeLeftRight[1], dataStorage);
-            });
+        BBox left = bounds, right = bounds;
+        right.lower[splitDim] = splitPos;
+        left.upper[splitDim] = splitPos;
+        return {left, right};
     }
 
     template<class TContainer, class FieldType>
@@ -566,7 +273,6 @@ struct KDTreePartitionBuilder
 
         KDNode *nodesLeftRight[2] = {nullptr, nullptr};
         uint32_t dataIdx;
-        uint32_t dataIndsLeftRight[2];
         Range sampleRangeLeftRight[2];
 
         if (node->isLeaf())
@@ -574,47 +280,53 @@ struct KDTreePartitionBuilder
             dataIdx = node->getDataIdx();
             std::pair<TRegion, Range> &regionAndRangeData = dataStorage->operator[](dataIdx);
             TRegion &region = regionAndRangeData.first;
-            if (region.hasCandidateSplit()) {
-                splitDim = region.candidateSplit.dim;
-                splitPos = region.candidateSplit.pos;
-                dataIndsLeftRight[0] = region.candidateSplit.dataIdx;
-                dataIndsLeftRight[1] = dataIndsLeftRight[0] + 1;
-            }
-            else {
-                // Update CE for leaf regions without lookaheads
-                if constexpr (isNonZeroSample) {
-#if COMPUTE_CE_STYLE == 0
-                    TSamplingDistribution guidingDist;
-                    // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                    // !! This can be slow
-                    for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
-                        const T &sample = samples[i];
-                        float weight = sample.weight;
-                        // Evaluate pdf
-                        const auto dist = &region.distribution;
-                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                        auto _dir = pgl_vec3f(sample.direction);
-                        Vector3 dir(_dir.x, _dir.y, _dir.z);
-                        guidingDist.init(dist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist) {
-                            auto _normal = pgl_vec3f(sample.normal);
-                            Vector3 normal(_normal.x, _normal.y, _normal.z);
-                            guidingDist.applyCosineProduct(normal);
-                        }
-                        float pdf = guidingDist.pdf(dir);
-                        // float pdf = sample.guidingPDF;
-                        region.ceStatistics.self.addSample(weight, pdf);
+
+            // Update CE for leaf regions without
+            if constexpr (isNonZeroSample) {
+                TSamplingDistribution guidingDist;
+                // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
+                // !! This can be slow
+                for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
+                    const T &sample = samples[i];
+                    float weight = sample.weight;
+                    // Evaluate pdf
+                    const auto dist = &region.distribution;
+                    Point3 position(sample.position.x, sample.position.y, sample.position.z);
+                    auto _dir = pgl_vec3f(sample.direction);
+                    Vector3 dir(_dir.x, _dir.y, _dir.z);
+                    guidingDist.init(dist, position); // Applied parallax shift
+                    if constexpr (isSurfaceDist) {
+                        auto _normal = pgl_vec3f(sample.normal);
+                        Vector3 normal(_normal.x, _normal.y, _normal.z);
+                        guidingDist.applyCosineProduct(normal);
                     }
-#else
-                    field.updateCE(region, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
-#endif
-                    region.updateEmbedding(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
-                } else {
-                    region.ceStatistics.self.addZeroWeightSamples(sampleRange.size());
-                    region.updateEmbeddingZeroWeight(sampleRange.size());
+                    float pdf = guidingDist.pdf(dir);
+                    // float pdf = sample.guidingPDF;
+                    region.ceStatistics.addSample(weight, pdf);
                 }
-                return;
+                if (region.hasCandidateSplit()) {
+                    splitDim = region.candidateSplit.dim;
+                    splitPos = region.candidateSplit.pos;
+                    // Split samples
+                    auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
+                    // Update the LR embeddings
+                    region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                }
+            } else {
+                region.ceStatistics.addZeroWeightSamples(sampleRange.size());
+
+                if (region.hasCandidateSplit()) {
+                    splitDim = region.candidateSplit.dim;
+                    splitPos = region.candidateSplit.pos;
+                    // Split samples
+                    auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
+                    // Update the LR embeddings
+                    region.embeddingsLR[0].addZeroSamples(std::distance(samples.begin() + sampleRange.m_begin, samplesMid));
+                    region.embeddingsLR[1].addZeroSamples(std::distance(samplesMid, samples.begin() + sampleRange.m_end));
+                }
             }
+            return;
         }
         else
         {
@@ -628,8 +340,6 @@ struct KDTreePartitionBuilder
         OPENPGL_ASSERT(sampleRange.size() > 0);
         OPENPGL_ASSERT(splitDim < 3);
 
-        bool hasLookahead = nodesLeftRight[0] == nullptr || nodesLeftRight[1] == nullptr;
-
         size_t rPivotItr = 0;
 #ifdef USE_EMBREE_PARALLEL
         rPivotItr = pivotSplitSamples2<typename TContainer::value_type>(samples.data(), sampleRange.m_begin, sampleRange.m_end, splitDim, splitPos);
@@ -642,69 +352,10 @@ struct KDTreePartitionBuilder
         sampleRangeLeftRight[0] = Range(sampleRange.m_begin, rPivotItr);
         sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
 
-        if (hasLookahead) {
-            // Update CE for lookaheads
-            auto &parentRegion = dataStorage->operator[](dataIdx).first;
-            const auto parentDist = &parentRegion.distribution;
-            for (int c: {0, 1}) {
-                OPENPGL_ASSERT(nodesLeftRight[c] == nullptr);
-                TRegion &childRegion = dataStorage->operator[](dataIndsLeftRight[c]).first;
-                OPENPGL_ASSERT(childRegion.isLookahead);
-                if constexpr (isNonZeroSample) {
-#if COMPUTE_CE_STYLE == 0
-                    TSamplingDistribution guidingDist;
-                    // childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                    // childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
-                    // !! This can be slow
-                    for (size_t i = sampleRangeLeftRight[c].m_begin; i < sampleRangeLeftRight[c].m_end; i++) {
-                        const T &sample = samples[i];
-                        float weight = sample.weight;
-                        // Evaluate pdf
-                        const auto childDist = &childRegion.distribution;
-                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                        auto _dir = pgl_vec3f(sample.direction);
-                        Vector3 dir(_dir.x, _dir.y, _dir.z);
-                        auto _normal = pgl_vec3f(sample.normal);
-                        Vector3 normal(_normal.x, _normal.y, _normal.z);
-
-                        guidingDist.init(parentDist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist)
-                            guidingDist.applyCosineProduct(normal);
-                        float qp = guidingDist.pdf(dir);
-                        // float qp = sample.guidingPDF;
-                        childRegion.ceStatistics.parent.addSample(weight, qp);
-
-                        guidingDist.init(childDist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist)
-                            guidingDist.applyCosineProduct(normal);
-                        float qc = guidingDist.pdf(dir);
-                        childRegion.ceStatistics.self.addSample(weight, qc);
-                    }
-#else
-                    field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
-#endif
-                    childRegion.updateEmbedding(samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
-                } else {
-                    childRegion.ceStatistics.parent.addZeroWeightSamples(sampleRangeLeftRight[c].size());
-                    childRegion.ceStatistics.self.addZeroWeightSamples(sampleRangeLeftRight[c].size());
-                    childRegion.updateEmbeddingZeroWeight(sampleRangeLeftRight[c].size());
-                }
-            }
-            if constexpr (isNonZeroSample) {
-                parentRegion.updateEmbedding(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
-            } else {
-                parentRegion.updateEmbeddingZeroWeight(sampleRange.size());
-            }
-        }
-        else {
-            tbb::parallel_invoke(
-            [&] {
-                evaluateRegionsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field);
-            },
-            [&] {
-                evaluateRegionsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field);
-            });
-        }
+        tbb::parallel_invoke(
+            [&] { evaluateRegionsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field); },
+            [&] { evaluateRegionsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field); }
+        );
     }
 
     // Compute the candidate split position, return the gain estimate that will guide when to split
@@ -1219,16 +870,13 @@ struct KDTreePartitionBuilder
         return sampleStats;
     }
 
-    inline typename TSamplesContainer::iterator pivotSplitSamples(typename TSamplesContainer::iterator begin, typename TSamplesContainer::iterator end,
-                                                           uint8_t splitDimension, float pivot) const
+    template<typename TIterator>
+    inline TIterator pivotSplitSamples(TIterator begin, TIterator end, uint8_t splitDimension, float pivot) const
     {
-        std::function<bool(typename TSamplesContainer::value_type)> pivotSplitPredicate
-                = [splitDimension, pivot](typename TSamplesContainer::value_type sample) -> bool
-                {
-                    const Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                    return position[splitDimension] < pivot;
-
-                };
+        auto pivotSplitPredicate = [splitDimension, pivot](auto &sample) -> bool {
+            const Point3 position(sample.position.x, sample.position.y, sample.position.z);
+            return position[splitDimension] < pivot;
+        };
         return std::partition(begin, end, pivotSplitPredicate);
     }
 
@@ -1338,16 +986,14 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
 {
     std::stringstream ss;
     ss << "KDTreePartitionBuilder::Settings:" << std::endl;
-    ss << "  splitType: " << splitType << std::endl;
     ss << "  minSamples: " << minSamples << std::endl;
     ss << "  maxSamples: " << maxSamples << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  maxDepthSPLThreshold: " << maxDepthSPLThreshold << std::endl;
+    ss << "  embeddingDistanceThreshold: " << embeddingDistanceThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
-    ss << "  maxDivReductionRate: " << maxDivReductionRate << std::endl;
-    ss << "  gainThreshold: " << gainThreshold << std::endl;
-    ss << "  enableCE: " << enableCE << std::endl;
+    ss << "  enablePromotion: " << enablePromotion << std::endl;
 
     return ss.str();
 }
@@ -1355,37 +1001,29 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
 inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamplesContainer, TSamplingDistribution>::Settings::serialize(std::ostream& stream)const
 {
-    stream.write(reinterpret_cast<const char*>(&splitType), sizeof(PGL_SPATIAL_SPLIT_TYPE));
-    stream.write(reinterpret_cast<const char*>(&minSamples), sizeof(size_t));
-    stream.write(reinterpret_cast<const char*>(&maxSamples), sizeof(size_t));
-    stream.write(reinterpret_cast<const char*>(&maxDepth), sizeof(size_t));
-    stream.write(reinterpret_cast<const char*>(&maxDepthSPLThreshold), sizeof(size_t));
-    stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&maxDivReductionRate), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&gainThreshold), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&enableCE), sizeof(bool));
-    stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(bool));
-    stream.write(reinterpret_cast<const char*>(&failureDecay), sizeof(bool));
-    stream.write(reinterpret_cast<const char*>(&singleSidePromotion), sizeof(bool));
+    stream.write(reinterpret_cast<const char*>(&splitType), sizeof(splitType));
+    stream.write(reinterpret_cast<const char*>(&minSamples), sizeof(minSamples));
+    stream.write(reinterpret_cast<const char*>(&maxSamples), sizeof(maxSamples));
+    stream.write(reinterpret_cast<const char*>(&maxDepth), sizeof(maxDepth));
+    stream.write(reinterpret_cast<const char*>(&maxDepthSPLThreshold), sizeof(maxDepthSPLThreshold));
+    stream.write(reinterpret_cast<const char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
+    stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(decayRatio));
+    stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
+    stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
 inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamplesContainer, TSamplingDistribution>::Settings::deserialize(std::istream& stream)
 {
-    stream.read(reinterpret_cast<char*>(&splitType), sizeof(PGL_SPATIAL_SPLIT_TYPE));
-    stream.read(reinterpret_cast<char*>(&minSamples), sizeof(size_t));
-    stream.read(reinterpret_cast<char*>(&maxSamples), sizeof(size_t));
-    stream.read(reinterpret_cast<char*>(&maxDepth), sizeof(size_t));
-    stream.read(reinterpret_cast<char*>(&maxDepthSPLThreshold), sizeof(size_t));
-    stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&maxDivReductionRate), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&gainThreshold), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&enableCE), sizeof(bool));
-    stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(bool));
-    stream.read(reinterpret_cast<char*>(&failureDecay), sizeof(bool));
-    stream.read(reinterpret_cast<char*>(&singleSidePromotion), sizeof(bool));
+    stream.read(reinterpret_cast<char*>(&splitType), sizeof(splitType));
+    stream.read(reinterpret_cast<char*>(&minSamples), sizeof(minSamples));
+    stream.read(reinterpret_cast<char*>(&maxSamples), sizeof(maxSamples));
+    stream.read(reinterpret_cast<char*>(&maxDepth), sizeof(maxDepth));
+    stream.read(reinterpret_cast<char*>(&maxDepthSPLThreshold), sizeof(maxDepthSPLThreshold));
+    stream.read(reinterpret_cast<char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
+    stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(decayRatio));
+    stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
+    stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
 }
 
 }

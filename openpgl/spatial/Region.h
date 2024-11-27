@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../data/SampleStatistics.h"
+#include "../data/Embedding.h"
 #include "../data/CEStatistics.h"
 // #include "../data/DivergenceStatistics.h"
 #include "../openpgl_common.h"
@@ -23,124 +24,61 @@ struct Region : public IRegion {
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
-    bool isLookahead{false};
-    bool removed{false};
     struct CandidateSplit {  // for non-lookahead regions
         float pos;
-        uint8_t dim : 2;
-        uint32_t dataIdx : 30;  // left child's index into the region storage, not the tree nodes!
+        uint8_t dim;
 
-        CandidateSplit() : pos(0), dim(3), dataIdx(0) {}
+        CandidateSplit() : pos(0), dim(3) {}
 
         bool valid() const { return dim < 3; }
 
         void serialize(std::ostream &stream) const
         {
             stream.write(reinterpret_cast<const char *>(&pos), sizeof(pos));
-            auto dimAndNodeIdx = reinterpret_cast<const uint32_t *>(&pos + 1);
-            stream.write(reinterpret_cast<const char *>(dimAndNodeIdx), sizeof(uint32_t));
+            stream.write(reinterpret_cast<const char *>(&dim), sizeof(dim));
         }
 
         void deserialize(std::istream &stream)
         {
             stream.read(reinterpret_cast<char *>(&pos), sizeof(pos));
-            auto dimAndNodeIdx = reinterpret_cast<uint32_t *>(&pos + 1);
-            stream.read(reinterpret_cast<char *>(dimAndNodeIdx), sizeof(uint32_t));
+            stream.read(reinterpret_cast<char *>(&dim), sizeof(dim));
         }
     } candidateSplit;
 
-    struct SelfAndParentCEStatistics {  // for lookahead regions
-        CEStatistics self;
-        CEStatistics parent;
+    Embedding embeddingsLR[2] {};  // for the lookahead children
+    CEStatistics ceStatistics;
 
-        void serialize(std::ostream &stream) const
-        {
-            self.serialize(stream);
-            parent.serialize(stream);
-        }
-
-        void deserialize(std::istream &stream)
-        {
-            self.deserialize(stream);
-            parent.deserialize(stream);
-        }
-    } ceStatistics;
-
-    float embedding[PGL_EMBEDDING_SIZE] = {};
-    float embeddingNormalizer = 0;
     uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
     // bool valid{true};
-    void setLookahead() {
-        isLookahead = true;
-    }
-
-    void unsetLookahead() {
-        isLookahead = false;
-        candidateSplit.dim = 3; // invalid
-    }
 
     bool hasCandidateSplit() const {
-        return !isLookahead && candidateSplit.valid();
+        return candidateSplit.valid();
     }
 
-    void setCandidateSplit(uint8_t dim, float pos, uint32_t leftDataIdx) {
-        isLookahead = false;
+    void setCandidateSplit(uint8_t dim, float pos) {
         candidateSplit.pos = pos;
         candidateSplit.dim = dim;
-        candidateSplit.dataIdx = leftDataIdx;
     }
 
-    inline void decayDivergence(float a) {
-        ceStatistics.self.decay(a);
-        ceStatistics.parent.decay(a);
+    void unsetCandidateSplit() {
+        resetEmbeddings();
+        candidateSplit.dim = 3;
     }
 
-    template<typename SampleIterator>
-    void updateCE(const Region &parent, SampleIterator begin, SampleIterator end) {
-        for (auto it = begin; it != end; ++it) {
-            auto _dir = pgl_vec3f(it->direction);
-            Vector3 dir{_dir.x, _dir.y, _dir.z};
-            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
-            ceStatistics.parent.addSample(it->weight, parent.distribution.pdf(dir));
-        }
+    void resetEmbeddings() {
+        embeddingsLR[0].clear();
+        embeddingsLR[1].clear();
     }
 
-    template<typename SampleIterator>
-    void updateCE(SampleIterator begin, SampleIterator end) {
-        for (auto it = begin; it != end; ++it) {
-            auto _dir = pgl_vec3f(it->direction);
-            Vector3 dir{_dir.x, _dir.y, _dir.z};
-            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
-        }
-    }
-
-    void resetEmbedding() {
-        memset(embedding, 0, sizeof(embedding));
-        embeddingNormalizer = 0;
-    }
-
-    PGLDirectionalEmbedding getEmbedding() const {
+    PGLDirectionalEmbedding getEmbedding(bool isRight) const {
         PGLDirectionalEmbedding ret;
         for (size_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
-            ret.embedding[i] = embedding[i] / embeddingNormalizer;
+            ret.embedding[i] = embeddingsLR[isRight].getEntry(i);
         }
         return ret;
-    }
-
-    template<typename SampleIterator>
-    void updateEmbedding(SampleIterator begin, SampleIterator end) {
-        for (auto it = begin; it != end; ++it) {
-            uint8_t idx = pgl_get_embedding_index(it->direction);
-            embedding[idx] += it->weight;
-            ++embeddingNormalizer;
-        }
-    }
-
-    void updateEmbeddingZeroWeight(size_t numSamples) {
-        embeddingNormalizer += (float) numSamples;
     }
 
     inline const BBox &getRegionBounds() const
@@ -204,11 +142,9 @@ struct Region : public IRegion {
 #endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
-        stream.write(reinterpret_cast<const char *>(&isLookahead), sizeof(isLookahead));
-        ceStatistics.serialize(stream);
         candidateSplit.serialize(stream);
-        stream.write(reinterpret_cast<const char *>(embedding), sizeof(embedding));
-        stream.write(reinterpret_cast<const char *>(&embeddingNormalizer), sizeof(embeddingNormalizer));
+        stream.write(reinterpret_cast<const char *>(embeddingsLR), sizeof(embeddingsLR));
+        ceStatistics.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
 
@@ -226,11 +162,9 @@ struct Region : public IRegion {
 #endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
-        stream.read(reinterpret_cast<char *>(&isLookahead), sizeof(isLookahead));
-        ceStatistics.deserialize(stream);
         candidateSplit.deserialize(stream);
-        stream.read(reinterpret_cast<char *>(embedding), sizeof(embedding));
-        stream.read(reinterpret_cast<char *>(&embeddingNormalizer), sizeof(embeddingNormalizer));
+        stream.read(reinterpret_cast<char *>(embeddingsLR), sizeof(embeddingsLR));
+        ceStatistics.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
 
