@@ -838,9 +838,9 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldArgumentsSetDefaults(PGLFieldArguments
         case PGL_SPATIAL_STRUCTURE_TYPE::PGL_SPATIAL_STRUCTURE_KDTREE:
             fieldArguments.spatialStructureType = PGL_SPATIAL_STRUCTURE_KDTREE;
             fieldArguments.spatialSturctureArguments = new PGLKDTreeArguments();
-            reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->maxSamples = maxSamplesPerLeaf;
-            reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->minSamples = minSamplesPerLeaf;
             reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->maxDepth = maxDepth;
+            reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->sampleCountThreshold = maxSamplesPerLeaf;
+            // reinterpret_cast<PGLKDTreeArguments *>(fieldArguments.spatialSturctureArguments)->minSamples = minSamplesPerLeaf;
             break;
     }
 
