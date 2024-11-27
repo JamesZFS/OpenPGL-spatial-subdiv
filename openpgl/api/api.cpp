@@ -312,20 +312,6 @@ extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(P
     return gField->getRegionStatsSurface(id);
 }
 
-extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetCoarseRegionStatsSurface(PGLField field, pgl_point3f position)
-{
-    const auto *gField = (const IGuidingField *)field;
-    const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getCoarseRegionStatsSurface(pos);
-}
-
-extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetFineRegionStatsSurface(PGLField field, pgl_point3f position)
-{
-    const auto *gField = (const IGuidingField *)field;
-    const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getFineRegionStatsSurface(pos);
-}
-
 extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position)
 {
     const auto *gField = (const IGuidingField *)field;
@@ -333,10 +319,11 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics>
     return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
-extern "C" OPENPGL_DLLEXPORT PGLDirectionalEmbedding pglFieldGetDirectionalEmbedding(PGLField field, uint32_t id)
+extern "C" OPENPGL_DLLEXPORT PGLDirectionalEmbedding pglFieldGetDirectionalEmbedding(PGLField field, pgl_point3f position)
 {
     const auto *gField = (const IGuidingField *)field;
-    return gField->getDirectionalEmbedding(id);
+    const openpgl::Point3 pos(position.x, position.y, position.z);
+    return gField->getDirectionalEmbedding(pos);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

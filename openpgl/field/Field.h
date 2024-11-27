@@ -22,8 +22,6 @@
 namespace openpgl
 {
 
-thread_local static std::vector<SampleData> threadSamples;
-
 template <int Vecsize, class TDirectionalDistributionFactory, template <typename, typename, typename, typename> class TSpatialStructureBuilder, typename TSamplingDistribution>
 struct Field {
 public:
@@ -154,18 +152,10 @@ public:
         return region ? id : -1;
     }
 
+    // Deprecated
     inline const RegionType *getFineRegion(const openpgl::Point3 &p, float *sample1D, uint32_t &id) const
     {
-        auto coarse = getRegion(p, sample1D, id);
-        if (!coarse) return nullptr;
-        if (coarse->hasCandidateSplit()) {
-            id = coarse->candidateSplit.dataIdx;
-            if (p[coarse->candidateSplit.dim] >= coarse->candidateSplit.pos)
-                id++;  // right child
-            return &m_regionStorageContainer[id].first;
-        } else {
-            return nullptr;
-        }
+        return getRegion(p, sample1D, id);
     }
 
     void buildField(const SampleContainer &samples)
@@ -211,7 +201,7 @@ public:
                 estimateSceneBounds(samples_);
             }
             updateStep.reset();
-            buildSpatialStructure(m_sceneBounds, samples_);
+            buildSpatialStructure(m_sceneBounds, samples_, zeroValueSamples_);
             m_timeLastUpdateSpatialStructureUpdate = updateStep.elapsed() * 1e-3f;
 
             updateStep.reset();
@@ -313,14 +303,13 @@ public:
 
     void clearCEStats() {
         for (auto &region : m_regionStorageContainer) {
-            region.first.ceStatistics.self.clear();
-            region.first.ceStatistics.parent.clear();
+            region.first.ceStatistics.clear();
         }
     }
 
     void clearEmbeddings() {
         for (auto &region : m_regionStorageContainer) {
-            region.first.resetEmbedding();
+            region.first.resetEmbeddings();
         }
     }
 
@@ -360,9 +349,15 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
-    PGLDirectionalEmbedding getDirectionalEmbedding(uint32_t id) const {
-        if (id >= m_regionStorageContainer.size()) return {};
-        return m_regionStorageContainer[id].first.getEmbedding();
+    PGLDirectionalEmbedding getDirectionalEmbedding(const openpgl::Point3 &pos) const {
+        uint32_t id = getRegionId(pos);
+        if (id < m_regionStorageContainer.size()) {
+            auto &region = m_regionStorageContainer[id].first;
+            if (region.hasCandidateSplit()) {
+                return region.getEmbedding(pos[region.candidateSplit.dim] >= region.candidateSplit.pos);
+            }
+        }
+        return {};
     }
 
     PGLRegionStatistics getRegionStats(uint32_t id) const
@@ -371,14 +366,14 @@ public:
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
-        stats.removed = region.removed;
+        stats.removed = false;
         // stats.numSamples = region.ceStatistics.getNumSamples();
         stats.numSamples = region.sampleStatistics.numSamples;
         stats.numZeroValueSamples = region.sampleStatistics.numZeroValueSamples;
         stats.depth = region.depth;
         if (stats.numSamples > 0) {
-            stats.fluence = region.ceStatistics.self.getFluence();
-            stats.crossEntropy = region.ceStatistics.self.getCE();
+            stats.fluence = region.ceStatistics.getFluence();
+            stats.crossEntropy = region.ceStatistics.getCE();
         }
         stats.hasCandidateSplit = region.hasCandidateSplit();
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
@@ -386,30 +381,7 @@ public:
         return stats;
     }
 
-    PGLRegionStatistics getCoarseRegionStats(const openpgl::Point3 &pos) const
-    {
-        uint32_t id = getRegionId(pos);
-        return getRegionStats(id);
-    }
-
-    PGLRegionStatistics getFineRegionStats(const openpgl::Point3 &pos) const
-    {
-        uint32_t id = getRegionId(pos);
-        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
-        if (id >= m_regionStorageContainer.size())
-            return stats;
-        auto &coarse = m_regionStorageContainer[id].first;
-        if (coarse.hasCandidateSplit()) {
-            id = coarse.candidateSplit.dataIdx;
-            if (pos[coarse.candidateSplit.dim] >= coarse.candidateSplit.pos)
-                id++;  // right child
-            return getRegionStats(id);
-        } else {
-            stats.id = -1;
-            return stats;
-        }
-    }
-
+    // ! Deprecated API
     std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStats(const openpgl::Point3 &pos) const
     {
         PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
@@ -417,45 +389,7 @@ public:
         uint32_t cId = getRegionId(pos);
         if (cId >= m_regionStorageContainer.size())
             return {cStats, fStats};
-        cStats.id = cId;
-        auto &cRegion = m_regionStorageContainer[cId].first;
-        cStats.removed = cRegion.removed;
-        OPENPGL_ASSERT(!cStats.removed);
-        cStats.numSamples = cRegion.sampleStatistics.numSamples;
-        cStats.numZeroValueSamples = cRegion.sampleStatistics.numZeroValueSamples;
-        cStats.depth = cRegion.depth;
-        cStats.hasCandidateSplit = cRegion.hasCandidateSplit();
-        cStats.lowerBounds = {cRegion.regionBounds.lower.x, cRegion.regionBounds.lower.y, cRegion.regionBounds.lower.z};
-        cStats.upperBounds = {cRegion.regionBounds.upper.x, cRegion.regionBounds.upper.y, cRegion.regionBounds.upper.z};
-        if (cStats.hasCandidateSplit) {
-            uint32_t fId = cRegion.candidateSplit.dataIdx;
-            if (pos[cRegion.candidateSplit.dim] >= cRegion.candidateSplit.pos)
-                fId++;  // right child
-            OPENPGL_ASSERT(fId < m_regionStorageContainer.size());
-            fStats.id = fId;
-            auto &fRegion = m_regionStorageContainer[fId].first;
-            fStats.removed = fRegion.removed;
-            OPENPGL_ASSERT(!fStats.removed);
-            fStats.numSamples = fRegion.sampleStatistics.numSamples;
-            fStats.numZeroValueSamples = fRegion.sampleStatistics.numZeroValueSamples;
-            fStats.depth = fRegion.depth;
-            fStats.hasCandidateSplit = fRegion.hasCandidateSplit();
-            fStats.lowerBounds = {fRegion.regionBounds.lower.x, fRegion.regionBounds.lower.y, fRegion.regionBounds.lower.z};
-            fStats.upperBounds = {fRegion.regionBounds.upper.x, fRegion.regionBounds.upper.y, fRegion.regionBounds.upper.z};
-            OPENPGL_ASSERT(!fStats.hasCandidateSplit);
-            if (fRegion.ceStatistics.parent.getNumSamples() > 0) {
-                cStats.fluence = fRegion.ceStatistics.parent.getFluence();  // parent stats come from the child.parent
-                cStats.crossEntropy = fRegion.ceStatistics.parent.getCE();
-            }
-            if (fRegion.ceStatistics.self.getNumSamples() > 0) {
-                fStats.fluence = fRegion.ceStatistics.self.getFluence();
-                fStats.crossEntropy = fRegion.ceStatistics.self.getCE();
-            }
-        } else if (cRegion.ceStatistics.self.getNumSamples() > 0) {
-            cStats.fluence = cRegion.ceStatistics.self.getFluence();
-            cStats.crossEntropy = cRegion.ceStatistics.self.getCE();
-        }
-        return {cStats, fStats};
+        return {getRegionStats(cId), getRegionStats(cId)};
     }
 
     void serialize(std::ostream &os) const
@@ -547,22 +481,6 @@ public:
         return m_initialized;
     }
 
-#if COMPUTE_CE_STYLE == 1
-    void updateCE(RegionType &region, const RegionType &parent, SampleContainerInternal::iterator begin, SampleContainerInternal::iterator end) const
-    {
-        threadSamples.assign(begin, end);  // make a temporary copy
-        m_distributionFactory.prepareSamples(threadSamples.data(), threadSamples.size(), region.sampleStatistics, m_distributionFactorySettings);
-        region.updateCE(parent, threadSamples.begin(), threadSamples.end());
-    }
-
-    void updateCE(RegionType &region, SampleContainerInternal::iterator begin, SampleContainerInternal::iterator end) const
-    {
-        threadSamples.assign(begin, end);  // make a temporary copy
-        m_distributionFactory.prepareSamples(threadSamples.data(), threadSamples.size(), region.sampleStatistics, m_distributionFactorySettings);
-        region.updateCE(threadSamples.begin(), threadSamples.end());
-    }
-#endif
-
    private:
     void estimateSceneBounds(const SampleContainerInternal &samples)
     {
@@ -603,9 +521,9 @@ public:
             return knnTree.sampleApproximateClosestRegionIdx(dataIdx, p, sample);
     }
 
-    inline void buildSpatialStructure(const BBox &bounds, SampleContainerInternal &samples)
+    inline void buildSpatialStructure(const BBox &bounds, SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.buildRegionSearchTree(m_regionStorageContainer);
@@ -619,17 +537,7 @@ public:
     inline void updateSpatialStructure(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
         Timer timer;
-        // 1. Evaluate regions with new-coming samples
-        // if (m_spatialSubdivBuilderSettings.enableCE) {
-        if (true) {
-            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
-        }
-        // 2. Subdivide
-        timer.reset();
-        m_spatialSubdivBuilder.updateTree(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
-        m_spatialSubdivBuilder.insertTree(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer);
+        m_spatialSubdivBuilder.update(m_spatialSubdiv, samples, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.reset();
@@ -642,9 +550,8 @@ public:
         std::cout << "updateTree() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
     }
 
-    inline void fitRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
+    inline void fitRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "fitRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
@@ -662,27 +569,23 @@ public:
                 openpgl::Point3 sampleMean = regionStorage.first.sampleStatistics.mean;
                 if (regionStorage.second.size() > 0)
                 {
-                    Timer timer;
-                    // Copy to thread temporary vector
-                    threadSamples.assign(samples.data() + regionStorage.second.m_begin, samples.data() + regionStorage.second.m_end);
-                    timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
-                        std::sort(threadSamples.begin(), threadSamples.end(), SampleDataLess);
+                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
                     }
 
                     if (m_fitRegions)
                     {
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
-                        m_distributionFactory.prepareSamples(threadSamples.data(), regionStorage.second.size(),
+                        m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                              regionStorage.first.sampleStatistics, m_distributionFactorySettings);
-                        m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, threadSamples.data(),
-                                                  regionStorage.second.size(), m_distributionFactorySettings, fittingStats);
+                        m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
+                                                  regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
 #ifdef OPENPGL_RADIANCE_CACHES
-                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, threadSamples.data(),
-                                                                    regionStorage.second.size(), regionStorage.first.numZeroValueSamples,
+                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
+                                                                    regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
                                                                     regionStorage.first.sampleStatistics);
-                        regionStorage.first.outRadianceHist.update(threadSamples.data(), regionStorage.second.size(),
+                        regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);
 #endif
@@ -706,14 +609,12 @@ public:
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
-        m_timeLastUpdateCopySamples += timeCopySamples;
         m_initialized = true;
         OPENPGL_ASSERT(this->isValid());
     }
 
-    void updateRegions(const SampleContainerInternal &samples, const ZeroValueSampleContainerInternal &zeroValueSamples)
+    void updateRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        std::atomic<float> timeCopySamples {0};
         size_t nGuidingRegions = m_regionStorageContainer.size();
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "updateRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
@@ -743,13 +644,9 @@ public:
 #ifdef OPENPGL_DEBUG_MODE
                     RegionType oldRegion = regionStorage.first;
 #endif
-                    Timer timer;
-                    // Copy to thread temporary vector
-                    threadSamples.assign(samples.data() + regionStorage.second.m_begin, samples.data() + regionStorage.second.m_end);
-                    timeCopySamples += timer.elapsed() * 1e-3f;
                     if (m_deterministic)
                     {
-                        std::sort(threadSamples.begin(), threadSamples.end(), SampleDataLess);
+                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
                     }
 
                     if (m_fitRegions)
@@ -764,15 +661,15 @@ public:
                             OPENPGL_ASSERT(regionStorage.first.trainingStatistics.sufficientStatistics.isValid());
                         }
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
-                        m_distributionFactory.prepareSamples(threadSamples.data(), regionStorage.second.size(),
+                        m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                              regionStorage.first.sampleStatistics, m_distributionFactorySettings);
-                        m_distributionFactory.update(regionStorage.first.distribution, regionStorage.first.trainingStatistics, threadSamples.data(),
-                                                     regionStorage.second.size(), m_distributionFactorySettings, fittingStats);
+                        m_distributionFactory.update(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
+                                                     regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
 #ifdef OPENPGL_RADIANCE_CACHES
-                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, threadSamples.data(),
-                                                                    regionStorage.second.size(), regionStorage.first.numZeroValueSamples,
+                        m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
+                                                                    regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
                                                                     regionStorage.first.sampleStatistics);
-                        regionStorage.first.outRadianceHist.update(threadSamples.data(), regionStorage.second.size(),
+                        regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);
 #endif
@@ -802,7 +699,6 @@ public:
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
-        m_timeLastUpdateCopySamples += timeCopySamples;
         OPENPGL_ASSERT(this->isValid());
     }
 

@@ -155,15 +155,9 @@ struct Field
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
 
-    /// API for non-lookahead regions
-    PGLRegionStatistics GetCoarseRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
-
-    /// API for lookahead regions
-    PGLRegionStatistics GetFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
-
     std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
-    PGLDirectionalEmbedding GetDirectionalEmbedding(uint32_t id) const;
+    PGLDirectionalEmbedding GetDirectionalEmbedding(openpgl::cpp::Point3f pos) const;
 
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
@@ -327,28 +321,16 @@ OPENPGL_INLINE PGLRegionStatistics Field::GetRegionStatisticsSurface(uint32_t id
     return pglFieldGetRegionStatsSurface(m_fieldHandle, id);
 }
 
-OPENPGL_INLINE PGLRegionStatistics Field::GetCoarseRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
-{
-    OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetCoarseRegionStatsSurface(m_fieldHandle, pos);
-}
-
-OPENPGL_INLINE PGLRegionStatistics Field::GetFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
-{
-    OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetFineRegionStatsSurface(m_fieldHandle, pos);
-}
-
 OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
 }
 
-OPENPGL_INLINE PGLDirectionalEmbedding Field::GetDirectionalEmbedding(uint32_t id) const
+OPENPGL_INLINE PGLDirectionalEmbedding Field::GetDirectionalEmbedding(openpgl::cpp::Point3f pos) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetDirectionalEmbedding(m_fieldHandle, id);
+    return pglFieldGetDirectionalEmbedding(m_fieldHandle, pos);
 }
 
 }  // namespace cpp
