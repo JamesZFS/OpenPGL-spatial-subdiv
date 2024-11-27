@@ -43,10 +43,11 @@ extern "C"
     {
         bool knnLookup{true};
         bool isKnnLookup{false};
-        size_t minSamples{100};
-        size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
-        size_t maxDepth{32};
-        size_t maxDepthWithSampleCount{32};
+        uint32_t maxDepth {32};
+        uint32_t minSamplesCandidateSplit {1000};
+        uint32_t minSamplesPromotion {1000};
+        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};
+        uint32_t maxDepthWithSampleCount {1};
         float embeddingDistanceThreshold{1.0f};
         bool enablePromotion{true};
         float ceDecay{0.8f};

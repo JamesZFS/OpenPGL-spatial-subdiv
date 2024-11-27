@@ -53,10 +53,11 @@ struct KDTreePartitionBuilder
     struct Settings
     {
         PGL_SPATIAL_SPLIT_TYPE splitType {PGL_SPATIAL_SPLIT_BASELINE};
-        size_t minSamples {100};
-        size_t maxSamples {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
-        size_t maxDepth {32};
-        size_t maxDepthSPLThreshold {1};  // maximum depth with Samples-Per-Leaf threshold. Setting this to 1 means disabling it
+        uint32_t maxDepth {32};
+        uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
+        uint32_t minSamplesPromotion {1000};  // to ensure the variance of embedding estimates are small enough
+        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
+        uint32_t maxDepthWithSampleCount {1};  // maximum depth with sample count threshold. Setting this to 1 means disabling it
         float embeddingDistanceThreshold {1.0f};  // triggers promotion if the distance between the embeddings of the left and right children is greater than this threshold
         float decayRatio {0.25f};  // set from field
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
@@ -66,18 +67,21 @@ struct KDTreePartitionBuilder
         void deserialize(std::istream& stream);
         std::string toString() const;
 
-        bool operator==(const Settings& b) const {
-            return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth &&
-                   maxDepthSPLThreshold == b.maxDepthSPLThreshold && embeddingDistanceThreshold == b.embeddingDistanceThreshold &&
+        bool operator==(const Settings &b) const
+        {
+            return splitType == b.splitType && maxDepth == b.maxDepth && minSamplesCandidateSplit == b.minSamplesCandidateSplit &&
+                   minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
+                   maxDepthWithSampleCount == b.maxDepthWithSampleCount && embeddingDistanceThreshold == b.embeddingDistanceThreshold &&
                    decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
         {
-            minSamples = cfg.minSamples;
-            maxSamples = cfg.maxSamples;
             maxDepth = cfg.maxDepth;
-            maxDepthSPLThreshold = cfg.maxDepthWithSampleCount;
+            minSamplesCandidateSplit = cfg.minSamplesCandidateSplit;
+            minSamplesPromotion = cfg.minSamplesPromotion;
+            sampleCountThreshold = cfg.sampleCountThreshold;
+            maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             embeddingDistanceThreshold = cfg.embeddingDistanceThreshold;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
@@ -99,7 +103,7 @@ struct KDTreePartitionBuilder
     void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
     {
         Timer timer;
-        int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.maxSamples+32;
+        int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.sampleCountThreshold+32;
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
@@ -149,11 +153,23 @@ struct KDTreePartitionBuilder
             auto &[region, range] = dataStorage[dataIdx];
             SampleStatistics mergedStats = computeStats(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
             mergedStats.merge(region.sampleStatistics);
+            bool exceedsSampleCountThs = depth < settings.maxDepthWithSampleCount && mergedStats.getNumSamples() >= settings.sampleCountThreshold;
+
+            auto accumulateSamples = [&] {
+                region.sampleStatistics = mergedStats;
+                region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
+                region.numZeroValueSamples = zeroSampleRange.size();
+                range = sampleRange;
+#ifdef OPENPGL_RADIANCE_CACHES
+                range.m_is_begin = zeroSampleRange.m_begin;
+                range.m_is_end = zeroSampleRange.m_end;
+#endif
+            };
 
             if (region.hasCandidateSplit()) {
                 splitDim = region.candidateSplit.dim, splitPos = region.candidateSplit.pos;
             } else {
-                if (depth < settings.maxDepth && mergedStats.getNumSamples() > settings.minSamples) {
+                if (depth < settings.maxDepth && mergedStats.getNumSamples() >= settings.minSamplesCandidateSplit) {
                     // Create a candidate split
                     proposeSplit(prevSplitDim, bounds, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, mergedStats, splitDim, splitPos, settings);
                     OPENPGL_ASSERT(splitDim < 3);
@@ -161,14 +177,7 @@ struct KDTreePartitionBuilder
                     // Fallthrough
                 } else {
                     // Keep accumulating samples
-                    region.sampleStatistics = mergedStats;
-                    region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
-                    region.numZeroValueSamples = zeroSampleRange.size();
-                    range = sampleRange;
-#ifdef OPENPGL_RADIANCE_CACHES
-                    range.m_is_begin = zeroSampleRange.m_begin;
-                    range.m_is_end = zeroSampleRange.m_end;
-#endif
+                    accumulateSamples();
                     return;
                 }
             }
@@ -177,14 +186,22 @@ struct KDTreePartitionBuilder
             // Split samples
             auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
             auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, splitDim, splitPos);
-            // Update the LR embeddings
-            region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-            region.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
-            region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
-            region.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
-            // Check the split condition
-            if (settings.enablePromotion && Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]) > settings.embeddingDistanceThreshold) {
-                // Promote!
+            bool shouldPromote = false;
+
+            if (!exceedsSampleCountThs) {  // Can skip this part if exceeding the sample count threshold
+                // Update the LR embeddings
+                region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                region.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                region.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                // Check the adaptive split condition
+                shouldPromote = settings.enablePromotion &&
+                    std::min(region.embeddingsLR[0].getNumSamples(), region.embeddingsLR[1].getNumSamples()) >= settings.minSamplesPromotion &&
+                    Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]) > settings.embeddingDistanceThreshold;
+            }
+
+            if (exceedsSampleCountThs || shouldPromote) {
+                // Split node!
                 auto rChildIter = dataStorage.emplace_back(region, Range());
                 TRegion *regionsLR[2] = {&region, &rChildIter->first};
                 for (int c: {0, 1}) {
@@ -220,14 +237,7 @@ struct KDTreePartitionBuilder
                 );
             } else {
                 // Stops! Just merge in new samples
-                region.sampleStatistics = mergedStats;
-                region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
-                region.numZeroValueSamples = zeroSampleRange.size();
-                range = sampleRange;
-#ifdef OPENPGL_RADIANCE_CACHES
-                range.m_is_begin = zeroSampleRange.m_begin;
-                range.m_is_end = zeroSampleRange.m_end;
-#endif
+                accumulateSamples();
             }
         } else {
             // Internal node
@@ -362,15 +372,16 @@ struct KDTreePartitionBuilder
     template<typename SampleIterator>
     inline float proposeSplit(uint8_t prevSplitDim, const BBox &bounds, SampleIterator begin, SampleIterator end, const SampleStatistics &stats,
                               uint8_t &splitDim, float &splitPos, const Settings &buildSettings) const {
+        size_t minSamplesPerSide = buildSettings.minSamplesCandidateSplit / 2;
         switch (buildSettings.splitType) {
             case PGL_SPATIAL_SPLIT_BASELINE: splitBaseline(stats, splitDim, splitPos); return 0;
             case PGL_SPATIAL_SPLIT_ROUNDROBIN: splitRoundRobin(prevSplitDim, stats, splitDim, splitPos); return 0;
             case PGL_SPATIAL_SPLIT_PPG: splitPPG(prevSplitDim, bounds, stats, splitDim, splitPos); return 0;
 
-            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, buildSettings.minSamples, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_COVS: return covarianceScan(begin, end, stats, buildSettings.minSamples, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, buildSettings.minSamples, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, buildSettings.minSamples, buildSettings.defensiveness, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_COVS: return covarianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
 
             default: throw std::runtime_error("Unknown split type");
         }
@@ -986,10 +997,11 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
 {
     std::stringstream ss;
     ss << "KDTreePartitionBuilder::Settings:" << std::endl;
-    ss << "  minSamples: " << minSamples << std::endl;
-    ss << "  maxSamples: " << maxSamples << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
-    ss << "  maxDepthSPLThreshold: " << maxDepthSPLThreshold << std::endl;
+    ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
+    ss << "  minSamplesPromotion: " << minSamplesPromotion << std::endl;
+    ss << "  sampleCountThreshold: " << sampleCountThreshold << std::endl;
+    ss << "  maxDepthWithSampleCount: " << maxDepthWithSampleCount << std::endl;
     ss << "  embeddingDistanceThreshold: " << embeddingDistanceThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
@@ -1002,10 +1014,11 @@ template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesCo
 inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamplesContainer, TSamplingDistribution>::Settings::serialize(std::ostream& stream)const
 {
     stream.write(reinterpret_cast<const char*>(&splitType), sizeof(splitType));
-    stream.write(reinterpret_cast<const char*>(&minSamples), sizeof(minSamples));
-    stream.write(reinterpret_cast<const char*>(&maxSamples), sizeof(maxSamples));
     stream.write(reinterpret_cast<const char*>(&maxDepth), sizeof(maxDepth));
-    stream.write(reinterpret_cast<const char*>(&maxDepthSPLThreshold), sizeof(maxDepthSPLThreshold));
+    stream.write(reinterpret_cast<const char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
+    stream.write(reinterpret_cast<const char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
+    stream.write(reinterpret_cast<const char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
+    stream.write(reinterpret_cast<const char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
     stream.write(reinterpret_cast<const char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
     stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(decayRatio));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
@@ -1016,10 +1029,11 @@ template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesCo
 inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamplesContainer, TSamplingDistribution>::Settings::deserialize(std::istream& stream)
 {
     stream.read(reinterpret_cast<char*>(&splitType), sizeof(splitType));
-    stream.read(reinterpret_cast<char*>(&minSamples), sizeof(minSamples));
-    stream.read(reinterpret_cast<char*>(&maxSamples), sizeof(maxSamples));
     stream.read(reinterpret_cast<char*>(&maxDepth), sizeof(maxDepth));
-    stream.read(reinterpret_cast<char*>(&maxDepthSPLThreshold), sizeof(maxDepthSPLThreshold));
+    stream.read(reinterpret_cast<char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
+    stream.read(reinterpret_cast<char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
+    stream.read(reinterpret_cast<char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
+    stream.read(reinterpret_cast<char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
     stream.read(reinterpret_cast<char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
     stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(decayRatio));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
