@@ -39,13 +39,28 @@ struct Embedding  // Directional embedding
     }
 
     // L2 distance between two embeddings
-    static float getDistance(const Embedding &a, const Embedding &b) {
+    static float getDistanceL2(const Embedding &a, const Embedding &b) {
         float sum = 0;
-        for (size_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
             float diff = a.getEntry(i) - b.getEntry(i);
             sum += diff * diff;
         }
         return std::sqrt(sum);
+    }
+
+    // SMAPE: symmetric mean absolute percentage error
+    // Has a range of [0, 2]
+    static float getDistanceSMAPE(const Embedding &a, const Embedding &b) {
+        float sum = 0;
+        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+            float ai = a.getEntry(i), bi = b.getEntry(i);
+            sum += 2.0f * std::abs(ai - bi) / (ai + bi);
+        }
+        return sum / (float) PGL_EMBEDDING_SIZE;
+    }
+
+    static float getDistance(const Embedding &a, const Embedding &b) {
+        return getDistanceSMAPE(a, b);
     }
 
     void serialize(std::ostream &stream) const {
