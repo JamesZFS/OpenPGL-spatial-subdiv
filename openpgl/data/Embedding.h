@@ -38,6 +38,13 @@ struct Embedding  // Directional embedding
         return bins[idx] / normalizer;
     }
 
+    explicit operator PGLDirectionalEmbedding() const {
+        PGLDirectionalEmbedding embedding;
+        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++)
+            embedding.embedding[i] = getEntry(i);
+        return embedding;
+    }
+
     // L2 distance between two embeddings
     static float getDistanceL2(const Embedding &a, const Embedding &b) {
         float sum = 0;

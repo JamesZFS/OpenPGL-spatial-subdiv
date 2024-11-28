@@ -354,7 +354,8 @@ public:
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
             if (region.hasCandidateSplit()) {
-                return region.getEmbedding(pos[region.candidateSplit.dim] >= region.candidateSplit.pos);
+                auto &candidate = region.getBestCandidateSplit();
+                return PGLDirectionalEmbedding(candidate.embeddingsLR[pos[region.bestSplitDim] >= candidate.pos]);
             }
         }
         return {};
@@ -362,7 +363,7 @@ public:
 
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
-        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .energy = std::numeric_limits<float>::quiet_NaN()};
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
@@ -375,14 +376,15 @@ public:
             stats.fluence = region.ceStatistics.getFluence();
             stats.crossEntropy = region.ceStatistics.getCE();
         }
-        stats.embeddingDistance = region.embeddingDistance;
         stats.hasCandidateSplit = region.hasCandidateSplit();
         if (stats.hasCandidateSplit) {
-            stats.splitDim = region.candidateSplit.dim;
-            stats.splitPos = region.candidateSplit.pos;
+            auto &candidate = region.getBestCandidateSplit();
+            stats.energy = candidate.energy;
+            stats.splitDim = region.bestSplitDim;
+            stats.splitPos = candidate.pos;
         }
-        stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
-        stats.sampleVariance = {region.sampleStatistics.getVariance().x, region.sampleStatistics.getVariance().y, region.sampleStatistics.getVariance().z};
+        // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
+        // stats.sampleVariance = {region.sampleStatistics.getVariance().x, region.sampleStatistics.getVariance().y, region.sampleStatistics.getVariance().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
         return stats;
@@ -399,17 +401,17 @@ public:
         cStats = getRegionStats(cId);
         auto &region = m_regionStorageContainer[cId].first;
         if (cStats.hasCandidateSplit) {
-            auto &candidateSplit = region.candidateSplit;
+            auto &candidate = region.getBestCandidateSplit();
             fStats.depth = region.depth + 1;
             fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
-            if (pos[candidateSplit.dim] >= candidateSplit.pos) {
+            if (pos[region.bestSplitDim] >= candidate.pos) {
                 fStats.id = cId | (1 << 31);  // a fake distinct ID
-                fStats.numSamples = region.embeddingsLR[1].getNumSamples();
-                fStats.lowerBounds[candidateSplit.dim] = candidateSplit.pos;
+                fStats.numSamples = candidate.embeddingsLR[1].getNumSamples();
+                fStats.lowerBounds[region.bestSplitDim] = candidate.pos;
             } else {
                 fStats.id = cId | (1 << 30);
-                fStats.numSamples = region.embeddingsLR[0].getNumSamples();
-                fStats.upperBounds[candidateSplit.dim] = candidateSplit.pos;
+                fStats.numSamples = candidate.embeddingsLR[0].getNumSamples();
+                fStats.upperBounds[region.bestSplitDim] = candidate.pos;
             }
         }
         return {cStats, fStats};

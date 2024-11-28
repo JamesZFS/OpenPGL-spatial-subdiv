@@ -145,7 +145,7 @@ struct KDTreePartitionBuilder
         TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
         tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings) const
     {
-        uint8_t splitDim;
+        uint8_t splitDim = 3;
         float splitPos;
 
         if (node.isLeaf()) {
@@ -153,61 +153,69 @@ struct KDTreePartitionBuilder
             auto &[region, range] = dataStorage[dataIdx];
             SampleStatistics mergedStats = computeStats(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
             mergedStats.merge(region.sampleStatistics);
-            bool exceedsSampleCountThs = depth < settings.maxDepthWithSampleCount && mergedStats.getNumSamples() >= settings.sampleCountThreshold;
 
-            auto accumulateSamples = [&] {
-                region.sampleStatistics = mergedStats;
-                region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
-                region.numZeroValueSamples = zeroSampleRange.size();
-                range = sampleRange;
-#ifdef OPENPGL_RADIANCE_CACHES
-                range.m_is_begin = zeroSampleRange.m_begin;
-                range.m_is_end = zeroSampleRange.m_end;
-#endif
-            };
+            bool shouldSplit = false;
 
-            if (region.hasCandidateSplit()) {
-                splitDim = region.candidateSplit.dim, splitPos = region.candidateSplit.pos;
-            } else {
-                if (depth < settings.maxDepth && mergedStats.getNumSamples() >= settings.minSamplesCandidateSplit) {
-                    // Create a candidate split
-                    proposeSplit(prevSplitDim, bounds, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, mergedStats, splitDim, splitPos, settings);
-                    OPENPGL_ASSERT(splitDim < 3);
-                    region.setCandidateSplit(splitDim, splitPos);
-                    // Fallthrough
-                } else {
-                    // Keep accumulating samples
-                    accumulateSamples();
-                    return;
+            if (depth < settings.maxDepthWithSampleCount && mergedStats.getNumSamples() >= settings.sampleCountThreshold) {  // Sample count threshold
+                // Ignoring the candidate splits, propose a new one with the merged samples
+                // proposeSplit(prevSplitDim, bounds, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, mergedStats, splitDim, splitPos, settings);
+                splitBaseline(mergedStats, splitDim, splitPos);
+                shouldSplit = true;
+            } else if (depth < settings.maxDepth && mergedStats.getNumSamples() >= settings.minSamplesCandidateSplit) {
+                // Update all candidate splits of three dimensions (if non-degenerate)
+                const Vector3 posVariances = mergedStats.getVariance();
+                const Point3 posMeans = mergedStats.getMean();
+                const float maxPosVariance = reduce_max(posVariances);
+                float maxEnergy = -std::numeric_limits<float>::infinity();
+
+                for (uint8_t dim = 0; dim < 3; ++dim) {
+                    auto &candidate = region.candidateSplits[dim];
+                    if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {  // degenerate dimension
+                        OPENPGL_ASSERT(!candidate.valid());
+                        continue;
+                    }
+                    if (!candidate.valid()) {  // haven't proposed yet
+                        candidate.pos = posMeans[dim];
+                    }
+                    OPENPGL_ASSERT(candidate.valid());
+
+                    // Split samples in that dimensions
+                    auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, dim, candidate.pos);
+                    auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, dim, candidate.pos);
+
+                    // Update embeddings and energy of this split
+                    candidate.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    candidate.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                    candidate.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                    candidate.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                    candidate.energy = Embedding::getDistance(candidate.embeddingsLR[0], candidate.embeddingsLR[1]);
+
+                    // Update best candidate split and energy
+                    if (candidate.energy > maxEnergy) {
+                        maxEnergy = candidate.energy;
+                        region.bestSplitDim = dim;
+                    }
+                }
+
+                if (region.bestSplitDim < 3 && settings.enablePromotion) {
+                    auto &candidate = region.getBestCandidateSplit();
+                    if (candidate.embeddingsLR[0].getNumSamples() >= settings.minSamplesPromotion &&
+                        candidate.embeddingsLR[1].getNumSamples() >= settings.minSamplesPromotion &&
+                        maxEnergy > settings.embeddingDistanceThreshold) {
+                        splitDim = region.bestSplitDim, splitPos = candidate.pos;
+                        shouldSplit = true;
+                    }
                 }
             }
-            OPENPGL_ASSERT(region.hasCandidateSplit());
-            OPENPGL_ASSERT(splitDim < 3);
-            // Split samples
-            auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
-            auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, splitDim, splitPos);
-            bool shouldPromote = false;
 
-            if (!exceedsSampleCountThs) {  // Can skip this part if exceeding the sample count threshold
-                // Update the LR embeddings
-                region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                region.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
-                region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
-                region.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
-                region.embeddingDistance = Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]);
-                // Check the adaptive split condition
-                shouldPromote = settings.enablePromotion &&
-                    std::min(region.embeddingsLR[0].getNumSamples(), region.embeddingsLR[1].getNumSamples()) >= settings.minSamplesPromotion &&
-                    region.embeddingDistance > settings.embeddingDistanceThreshold;
-            }
-
-            if (exceedsSampleCountThs || shouldPromote) {
+            if (shouldSplit) {
+                OPENPGL_ASSERT(splitDim < 3);
                 // Split node!
                 auto rChildIter = dataStorage.emplace_back(region, Range());
                 TRegion *regionsLR[2] = {&region, &rChildIter->first};
                 for (int c: {0, 1}) {
                     auto &childRegion = *regionsLR[c];
-                    childRegion.unsetCandidateSplit();  // also clears the embeddings
+                    childRegion.clearCandidateSplits();  // also clears the embeddings
                     childRegion.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) c);
                     childRegion.ceStatistics.decay(settings.decayRatio);
                     childRegion.splitFlag = true;
@@ -225,6 +233,10 @@ struct KDTreePartitionBuilder
                 KDNode *nodesLR[2] = {&kdTree.getNode(nodeIdsLR[0]), &kdTree.getNode(nodeIdsLR[1])};
                 nodesLR[0]->setDataNodeIdx(dataIdx), nodesLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rChildIter));
 
+                // Split samples in the best dimension
+                auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
+                auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, splitDim, splitPos);
+
                 // Recurse
                 auto boundsLR = splitBBox(bounds, splitDim, splitPos);
                 Range sampleRangesLR[2] = {Range(sampleRange.m_begin, std::distance(samples.begin(), samplesMid)),
@@ -237,8 +249,15 @@ struct KDTreePartitionBuilder
                     [&]{ updateTreeNode(kdTree, *nodesLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings); }
                 );
             } else {
-                // Stops! Just merge in new samples
-                accumulateSamples();
+                // No split! Just merge in new samples
+                region.sampleStatistics = mergedStats;
+                region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
+                region.numZeroValueSamples = zeroSampleRange.size();
+                range = sampleRange;
+#ifdef OPENPGL_RADIANCE_CACHES
+                range.m_is_begin = zeroSampleRange.m_begin;
+                range.m_is_end = zeroSampleRange.m_end;
+#endif
             }
         } else {
             // Internal node
@@ -315,26 +334,30 @@ struct KDTreePartitionBuilder
                     // float pdf = sample.guidingPDF;
                     region.ceStatistics.addSample(weight, pdf);
                 }
-                if (region.hasCandidateSplit()) {
-                    splitDim = region.candidateSplit.dim;
-                    splitPos = region.candidateSplit.pos;
+                for (uint8_t dim = 0; dim < 3; ++dim) {
+                    auto &candidate = region.candidateSplits[dim];
+                    if (!candidate.valid()) continue;
+                    splitDim = dim;
+                    splitPos = candidate.pos;
                     // Split samples
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
                     // Update the LR embeddings
-                    region.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                    region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                    candidate.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    candidate.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                 }
             } else {
                 region.ceStatistics.addZeroWeightSamples(sampleRange.size());
 
-                if (region.hasCandidateSplit()) {
-                    splitDim = region.candidateSplit.dim;
-                    splitPos = region.candidateSplit.pos;
+                for (uint8_t dim = 0; dim < 3; ++dim) {
+                    auto &candidate = region.candidateSplits[dim];
+                    if (!candidate.valid()) continue;
+                    splitDim = dim;
+                    splitPos = candidate.pos;
                     // Split samples
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
                     // Update the LR embeddings
-                    region.embeddingsLR[0].addZeroSamples(std::distance(samples.begin() + sampleRange.m_begin, samplesMid));
-                    region.embeddingsLR[1].addZeroSamples(std::distance(samplesMid, samples.begin() + sampleRange.m_end));
+                    candidate.embeddingsLR[0].addZeroSamples(std::distance(samples.begin() + sampleRange.m_begin, samplesMid));
+                    candidate.embeddingsLR[1].addZeroSamples(std::distance(samplesMid, samples.begin() + sampleRange.m_end));
                 }
             }
             return;

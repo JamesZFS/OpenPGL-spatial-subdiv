@@ -24,29 +24,39 @@ struct Region : public IRegion {
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
-    struct CandidateSplit {  // for non-lookahead regions
-        float pos;
-        uint8_t dim;
 
-        CandidateSplit() : pos(0), dim(3) {}
+    struct CandidateSplit {
+        float pos = std::numeric_limits<float>::quiet_NaN();
+        Embedding embeddingsLR[2] {};  // for the lookahead children
+        float energy = 0.0f;  // distance between embeddings
 
-        bool valid() const { return dim < 3; }
+        bool valid() const { return !std::isnan(pos); }
+
+        void reset() {
+            pos = std::numeric_limits<float>::quiet_NaN();
+            embeddingsLR[0].clear();
+            embeddingsLR[1].clear();
+            energy = 0.0f;
+        }
 
         void serialize(std::ostream &stream) const
         {
             stream.write(reinterpret_cast<const char *>(&pos), sizeof(pos));
-            stream.write(reinterpret_cast<const char *>(&dim), sizeof(dim));
+            embeddingsLR[0].serialize(stream);
+            embeddingsLR[1].serialize(stream);
+            stream.write(reinterpret_cast<const char *>(&energy), sizeof(energy));
         }
 
         void deserialize(std::istream &stream)
         {
             stream.read(reinterpret_cast<char *>(&pos), sizeof(pos));
-            stream.read(reinterpret_cast<char *>(&dim), sizeof(dim));
+            embeddingsLR[0].deserialize(stream);
+            embeddingsLR[1].deserialize(stream);
+            stream.read(reinterpret_cast<char *>(&energy), sizeof(energy));
         }
-    } candidateSplit;
+    } candidateSplits[3];
 
-    Embedding embeddingsLR[2] {};  // for the lookahead children
-    float embeddingDistance = 0.0f;
+    uint8_t bestSplitDim = 3;  // candidate split dim with the maximum energy
     CEStatistics ceStatistics;
 
     uint32_t depth = 0;  // depth in the tree
@@ -56,31 +66,27 @@ struct Region : public IRegion {
     // bool valid{true};
 
     bool hasCandidateSplit() const {
-        return candidateSplit.valid();
+        return candidateSplits[0].valid() || candidateSplits[1].valid() || candidateSplits[2].valid();
     }
 
-    void setCandidateSplit(uint8_t dim, float pos) {
-        candidateSplit.pos = pos;
-        candidateSplit.dim = dim;
-    }
-
-    void unsetCandidateSplit() {
-        resetEmbeddings();
-        candidateSplit.dim = 3;
+    void clearCandidateSplits() {
+        for (uint8_t i = 0; i < 3; i++) {
+            candidateSplits[i].reset();
+        }
+        bestSplitDim = 3;
     }
 
     void resetEmbeddings() {
-        embeddingsLR[0].clear();
-        embeddingsLR[1].clear();
-        embeddingDistance = 0;
+        for (uint8_t i = 0; i < 3; i++) {
+            candidateSplits[i].embeddingsLR[0].clear();
+            candidateSplits[i].embeddingsLR[1].clear();
+        }
+        bestSplitDim = 3;
     }
 
-    PGLDirectionalEmbedding getEmbedding(bool isRight) const {
-        PGLDirectionalEmbedding ret;
-        for (size_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
-            ret.embedding[i] = embeddingsLR[isRight].getEntry(i);
-        }
-        return ret;
+    const CandidateSplit &getBestCandidateSplit() const {
+        OPENPGL_ASSERT(bestSplitDim < 3 && candidateSplits[bestSplitDim].valid());
+        return candidateSplits[bestSplitDim];
     }
 
     inline const BBox &getRegionBounds() const
@@ -144,9 +150,10 @@ struct Region : public IRegion {
 #endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
-        candidateSplit.serialize(stream);
-        stream.write(reinterpret_cast<const char *>(embeddingsLR), sizeof(embeddingsLR));
-        stream.write(reinterpret_cast<const char *>(&embeddingDistance), sizeof(embeddingDistance));
+        candidateSplits[0].serialize(stream);
+        candidateSplits[1].serialize(stream);
+        candidateSplits[2].serialize(stream);
+        stream.write(reinterpret_cast<const char *>(&bestSplitDim), sizeof(bestSplitDim));
         ceStatistics.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
@@ -165,9 +172,10 @@ struct Region : public IRegion {
 #endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
-        candidateSplit.deserialize(stream);
-        stream.read(reinterpret_cast<char *>(embeddingsLR), sizeof(embeddingsLR));
-        stream.read(reinterpret_cast<char *>(&embeddingDistance), sizeof(embeddingDistance));
+        candidateSplits[0].deserialize(stream);
+        candidateSplits[1].deserialize(stream);
+        candidateSplits[2].deserialize(stream);
+        stream.read(reinterpret_cast<char *>(&bestSplitDim), sizeof(bestSplitDim));
         ceStatistics.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
