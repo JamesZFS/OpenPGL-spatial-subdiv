@@ -6,7 +6,8 @@
 #include "../openpgl_common.h"
 
 // 0 - original, 1 - assume uniform distr.
-#define STATS_HANDLE_UPON_SPLIT 1
+#define STATS_HANDLE_UPON_SPLIT 0
+
 namespace openpgl
 {
 struct SampleStatistics

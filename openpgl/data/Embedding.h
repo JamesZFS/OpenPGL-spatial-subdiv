@@ -48,6 +48,15 @@ struct Embedding  // Directional embedding
         return std::sqrt(sum);
     }
 
+    // L1 distance between two embeddings
+    static float getDistanceL1(const Embedding &a, const Embedding &b) {
+        float sum = 0;
+        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+            sum += std::abs(a.getEntry(i) - b.getEntry(i));
+        }
+        return sum;
+    }
+
     // SMAPE: symmetric mean absolute percentage error
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Embedding &a, const Embedding &b) {
