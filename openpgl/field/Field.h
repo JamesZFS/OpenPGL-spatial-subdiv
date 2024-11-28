@@ -389,7 +389,23 @@ public:
         uint32_t cId = getRegionId(pos);
         if (cId >= m_regionStorageContainer.size())
             return {cStats, fStats};
-        return {getRegionStats(cId), getRegionStats(cId)};
+        cStats = getRegionStats(cId);
+        auto &region = m_regionStorageContainer[cId].first;
+        if (cStats.hasCandidateSplit) {
+            auto &candidateSplit = region.candidateSplit;
+            fStats.depth = region.depth + 1;
+            fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
+            if (pos[candidateSplit.dim] >= candidateSplit.pos) {
+                fStats.id = cId | (1 << 31);  // a fake distinct ID
+                fStats.numSamples = region.embeddingsLR[1].getNumSamples();
+                fStats.lowerBounds[candidateSplit.dim] = candidateSplit.pos;
+            } else {
+                fStats.id = cId | (1 << 30);
+                fStats.numSamples = region.embeddingsLR[0].getNumSamples();
+                fStats.upperBounds[candidateSplit.dim] = candidateSplit.pos;
+            }
+        }
+        return {cStats, fStats};
     }
 
     void serialize(std::ostream &os) const

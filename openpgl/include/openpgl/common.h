@@ -58,6 +58,16 @@ struct pgl_vec3f
         this->y /= f;
         this->z /= f;
     }
+
+    float operator[](const int i) const
+    {
+        return (&x)[i];
+    }
+
+    float &operator[](const int i)
+    {
+        return (&x)[i];
+    }
 #endif
 };
 
@@ -127,6 +137,15 @@ typedef struct
 {
     int32_t x, y, z;
 #ifdef __cplusplus
+    int32_t operator[](const int i) const
+    {
+        return (&x)[i];
+    }
+
+    int32_t &operator[](const int i)
+    {
+        return (&x)[i];
+    }
 #endif
 } pgl_vec3i;
 
