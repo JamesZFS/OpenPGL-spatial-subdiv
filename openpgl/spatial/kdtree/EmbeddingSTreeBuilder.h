@@ -194,10 +194,11 @@ struct KDTreePartitionBuilder
                 region.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
                 region.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                 region.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                region.embeddingDistance = Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]);
                 // Check the adaptive split condition
                 shouldPromote = settings.enablePromotion &&
                     std::min(region.embeddingsLR[0].getNumSamples(), region.embeddingsLR[1].getNumSamples()) >= settings.minSamplesPromotion &&
-                    Embedding::getDistance(region.embeddingsLR[0], region.embeddingsLR[1]) > settings.embeddingDistanceThreshold;
+                    region.embeddingDistance > settings.embeddingDistanceThreshold;
             }
 
             if (exceedsSampleCountThs || shouldPromote) {

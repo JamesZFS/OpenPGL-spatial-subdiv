@@ -375,6 +375,7 @@ public:
             stats.fluence = region.ceStatistics.getFluence();
             stats.crossEntropy = region.ceStatistics.getCE();
         }
+        stats.embeddingDistance = region.embeddingDistance;
         stats.hasCandidateSplit = region.hasCandidateSplit();
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
