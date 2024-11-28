@@ -46,6 +46,7 @@ struct Region : public IRegion {
     } candidateSplit;
 
     Embedding embeddingsLR[2] {};  // for the lookahead children
+    float embeddingDistance = 0.0f;
     CEStatistics ceStatistics;
 
     uint32_t depth = 0;  // depth in the tree
