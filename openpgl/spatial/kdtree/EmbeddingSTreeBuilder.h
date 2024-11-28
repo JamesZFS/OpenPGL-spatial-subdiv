@@ -885,8 +885,7 @@ struct KDTreePartitionBuilder
     inline TIterator pivotSplitSamples(TIterator begin, TIterator end, uint8_t splitDimension, float pivot) const
     {
         auto pivotSplitPredicate = [splitDimension, pivot](auto &sample) -> bool {
-            const Point3 position(sample.position.x, sample.position.y, sample.position.z);
-            return position[splitDimension] < pivot;
+            return sample.position[splitDimension] < pivot;
         };
         return std::partition(begin, end, pivotSplitPredicate);
     }
