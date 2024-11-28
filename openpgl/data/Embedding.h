@@ -54,7 +54,8 @@ struct Embedding  // Directional embedding
         float sum = 0;
         for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            sum += 2.0f * std::abs(ai - bi) / (ai + bi);
+            if (ai + bi > 0)
+                sum += 2.0f * std::abs(ai - bi) / (ai + bi);
         }
         return sum / (float) PGL_EMBEDDING_SIZE;
     }

@@ -71,6 +71,7 @@ struct Region : public IRegion {
     void resetEmbeddings() {
         embeddingsLR[0].clear();
         embeddingsLR[1].clear();
+        embeddingDistance = 0;
     }
 
     PGLDirectionalEmbedding getEmbedding(bool isRight) const {
@@ -142,6 +143,7 @@ struct Region : public IRegion {
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
         candidateSplit.serialize(stream);
         stream.write(reinterpret_cast<const char *>(embeddingsLR), sizeof(embeddingsLR));
+        stream.write(reinterpret_cast<const char *>(&embeddingDistance), sizeof(embeddingDistance));
         ceStatistics.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
@@ -160,6 +162,7 @@ struct Region : public IRegion {
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
         candidateSplit.deserialize(stream);
         stream.read(reinterpret_cast<char *>(embeddingsLR), sizeof(embeddingsLR));
+        stream.read(reinterpret_cast<char *>(&embeddingDistance), sizeof(embeddingDistance));
         ceStatistics.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
