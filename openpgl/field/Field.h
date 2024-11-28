@@ -377,6 +377,12 @@ public:
         }
         stats.embeddingDistance = region.embeddingDistance;
         stats.hasCandidateSplit = region.hasCandidateSplit();
+        if (stats.hasCandidateSplit) {
+            stats.splitDim = region.candidateSplit.dim;
+            stats.splitPos = region.candidateSplit.pos;
+        }
+        stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
+        stats.sampleVariance = {region.sampleStatistics.getVariance().x, region.sampleStatistics.getVariance().y, region.sampleStatistics.getVariance().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
         return stats;

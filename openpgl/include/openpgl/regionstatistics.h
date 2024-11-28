@@ -17,6 +17,10 @@ struct PGLRegionStatistics
     float crossEntropy = 0;
     float embeddingDistance = 0;
     bool hasCandidateSplit = false;
+    uint8_t splitDim = 3;
+    float splitPos = 0;
+    pgl_point3f sampleMean {0, 0, 0};
+    pgl_vec3f sampleVariance {0, 0, 0};
     pgl_point3f lowerBounds {0, 0, 0};
     pgl_point3f upperBounds {0, 0, 0};
 };
