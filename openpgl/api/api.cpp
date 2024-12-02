@@ -141,6 +141,13 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldUpdateSubdivConfig(PGLField field, PGL
 }
 OPENPGL_CATCH_END_VOID
 
+extern "C" OPENPGL_DLLEXPORT void pglFieldLoadSubdivConfig(PGLField field, PGLKDTreeArguments &args) OPENPGL_CATCH_BEGIN
+{
+    auto *gField = (IGuidingField *)field;
+    gField->loadSubdivConfig(args);
+}
+OPENPGL_CATCH_END_VOID
+
 extern "C" OPENPGL_DLLEXPORT void pglReleaseField(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;

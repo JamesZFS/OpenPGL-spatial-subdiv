@@ -57,8 +57,11 @@ struct Field
     /// Clears the embeddings of all regions of the Field.
     void ClearEmbeddings();
 
-    /// Updates the spatial subdivision configuration of the Field.
+    /// Updates the spatial subdivision configuration of the Field from the given arguments.
     void UpdateSubdivConfig(const PGLKDTreeArguments &args);
+
+    /// Loads the spatial subdivision configuration into the arguments.
+    void LoadSubdivConfig(PGLKDTreeArguments &args) const;
 
     /**
      * @brief Stores Field as serialized representation to file on disk
@@ -212,6 +215,12 @@ OPENPGL_INLINE void Field::UpdateSubdivConfig(const PGLKDTreeArguments &args)
 {
     OPENPGL_ASSERT(m_fieldHandle);
     pglFieldUpdateSubdivConfig(m_fieldHandle, args);
+}
+
+OPENPGL_INLINE void Field::LoadSubdivConfig(PGLKDTreeArguments &args) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    pglFieldLoadSubdivConfig(m_fieldHandle, args);
 }
 
 OPENPGL_INLINE bool Field::Store(const std::string &fieldFileName) const
