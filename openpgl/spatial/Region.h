@@ -80,7 +80,6 @@ struct Region : public IRegion {
             candidateSplits[i].embeddingsLR[0].clear();
             candidateSplits[i].embeddingsLR[1].clear();
         }
-        bestSplitDim = 3;
     }
 
     const CandidateSplit &getBestCandidateSplit() const {
