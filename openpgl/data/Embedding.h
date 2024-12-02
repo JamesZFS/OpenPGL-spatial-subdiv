@@ -9,39 +9,48 @@ namespace openpgl {
 
 struct Embedding  // Directional embedding
 {
-    float bins[PGL_EMBEDDING_SIZE] = {};
-    float normalizer = 0;
+    float sum[PGL_EMBEDDING_SIZE] = {};  // sum of weights in that bin
+    float m2[PGL_EMBEDDING_SIZE] = {};  // sum of squared weights in that bin
+    float numSamples = 0;  // number of samples in all bins
 
     void clear() {
-        memset(bins, 0, sizeof(bins));
-        normalizer = 0;
+        memset(sum, 0, sizeof(sum));
+        memset(m2, 0, sizeof(m2));
+        numSamples = 0;
     }
 
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
             uint8_t idx = pgl_get_embedding_index(it->direction);
-            bins[idx] += it->weight;
-            ++normalizer;
+            sum[idx] += it->weight;
+            m2[idx] += it->weight * it->weight;
+            ++numSamples;
         }
     }
 
-    void addZeroSamples(size_t numSamples) {
-        normalizer += (float) numSamples;
+    void addZeroSamples(size_t numZeroSamples) {
+        numSamples += (float) numZeroSamples;
     }
 
     float getNumSamples() const {
-        return normalizer;
+        return numSamples;
     }
 
     float getEntry(uint8_t idx) const {
-        return bins[idx] / normalizer;
+        return sum[idx] / numSamples;
+    }
+
+    float getVariance(uint8_t idx) const {
+        return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // biased
     }
 
     explicit operator PGLDirectionalEmbedding() const {
         PGLDirectionalEmbedding embedding;
-        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++)
+        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
             embedding.embedding[i] = getEntry(i);
+            embedding.variance[i] = getVariance(i);
+        }
         return embedding;
     }
 
@@ -81,13 +90,15 @@ struct Embedding  // Directional embedding
     }
 
     void serialize(std::ostream &stream) const {
-        stream.write(reinterpret_cast<const char *>(bins), sizeof(bins));
-        stream.write(reinterpret_cast<const char *>(&normalizer), sizeof(normalizer));
+        stream.write(reinterpret_cast<const char *>(sum), sizeof(sum));
+        stream.write(reinterpret_cast<const char *>(m2), sizeof(m2));
+        stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
     }
 
     void deserialize(std::istream &stream) {
-        stream.read(reinterpret_cast<char *>(bins), sizeof(bins));
-        stream.read(reinterpret_cast<char *>(&normalizer), sizeof(normalizer));
+        stream.read(reinterpret_cast<char *>(sum), sizeof(sum));
+        stream.read(reinterpret_cast<char *>(m2), sizeof(m2));
+        stream.read(reinterpret_cast<char *>(&numSamples), sizeof(numSamples));
     }
 };
 

@@ -28,6 +28,7 @@ struct PGLRegionStatistics
 struct PGLDirectionalEmbedding
 {
     float embedding[PGL_EMBEDDING_SIZE] = {};
+    float variance[PGL_EMBEDDING_SIZE] = {};
 };
 
 // From https://www.shadertoy.com/view/XlGcRh
