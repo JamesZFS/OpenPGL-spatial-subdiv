@@ -322,6 +322,15 @@ public:
         CEStatistics::clampValue = cfg.ceClampValue;
     }
 
+    void loadSubdivConfig(PGLKDTreeArguments &cfg) const
+    {
+        cfg.knnLookup = m_useStochasticNNLookUp;
+        cfg.isKnnLookup = m_useISNNLookUp;
+        cfg.vmmDecay = m_decayOnSpatialSplit;
+        m_spatialSubdivBuilderSettings.loadToConfig(cfg);
+        cfg.ceClampValue = CEStatistics::clampValue;
+    }
+
     void resetField()
     {
         m_iteration = 0;

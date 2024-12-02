@@ -62,6 +62,7 @@ struct KDTreePartitionBuilder
         float decayRatio {0.25f};  // set from field
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         bool enablePromotion {true};
+        bool enableThreeSplits {true};
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -72,7 +73,8 @@ struct KDTreePartitionBuilder
             return splitType == b.splitType && maxDepth == b.maxDepth && minSamplesCandidateSplit == b.minSamplesCandidateSplit &&
                    minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && embeddingDistanceThreshold == b.embeddingDistanceThreshold &&
-                   decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion;
+                   decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
+                   enableThreeSplits == b.enableThreeSplits;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -84,7 +86,21 @@ struct KDTreePartitionBuilder
             maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             embeddingDistanceThreshold = cfg.embeddingDistanceThreshold;
             enablePromotion = cfg.enablePromotion;
+            enableThreeSplits = cfg.enableThreeSplits;
             decayRatio = cfg.ceDecay;
+        }
+
+        void loadToConfig(PGLKDTreeArguments &cfg) const
+        {
+            cfg.maxDepth = maxDepth;
+            cfg.minSamplesCandidateSplit = minSamplesCandidateSplit;
+            cfg.minSamplesPromotion = minSamplesPromotion;
+            cfg.sampleCountThreshold = sampleCountThreshold;
+            cfg.maxDepthWithSampleCount = maxDepthWithSampleCount;
+            cfg.embeddingDistanceThreshold = embeddingDistanceThreshold;
+            cfg.enablePromotion = enablePromotion;
+            cfg.enableThreeSplits = enableThreeSplits;
+            cfg.ceDecay = decayRatio;
         }
     };
 
@@ -168,12 +184,22 @@ struct KDTreePartitionBuilder
                 const float maxPosVariance = reduce_max(posVariances);
                 float maxEnergy = -std::numeric_limits<float>::infinity();
 
-                for (uint8_t dim = 0; dim < 3; ++dim) {
-                    auto &candidate = region.candidateSplits[dim];
-                    if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {  // degenerate dimension
-                        OPENPGL_ASSERT(!candidate.valid());
-                        continue;
+                std::vector<uint8_t> allDims;
+                if (settings.enableThreeSplits) {
+                    for (uint8_t dim = 0; dim < 3; ++dim) {
+                        if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {
+                            // degenerate dimension
+                            OPENPGL_ASSERT(!candidate.valid());
+                            continue;
+                        }
+                        allDims.push_back(dim);
                     }
+                } else {
+                    allDims.push_back(maxDimension(posVariances));
+                }
+
+                for (uint8_t dim: allDims) {
+                    auto &candidate = region.candidateSplits[dim];
                     if (!candidate.valid()) {  // haven't proposed yet
                         candidate.pos = posMeans[dim];
                     }
@@ -1046,6 +1072,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(decayRatio));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
+    stream.write(reinterpret_cast<const char*>(&enableThreeSplits), sizeof(enableThreeSplits));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1061,6 +1088,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(decayRatio));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
+    stream.read(reinterpret_cast<char*>(&enableThreeSplits), sizeof(enableThreeSplits));
 }
 
 }

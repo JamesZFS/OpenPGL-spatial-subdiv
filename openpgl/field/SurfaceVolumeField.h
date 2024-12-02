@@ -220,6 +220,11 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_volumeField.updateSubdivConfig(cfg);
     }
 
+    void loadSubdivConfig(PGLKDTreeArguments &cfg) const override
+    {
+        m_surfaceField.loadSubdivConfig(cfg);
+    }
+
     void resetField() override
     {
         m_iteration = 0;

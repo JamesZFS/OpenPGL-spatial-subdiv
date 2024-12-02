@@ -39,6 +39,8 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args);
 
+    OPENPGL_CORE_INTERFACE void pglFieldLoadSubdivConfig(PGLField field, PGLKDTreeArguments &args);
+
     OPENPGL_CORE_INTERFACE void pglReleaseField(PGLField field);
 
     OPENPGL_CORE_INTERFACE bool pglFieldStoreToFile(PGLField field, const char *fieldFileName);
