@@ -127,10 +127,10 @@ extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPEN
 }
 OPENPGL_CATCH_END_VOID
 
-extern "C" OPENPGL_DLLEXPORT void pglFieldClearEmbeddings(PGLField field) OPENPGL_CATCH_BEGIN
+extern "C" OPENPGL_DLLEXPORT void pglFieldClearSignatures(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;
-    gField->clearEmbeddings();
+    gField->clearSignatures();
 }
 OPENPGL_CATCH_END_VOID
 
@@ -326,11 +326,11 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics>
     return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
-extern "C" OPENPGL_DLLEXPORT PGLDirectionalEmbedding pglFieldGetDirectionalEmbedding(PGLField field, pgl_point3f position)
+extern "C" OPENPGL_DLLEXPORT PGLDirectionalSignature pglFieldGetDirectionalSignature(PGLField field, pgl_point3f position)
 {
     const auto *gField = (const IGuidingField *)field;
     const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getDirectionalEmbedding(pos);
+    return gField->getDirectionalSignature(pos);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -55,10 +55,10 @@ struct KDTreePartitionBuilder
         PGL_SPATIAL_SPLIT_TYPE splitType {PGL_SPATIAL_SPLIT_BASELINE};
         uint32_t maxDepth {32};
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
-        uint32_t minSamplesPromotion {1000};  // to ensure the variance of embedding estimates are small enough
+        uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
         uint32_t maxDepthWithSampleCount {1};  // maximum depth with sample count threshold. Setting this to 1 means disabling it
-        float embeddingDistanceThreshold {1.0f};  // triggers promotion if the distance between the embeddings of the left and right children is greater than this threshold
+        float signatureDistanceThreshold {1.0f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
         float decayRatio {0.25f};  // set from field
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         bool enablePromotion {true};
@@ -72,7 +72,7 @@ struct KDTreePartitionBuilder
         {
             return splitType == b.splitType && maxDepth == b.maxDepth && minSamplesCandidateSplit == b.minSamplesCandidateSplit &&
                    minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
-                   maxDepthWithSampleCount == b.maxDepthWithSampleCount && embeddingDistanceThreshold == b.embeddingDistanceThreshold &&
+                   maxDepthWithSampleCount == b.maxDepthWithSampleCount && signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    enableThreeSplits == b.enableThreeSplits;
         }
@@ -84,7 +84,7 @@ struct KDTreePartitionBuilder
             minSamplesPromotion = cfg.minSamplesPromotion;
             sampleCountThreshold = cfg.sampleCountThreshold;
             maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
-            embeddingDistanceThreshold = cfg.embeddingDistanceThreshold;
+            signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             enablePromotion = cfg.enablePromotion;
             enableThreeSplits = cfg.enableThreeSplits;
             decayRatio = cfg.ceDecay;
@@ -97,7 +97,7 @@ struct KDTreePartitionBuilder
             cfg.minSamplesPromotion = minSamplesPromotion;
             cfg.sampleCountThreshold = sampleCountThreshold;
             cfg.maxDepthWithSampleCount = maxDepthWithSampleCount;
-            cfg.embeddingDistanceThreshold = embeddingDistanceThreshold;
+            cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.enablePromotion = enablePromotion;
             cfg.enableThreeSplits = enableThreeSplits;
             cfg.ceDecay = decayRatio;
@@ -209,12 +209,12 @@ struct KDTreePartitionBuilder
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, dim, candidate.pos);
                     auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, dim, candidate.pos);
 
-                    // Update embeddings and energy of this split
-                    candidate.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                    candidate.embeddingsLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
-                    candidate.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
-                    candidate.embeddingsLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
-                    candidate.energy = Embedding::getDistance(candidate.embeddingsLR[0], candidate.embeddingsLR[1]);
+                    // Update signatures and energy of this split
+                    candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    candidate.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                    candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                    candidate.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                    candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1]);
 
                     // Update best candidate split and energy
                     if (candidate.energy > maxEnergy) {
@@ -225,9 +225,9 @@ struct KDTreePartitionBuilder
 
                 if (region.bestSplitDim < 3 && settings.enablePromotion) {
                     auto &candidate = region.getBestCandidateSplit();
-                    if (candidate.embeddingsLR[0].getNumSamples() >= settings.minSamplesPromotion &&
-                        candidate.embeddingsLR[1].getNumSamples() >= settings.minSamplesPromotion &&
-                        maxEnergy > settings.embeddingDistanceThreshold) {
+                    if (candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
+                        candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion &&
+                        maxEnergy > settings.signatureDistanceThreshold) {
                         splitDim = region.bestSplitDim, splitPos = candidate.pos;
                         shouldSplit = true;
                     }
@@ -241,7 +241,7 @@ struct KDTreePartitionBuilder
                 TRegion *regionsLR[2] = {&region, &rChildIter->first};
                 for (int c: {0, 1}) {
                     auto &childRegion = *regionsLR[c];
-                    childRegion.clearCandidateSplits();  // also clears the embeddings
+                    childRegion.clearCandidateSplits();  // also clears the signatures
                     childRegion.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) c);
                     childRegion.ceStatistics.decay(settings.decayRatio);
                     childRegion.splitFlag = true;
@@ -367,9 +367,9 @@ struct KDTreePartitionBuilder
                     splitPos = candidate.pos;
                     // Split samples
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
-                    // Update the LR embeddings
-                    candidate.embeddingsLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                    candidate.embeddingsLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                    // Update the LR signatures
+                    candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                 }
             } else {
                 region.ceStatistics.addZeroWeightSamples(sampleRange.size());
@@ -381,9 +381,9 @@ struct KDTreePartitionBuilder
                     splitPos = candidate.pos;
                     // Split samples
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
-                    // Update the LR embeddings
-                    candidate.embeddingsLR[0].addZeroSamples(std::distance(samples.begin() + sampleRange.m_begin, samplesMid));
-                    candidate.embeddingsLR[1].addZeroSamples(std::distance(samplesMid, samples.begin() + sampleRange.m_end));
+                    // Update the LR signatures
+                    candidate.signaturesLR[0].addZeroSamples(std::distance(samples.begin() + sampleRange.m_begin, samplesMid));
+                    candidate.signaturesLR[1].addZeroSamples(std::distance(samplesMid, samples.begin() + sampleRange.m_end));
                 }
             }
             return;
@@ -1051,7 +1051,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamplesPromotion: " << minSamplesPromotion << std::endl;
     ss << "  sampleCountThreshold: " << sampleCountThreshold << std::endl;
     ss << "  maxDepthWithSampleCount: " << maxDepthWithSampleCount << std::endl;
-    ss << "  embeddingDistanceThreshold: " << embeddingDistanceThreshold << std::endl;
+    ss << "  signatureDistanceThreshold: " << signatureDistanceThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
@@ -1068,7 +1068,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.write(reinterpret_cast<const char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
     stream.write(reinterpret_cast<const char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
-    stream.write(reinterpret_cast<const char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
+    stream.write(reinterpret_cast<const char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
     stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(decayRatio));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
@@ -1084,7 +1084,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.read(reinterpret_cast<char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
     stream.read(reinterpret_cast<char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
-    stream.read(reinterpret_cast<char*>(&embeddingDistanceThreshold), sizeof(embeddingDistanceThreshold));
+    stream.read(reinterpret_cast<char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
     stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(decayRatio));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));

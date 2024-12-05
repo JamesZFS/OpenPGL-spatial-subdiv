@@ -43,7 +43,7 @@ struct ISurfaceVolumeField
 
     virtual void clearCEStatistics() = 0;
 
-    virtual void clearEmbeddings() = 0;
+    virtual void clearSignatures() = 0;
 
     virtual void updateSubdivConfig(const PGLKDTreeArguments &cfg) = 0;
 
@@ -80,6 +80,6 @@ struct ISurfaceVolumeField
     // Deprecated
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;
 
-    virtual PGLDirectionalEmbedding getDirectionalEmbedding(const Point3 &pos) const = 0;
+    virtual PGLDirectionalSignature getDirectionalSignature(const Point3 &pos) const = 0;
 };
 }  // namespace openpgl

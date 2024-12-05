@@ -48,7 +48,7 @@ extern "C"
         uint32_t minSamplesPromotion {1000};
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};
         uint32_t maxDepthWithSampleCount {1};
-        float embeddingDistanceThreshold{1.0f};
+        float signatureDistanceThreshold{1.0f};
         bool enablePromotion{true};
         bool enableThreeSplits{true};
         float ceDecay{0.8f};
