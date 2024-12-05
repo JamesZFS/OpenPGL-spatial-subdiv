@@ -4,7 +4,7 @@
 #pragma once
 
 #include "../data/SampleStatistics.h"
-#include "../data/Embedding.h"
+#include "../data/Signature.h"
 #include "../data/CEStatistics.h"
 // #include "../data/DivergenceStatistics.h"
 #include "../openpgl_common.h"
@@ -27,31 +27,31 @@ struct Region : public IRegion {
 
     struct CandidateSplit {
         float pos = std::numeric_limits<float>::quiet_NaN();
-        Embedding embeddingsLR[2] {};  // for the lookahead children
-        float energy = 0.0f;  // distance between embeddings
+        Signature signaturesLR[2] {};  // for the lookahead children
+        float energy = 0.0f;  // distance between signatures
 
         bool valid() const { return !std::isnan(pos); }
 
         void reset() {
             pos = std::numeric_limits<float>::quiet_NaN();
-            embeddingsLR[0].clear();
-            embeddingsLR[1].clear();
+            signaturesLR[0].clear();
+            signaturesLR[1].clear();
             energy = 0.0f;
         }
 
         void serialize(std::ostream &stream) const
         {
             stream.write(reinterpret_cast<const char *>(&pos), sizeof(pos));
-            embeddingsLR[0].serialize(stream);
-            embeddingsLR[1].serialize(stream);
+            signaturesLR[0].serialize(stream);
+            signaturesLR[1].serialize(stream);
             stream.write(reinterpret_cast<const char *>(&energy), sizeof(energy));
         }
 
         void deserialize(std::istream &stream)
         {
             stream.read(reinterpret_cast<char *>(&pos), sizeof(pos));
-            embeddingsLR[0].deserialize(stream);
-            embeddingsLR[1].deserialize(stream);
+            signaturesLR[0].deserialize(stream);
+            signaturesLR[1].deserialize(stream);
             stream.read(reinterpret_cast<char *>(&energy), sizeof(energy));
         }
     } candidateSplits[3];
@@ -76,10 +76,10 @@ struct Region : public IRegion {
         bestSplitDim = 3;
     }
 
-    void resetEmbeddings() {
+    void resetSignatures() {
         for (uint8_t i = 0; i < 3; i++) {
-            candidateSplits[i].embeddingsLR[0].clear();
-            candidateSplits[i].embeddingsLR[1].clear();
+            candidateSplits[i].signaturesLR[0].clear();
+            candidateSplits[i].signaturesLR[1].clear();
         }
     }
 

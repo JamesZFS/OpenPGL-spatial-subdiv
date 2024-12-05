@@ -54,8 +54,8 @@ struct Field
     /// Clears the CE statistics of all regions of the Field.
     void ClearCEStatistics();
 
-    /// Clears the embeddings of all regions of the Field.
-    void ClearEmbeddings();
+    /// Clears the signatures of all regions of the Field.
+    void ClearSignatures();
 
     /// Updates the spatial subdivision configuration of the Field from the given arguments.
     void UpdateSubdivConfig(const PGLKDTreeArguments &args);
@@ -160,7 +160,7 @@ struct Field
 
     std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
-    PGLDirectionalEmbedding GetDirectionalEmbedding(openpgl::cpp::Point3f pos) const;
+    PGLDirectionalSignature GetDirectionalSignature(openpgl::cpp::Point3f pos) const;
 
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
@@ -205,10 +205,10 @@ OPENPGL_INLINE void Field::ClearCEStatistics()
     pglFieldClearCEStatistics(m_fieldHandle);
 }
 
-OPENPGL_INLINE void Field::ClearEmbeddings()
+OPENPGL_INLINE void Field::ClearSignatures()
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    pglFieldClearEmbeddings(m_fieldHandle);
+    pglFieldClearSignatures(m_fieldHandle);
 }
 
 OPENPGL_INLINE void Field::UpdateSubdivConfig(const PGLKDTreeArguments &args)
@@ -336,10 +336,10 @@ OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoa
     return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
 }
 
-OPENPGL_INLINE PGLDirectionalEmbedding Field::GetDirectionalEmbedding(openpgl::cpp::Point3f pos) const
+OPENPGL_INLINE PGLDirectionalSignature Field::GetDirectionalSignature(openpgl::cpp::Point3f pos) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetDirectionalEmbedding(m_fieldHandle, pos);
+    return pglFieldGetDirectionalSignature(m_fieldHandle, pos);
 }
 
 }  // namespace cpp

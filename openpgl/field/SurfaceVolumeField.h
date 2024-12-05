@@ -208,10 +208,10 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         m_volumeField.clearCEStats();
     }
 
-    void clearEmbeddings() override
+    void clearSignatures() override
     {
-        m_surfaceField.clearEmbeddings();
-        m_volumeField.clearEmbeddings();
+        m_surfaceField.clearSignatures();
+        m_volumeField.clearSignatures();
     }
 
     void updateSubdivConfig(const PGLKDTreeArguments &cfg) override
@@ -338,9 +338,9 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getCoarseFineRegionStats(pos);
     }
 
-    PGLDirectionalEmbedding getDirectionalEmbedding(const openpgl::Point3 &pos) const override
+    PGLDirectionalSignature getDirectionalSignature(const openpgl::Point3 &pos) const override
     {
-        return m_surfaceField.getDirectionalEmbedding(pos);
+        return m_surfaceField.getDirectionalSignature(pos);
     }
 
 private:

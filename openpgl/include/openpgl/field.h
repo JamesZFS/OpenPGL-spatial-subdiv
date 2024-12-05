@@ -35,7 +35,7 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE void pglFieldClearCEStatistics(PGLField field);
 
-    OPENPGL_CORE_INTERFACE void pglFieldClearEmbeddings(PGLField field);
+    OPENPGL_CORE_INTERFACE void pglFieldClearSignatures(PGLField field);
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args);
 
@@ -91,7 +91,7 @@ typedef ManagedObject Field;
     // Deprecated
     OPENPGL_CORE_INTERFACE std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position);
 
-    OPENPGL_CORE_INTERFACE PGLDirectionalEmbedding pglFieldGetDirectionalEmbedding(PGLField field, pgl_point3f position);
+    OPENPGL_CORE_INTERFACE PGLDirectionalSignature pglFieldGetDirectionalSignature(PGLField field, pgl_point3f position);
 
 #ifdef __cplusplus
 }  // extern "C"

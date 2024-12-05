@@ -7,10 +7,10 @@
 
 namespace openpgl {
 
-struct Embedding  // Directional embedding
+struct Signature  // Directional signature
 {
-    float sum[PGL_EMBEDDING_SIZE] = {};  // sum of weights in that bin
-    float m2[PGL_EMBEDDING_SIZE] = {};  // sum of squared weights in that bin
+    float sum[PGL_SIGNATURE_SIZE] = {};  // sum of weights in that bin
+    float m2[PGL_SIGNATURE_SIZE] = {};  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins
 
     void clear() {
@@ -22,7 +22,7 @@ struct Embedding  // Directional embedding
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
-            uint8_t idx = pgl_get_embedding_index(it->direction);
+            uint8_t idx = pgl_get_signature_index(it->direction);
             sum[idx] += it->weight;
             m2[idx] += it->weight * it->weight;
             ++numSamples;
@@ -45,29 +45,29 @@ struct Embedding  // Directional embedding
         return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // biased
     }
 
-    explicit operator PGLDirectionalEmbedding() const {
-        PGLDirectionalEmbedding embedding;
-        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
-            embedding.embedding[i] = getEntry(i);
-            embedding.variance[i] = getVariance(i);
+    explicit operator PGLDirectionalSignature() const {
+        PGLDirectionalSignature signature;
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+            signature.signature[i] = getEntry(i);
+            signature.variance[i] = getVariance(i);
         }
-        return embedding;
+        return signature;
     }
 
-    // L2 distance between two embeddings
-    static float getDistanceL2(const Embedding &a, const Embedding &b) {
+    // L2 distance between two signatures
+    static float getDistanceL2(const Signature &a, const Signature &b) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float diff = a.getEntry(i) - b.getEntry(i);
             sum += diff * diff;
         }
         return std::sqrt(sum);
     }
 
-    // L1 distance between two embeddings
-    static float getDistanceL1(const Embedding &a, const Embedding &b) {
+    // L1 distance between two signatures
+    static float getDistanceL1(const Signature &a, const Signature &b) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             sum += std::abs(a.getEntry(i) - b.getEntry(i));
         }
         return sum;
@@ -75,17 +75,17 @@ struct Embedding  // Directional embedding
 
     // SMAPE: symmetric mean absolute percentage error
     // Has a range of [0, 2]
-    static float getDistanceSMAPE(const Embedding &a, const Embedding &b) {
+    static float getDistanceSMAPE(const Signature &a, const Signature &b) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_EMBEDDING_SIZE; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
             if (ai + bi > 0)
                 sum += 2.0f * std::abs(ai - bi) / (ai + bi);
         }
-        return sum / (float) PGL_EMBEDDING_SIZE;
+        return sum / (float) PGL_SIGNATURE_SIZE;
     }
 
-    static float getDistance(const Embedding &a, const Embedding &b) {
+    static float getDistance(const Signature &a, const Signature &b) {
         return getDistanceSMAPE(a, b);
     }
 

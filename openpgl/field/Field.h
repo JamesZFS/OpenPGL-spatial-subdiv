@@ -294,7 +294,7 @@ public:
             });
 
             Timer timer;
-            // Only update CE stats and embeddings, no subdivision or fitting
+            // Only update CE stats and signatures, no subdivision or fitting
             m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
@@ -307,9 +307,9 @@ public:
         }
     }
 
-    void clearEmbeddings() {
+    void clearSignatures() {
         for (auto &region : m_regionStorageContainer) {
-            region.first.resetEmbeddings();
+            region.first.resetSignatures();
         }
     }
 
@@ -358,13 +358,13 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
-    PGLDirectionalEmbedding getDirectionalEmbedding(const openpgl::Point3 &pos) const {
+    PGLDirectionalSignature getDirectionalSignature(const openpgl::Point3 &pos) const {
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
             if (region.hasCandidateSplit()) {
                 auto &candidate = region.getBestCandidateSplit();
-                return PGLDirectionalEmbedding(candidate.embeddingsLR[pos[region.bestSplitDim] >= candidate.pos]);
+                return PGLDirectionalSignature(candidate.signaturesLR[pos[region.bestSplitDim] >= candidate.pos]);
             }
         }
         return {};
@@ -415,11 +415,11 @@ public:
             fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
             if (pos[region.bestSplitDim] >= candidate.pos) {
                 fStats.id = cId | (1 << 31);  // a fake distinct ID
-                fStats.numSamples = candidate.embeddingsLR[1].getNumSamples();
+                fStats.numSamples = candidate.signaturesLR[1].getNumSamples();
                 fStats.lowerBounds[region.bestSplitDim] = candidate.pos;
             } else {
                 fStats.id = cId | (1 << 30);
-                fStats.numSamples = candidate.embeddingsLR[0].getNumSamples();
+                fStats.numSamples = candidate.signaturesLR[0].getNumSamples();
                 fStats.upperBounds[region.bestSplitDim] = candidate.pos;
             }
         }
