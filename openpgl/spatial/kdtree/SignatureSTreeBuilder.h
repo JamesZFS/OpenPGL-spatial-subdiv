@@ -227,7 +227,8 @@ struct KDTreePartitionBuilder
                     auto &candidate = region.getBestCandidateSplit();
                     if (candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
                         candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion &&
-                        maxEnergy > settings.signatureDistanceThreshold) {
+                        Signature::differsSignificantly(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.signatureDistanceThreshold)) {
+                        // maxEnergy > settings.signatureDistanceThreshold) {
                         splitDim = region.bestSplitDim, splitPos = candidate.pos;
                         shouldSplit = true;
                     }

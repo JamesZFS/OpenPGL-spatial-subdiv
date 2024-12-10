@@ -370,6 +370,18 @@ public:
         return {};
     }
 
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const {
+        uint32_t id = getRegionId(pos);
+        if (id < m_regionStorageContainer.size()) {
+            auto &region = m_regionStorageContainer[id].first;
+            if (region.hasCandidateSplit()) {
+                auto &candidate = region.getBestCandidateSplit();
+                return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
+            }
+        }
+        return {};
+    }
+
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
         PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .energy = std::numeric_limits<float>::quiet_NaN()};
