@@ -343,6 +343,11 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getDirectionalSignature(pos);
     }
 
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const override
+    {
+        return m_surfaceField.getLRDirectionalSignatures(pos);
+    }
+
 private:
     size_t m_iteration{0};
     size_t m_totalSPP{0};

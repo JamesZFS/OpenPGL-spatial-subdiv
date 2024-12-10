@@ -162,6 +162,8 @@ struct Field
 
     PGLDirectionalSignature GetDirectionalSignature(openpgl::cpp::Point3f pos) const;
 
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetLRDirectionalSignatures(openpgl::cpp::Point3f pos) const;
+
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
 
@@ -340,6 +342,12 @@ OPENPGL_INLINE PGLDirectionalSignature Field::GetDirectionalSignature(openpgl::c
 {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetDirectionalSignature(m_fieldHandle, pos);
+}
+
+OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetLRDirectionalSignatures(
+    openpgl::cpp::Point3f pos) const {
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetLRDirectionalSignatures(m_fieldHandle, pos);
 }
 
 }  // namespace cpp

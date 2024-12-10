@@ -333,6 +333,13 @@ extern "C" OPENPGL_DLLEXPORT PGLDirectionalSignature pglFieldGetDirectionalSigna
     return gField->getDirectionalSignature(pos);
 }
 
+extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetLRDirectionalSignatures(PGLField field, pgl_point3f position)
+{
+    const auto *gField = (const IGuidingField *)field;
+    const openpgl::Point3 pos(position.x, position.y, position.z);
+    return gField->getLRDirectionalSignatures(pos);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SampleStorage //////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

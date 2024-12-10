@@ -42,7 +42,8 @@ struct Signature  // Directional signature
     }
 
     float getVariance(uint8_t idx) const {
-        return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // biased
+        // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
+        return (m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples)) / numSamples;  // N sample, assuming no covariance, biased
     }
 
     explicit operator PGLDirectionalSignature() const {
@@ -87,6 +88,21 @@ struct Signature  // Directional signature
 
     static float getDistance(const Signature &a, const Signature &b) {
         return getDistanceSMAPE(a, b);
+    }
+
+    static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            // if interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap and SMAPE(ai, bi) > threshold => split!
+            // if ((ai - a_std > bi + b_std || ai + a_std < bi - b_std) &&
+            //     2.0f * std::abs(ai - bi) / (ai + bi) > threshold)
+            //     return true;
+            if ((ai - a_std > bi + b_std && 2.0f * (ai - bi - a_std - b_std) / (ai + bi) > threshold) ||
+                (ai + a_std < bi - b_std && 2.0f * (bi - ai - a_std - b_std) / (ai + bi) > threshold))
+                return true;
+        }
+        return false;
     }
 
     void serialize(std::ostream &stream) const {
