@@ -28,7 +28,7 @@ struct PGLRegionStatistics
 struct PGLDirectionalSignature
 {
     float signature[PGL_SIGNATURE_SIZE] = {};
-    float variance[PGL_SIGNATURE_SIZE] = {};
+    float std[PGL_SIGNATURE_SIZE] = {};
     float numSamples = 0;
 };
 
