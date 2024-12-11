@@ -52,6 +52,7 @@ struct Signature  // Directional signature
             signature.signature[i] = getEntry(i);
             signature.variance[i] = getVariance(i);
         }
+        signature.numSamples = numSamples;
         return signature;
     }
 

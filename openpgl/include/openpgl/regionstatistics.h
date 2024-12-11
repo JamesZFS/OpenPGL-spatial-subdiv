@@ -29,6 +29,7 @@ struct PGLDirectionalSignature
 {
     float signature[PGL_SIGNATURE_SIZE] = {};
     float variance[PGL_SIGNATURE_SIZE] = {};
+    float numSamples = 0;
 };
 
 // From https://www.shadertoy.com/view/XlGcRh
