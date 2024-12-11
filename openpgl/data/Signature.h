@@ -69,7 +69,13 @@ struct Signature  // Directional signature
     static float getDistanceL1(const Signature &a, const Signature &b) {
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
-            sum += std::abs(a.getEntry(i) - b.getEntry(i));
+            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            if (ai - a_std > bi + b_std)
+                sum += ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                sum += bi - ai - a_std - b_std;
         }
         return sum;
     }
@@ -80,8 +86,12 @@ struct Signature  // Directional signature
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            if (ai + bi > 0)
-                sum += 2.0f * std::abs(ai - bi) / (ai + bi);
+            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            if (ai - a_std > bi + b_std)
+                sum += 2.0f * (ai - bi - a_std - b_std) / (ai + bi);
+            else if (ai + a_std < bi - b_std)
+                sum += 2.0f * (bi - ai - a_std - b_std) / (ai + bi);
         }
         return sum / (float) PGL_SIGNATURE_SIZE;
     }

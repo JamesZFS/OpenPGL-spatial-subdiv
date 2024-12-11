@@ -187,7 +187,7 @@ struct KDTreePartitionBuilder
                 std::vector<uint8_t> allDims;
                 if (settings.enableThreeSplits) {
                     for (uint8_t dim = 0; dim < 3; ++dim) {
-                        if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {
+                        if (posVariances[dim] < THRESHOLD_VAR_RATIO) {
                             // degenerate dimension
                             OPENPGL_ASSERT(!candidate.valid());
                             continue;
@@ -227,8 +227,8 @@ struct KDTreePartitionBuilder
                     auto &candidate = region.getBestCandidateSplit();
                     if (candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
                         candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion &&
-                        Signature::differsSignificantly(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.signatureDistanceThreshold)) {
-                        // maxEnergy > settings.signatureDistanceThreshold) {
+                        // Signature::differsSignificantly(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.signatureDistanceThreshold)) {
+                        maxEnergy > settings.signatureDistanceThreshold) {
                         splitDim = region.bestSplitDim, splitPos = candidate.pos;
                         shouldSplit = true;
                     }
