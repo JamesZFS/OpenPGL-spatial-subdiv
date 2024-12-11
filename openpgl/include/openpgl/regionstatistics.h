@@ -2,7 +2,7 @@
 
 #include "common.h"
 
-#define PGL_OCTAHEDRAL_MAP_RESOLUTION 64u
+extern uint32_t g_opgl_octahedral_resolution;
 #define PGL_SIGNATURE_SIZE 8u
 
 /// Helper struct to communicate between OpenPGL and the renderer/visualizer to output debug information.
@@ -59,11 +59,11 @@ inline uint8_t pgl_get_signature_index(const pgl_direction &dir) {
     float y = uv_.y * 0.5f + 0.5f;
 
     // 2. Find the histogram bin on the (conceptual) octahedral map
-    uint32_t ix = std::clamp((uint32_t)(x * PGL_OCTAHEDRAL_MAP_RESOLUTION), 0u, PGL_OCTAHEDRAL_MAP_RESOLUTION - 1);
-    uint32_t iy = std::clamp((uint32_t)(y * PGL_OCTAHEDRAL_MAP_RESOLUTION), 0u, PGL_OCTAHEDRAL_MAP_RESOLUTION - 1);
+    uint32_t ix = std::clamp((uint32_t)(x * g_opgl_octahedral_resolution), 0u, g_opgl_octahedral_resolution - 1);
+    uint32_t iy = std::clamp((uint32_t)(y * g_opgl_octahedral_resolution), 0u, g_opgl_octahedral_resolution - 1);
 
     // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
-    // uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
-    uint32_t hash = pgl_pcg2d(ix, iy).first;
+    uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
+    // uint32_t hash = pgl_pcg2d(ix, iy).first;
     return hash % PGL_SIGNATURE_SIZE;
 }

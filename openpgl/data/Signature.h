@@ -58,11 +58,11 @@ struct Signature  // Directional signature
     }
 
     // L2 distance between two signatures
-    static float getDistanceL2(const Signature &a, const Signature &b) {
+    static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = a.getStd(i), b_std = b.getStd(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             float diff = 0;
             if (ai - a_std > bi + b_std)
@@ -75,11 +75,11 @@ struct Signature  // Directional signature
     }
 
     // L1 distance between two signatures
-    static float getDistanceL1(const Signature &a, const Signature &b) {
+    static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = a.getStd(i), b_std = b.getStd(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 sum += ai - bi - a_std - b_std;
@@ -91,11 +91,11 @@ struct Signature  // Directional signature
 
     // SMAPE: symmetric mean absolute percentage error
     // Has a range of [0, 2]
-    static float getDistanceSMAPE(const Signature &a, const Signature &b) {
+    static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = a.getStd(i), b_std = b.getStd(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 sum += 2.0f * (ai - bi - a_std - b_std) / (ai + bi);
@@ -105,8 +105,8 @@ struct Signature  // Directional signature
         return sum / (float) PGL_SIGNATURE_SIZE;
     }
 
-    static float getDistance(const Signature &a, const Signature &b) {
-        return getDistanceSMAPE(a, b);
+    static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
+        return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
