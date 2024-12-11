@@ -64,6 +64,7 @@ struct KDTreePartitionBuilder
         bool enablePromotion {true};
         bool enableThreeSplits {true};
         float stdMultiplier {1.0f};
+        float signatureDecay {1.0f};
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -75,7 +76,7 @@ struct KDTreePartitionBuilder
                    minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   enableThreeSplits == b.enableThreeSplits && stdMultiplier == b.stdMultiplier;
+                   enableThreeSplits == b.enableThreeSplits && stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -87,6 +88,7 @@ struct KDTreePartitionBuilder
             maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             stdMultiplier = cfg.stdMultiplier;
+            signatureDecay = cfg.signatureDecay;
             enablePromotion = cfg.enablePromotion;
             enableThreeSplits = cfg.enableThreeSplits;
             decayRatio = cfg.ceDecay;
@@ -212,8 +214,10 @@ struct KDTreePartitionBuilder
                     auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, dim, candidate.pos);
 
                     // Update signatures and energy of this split
+                    candidate.signaturesLR[0].decay(settings.signatureDecay);
                     candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
                     candidate.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                    candidate.signaturesLR[1].decay(settings.signatureDecay);
                     candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                     candidate.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
                     candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.stdMultiplier);
@@ -371,7 +375,9 @@ struct KDTreePartitionBuilder
                     // Split samples
                     auto samplesMid = pivotSplitSamples(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, splitDim, splitPos);
                     // Update the LR signatures
+                    candidate.signaturesLR[0].decay(buildSettings.signatureDecay);
                     candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                    candidate.signaturesLR[1].decay(buildSettings.signatureDecay);
                     candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                 }
             } else {
@@ -1077,6 +1083,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&enableThreeSplits), sizeof(enableThreeSplits));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
+    stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1094,6 +1101,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&enableThreeSplits), sizeof(enableThreeSplits));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
+    stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
 }
 
 }

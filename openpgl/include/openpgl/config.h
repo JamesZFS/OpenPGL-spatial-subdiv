@@ -52,6 +52,7 @@ extern "C"
         bool enablePromotion{true};
         bool enableThreeSplits{true};
         float stdMultiplier{1.0f};
+        float signatureDecay{1.0f};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};
