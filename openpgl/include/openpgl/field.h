@@ -93,7 +93,7 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE PGLDirectionalSignature pglFieldGetDirectionalSignature(PGLField field, pgl_point3f position);
 
-    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetLRDirectionalSignatures(PGLField field, pgl_point3f position);
+    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetLRDirectionalSignatures(PGLField field, pgl_point3f position, uint8_t dim);
 
 #ifdef __cplusplus
 }  // extern "C"

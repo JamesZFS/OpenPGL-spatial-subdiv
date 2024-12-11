@@ -370,13 +370,15 @@ public:
         return {};
     }
 
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const {
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos, uint8_t dim) const {
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
             if (region.hasCandidateSplit()) {
-                auto &candidate = region.getBestCandidateSplit();
-                return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
+                auto candidate = &region.getBestCandidateSplit();
+                if (dim < 3)
+                    candidate = &region.candidateSplits[dim];
+                return {PGLDirectionalSignature(candidate->signaturesLR[0]), PGLDirectionalSignature(candidate->signaturesLR[1])};
             }
         }
         return {};
