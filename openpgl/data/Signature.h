@@ -41,16 +41,17 @@ struct Signature  // Directional signature
         return sum[idx] / numSamples;
     }
 
-    float getVariance(uint8_t idx) const {
+    float getStd(uint8_t idx) const {
         // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
-        return (m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples)) / numSamples;  // N sample, assuming no covariance, biased
+        float var = (m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples)) / numSamples;  // N sample, assuming no covariance, biased
+        return std::sqrt(var);
     }
 
     explicit operator PGLDirectionalSignature() const {
         PGLDirectionalSignature signature;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             signature.signature[i] = getEntry(i);
-            signature.variance[i] = getVariance(i);
+            signature.std[i] = getStd(i);
         }
         signature.numSamples = numSamples;
         return signature;
@@ -60,7 +61,14 @@ struct Signature  // Directional signature
     static float getDistanceL2(const Signature &a, const Signature &b) {
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
-            float diff = a.getEntry(i) - b.getEntry(i);
+            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float a_std = a.getStd(i), b_std = b.getStd(i);
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            float diff = 0;
+            if (ai - a_std > bi + b_std)
+                diff = ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                diff = bi - ai - a_std - b_std;
             sum += diff * diff;
         }
         return std::sqrt(sum);
@@ -71,7 +79,7 @@ struct Signature  // Directional signature
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            float a_std = a.getStd(i), b_std = b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 sum += ai - bi - a_std - b_std;
@@ -87,7 +95,7 @@ struct Signature  // Directional signature
         float sum = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            float a_std = a.getStd(i), b_std = b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 sum += 2.0f * (ai - bi - a_std - b_std) / (ai + bi);
@@ -104,7 +112,7 @@ struct Signature  // Directional signature
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
         for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            float a_std = std::sqrt(a.getVariance(i)), b_std = std::sqrt(b.getVariance(i));
+            float a_std = a.getStd(i), b_std = b.getStd(i);
             // if interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap and SMAPE(ai, bi) > threshold => split!
             // if ((ai - a_std > bi + b_std || ai + a_std < bi - b_std) &&
             //     2.0f * std::abs(ai - bi) / (ai + bi) > threshold)
