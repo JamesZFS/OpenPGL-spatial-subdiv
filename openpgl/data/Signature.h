@@ -12,11 +12,13 @@ struct Signature  // Directional signature
     float sum[PGL_SIGNATURE_SIZE] = {};  // sum of weights in that bin
     float m2[PGL_SIGNATURE_SIZE] = {};  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins
+    float numSamples2 = 0;  // only differs from numSamples after decay
 
     void clear() {
         memset(sum, 0, sizeof(sum));
         memset(m2, 0, sizeof(m2));
         numSamples = 0;
+        numSamples2 = 0;
     }
 
     template<typename SampleIterator>
@@ -26,11 +28,13 @@ struct Signature  // Directional signature
             sum[idx] += it->weight;
             m2[idx] += it->weight * it->weight;
             ++numSamples;
+            ++numSamples2;
         }
     }
 
     void addZeroSamples(size_t numZeroSamples) {
         numSamples += (float) numZeroSamples;
+        numSamples2 += (float) numZeroSamples;
     }
 
     float getNumSamples() const {
@@ -43,8 +47,19 @@ struct Signature  // Directional signature
 
     float getStd(uint8_t idx) const {
         // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
-        float var = (m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples)) / numSamples;  // N sample, assuming no covariance, biased
-        return std::sqrt(var);
+        float varOneSample = m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
+        // float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
+        float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
+        return std::sqrt(varNSample);
+    }
+
+    void decay(float alpha) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+            sum[i] *= alpha;
+            m2[i] *= alpha;
+        }
+        numSamples *= alpha;
+        numSamples2 *= alpha * alpha;
     }
 
     explicit operator PGLDirectionalSignature() const {
@@ -128,12 +143,14 @@ struct Signature  // Directional signature
         stream.write(reinterpret_cast<const char *>(sum), sizeof(sum));
         stream.write(reinterpret_cast<const char *>(m2), sizeof(m2));
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
+        stream.write(reinterpret_cast<const char *>(&numSamples2), sizeof(numSamples2));
     }
 
     void deserialize(std::istream &stream) {
         stream.read(reinterpret_cast<char *>(sum), sizeof(sum));
         stream.read(reinterpret_cast<char *>(m2), sizeof(m2));
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(numSamples));
+        stream.read(reinterpret_cast<char *>(&numSamples2), sizeof(numSamples2));
     }
 };
 
