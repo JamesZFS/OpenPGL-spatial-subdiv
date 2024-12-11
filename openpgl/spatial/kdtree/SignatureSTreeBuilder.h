@@ -63,6 +63,7 @@ struct KDTreePartitionBuilder
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         bool enablePromotion {true};
         bool enableThreeSplits {true};
+        float stdMultiplier {1.0f};
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -74,7 +75,7 @@ struct KDTreePartitionBuilder
                    minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    decayRatio == b.decayRatio && defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   enableThreeSplits == b.enableThreeSplits;
+                   enableThreeSplits == b.enableThreeSplits && stdMultiplier == b.stdMultiplier;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -85,6 +86,7 @@ struct KDTreePartitionBuilder
             sampleCountThreshold = cfg.sampleCountThreshold;
             maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
+            stdMultiplier = cfg.stdMultiplier;
             enablePromotion = cfg.enablePromotion;
             enableThreeSplits = cfg.enableThreeSplits;
             decayRatio = cfg.ceDecay;
@@ -214,7 +216,7 @@ struct KDTreePartitionBuilder
                     candidate.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
                     candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
                     candidate.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
-                    candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1]);
+                    candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.stdMultiplier);
 
                     // Update best candidate split and energy
                     if (candidate.energy > maxEnergy) {
@@ -1074,6 +1076,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&enableThreeSplits), sizeof(enableThreeSplits));
+    stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1090,6 +1093,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&enableThreeSplits), sizeof(enableThreeSplits));
+    stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
 }
 
 }
