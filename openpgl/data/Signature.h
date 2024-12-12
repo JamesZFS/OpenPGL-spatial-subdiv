@@ -3,16 +3,14 @@
 
 #pragma once
 
-#ifndef PBRT_SCOPE
 #include "../openpgl_common.h"
-#endif
 
 namespace openpgl {
 
 struct Signature  // Directional signature
 {
-    float sum[PGL_SIGNATURE_SIZE] = {};  // sum of weights in that bin
-    float m2[PGL_SIGNATURE_SIZE] = {};  // sum of squared weights in that bin
+    float sum[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of weights in that bin
+    float m2[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins, or sum of sample weights
     float numSamples2 = 0;  // sum of sample weights^2, only differs from numSamples after decay
 
@@ -20,7 +18,7 @@ struct Signature  // Directional signature
 
     explicit Signature(const PGLDirectionalSignature &s) {
         numSamples = numSamples2 = s.numSamples;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             sum[i] = s.signature[i] * numSamples;
             float varNSample = s.std[i] * s.std[i];
             float varOneSample = numSamples * varNSample;
@@ -68,7 +66,7 @@ struct Signature  // Directional signature
     }
 
     void decay(float alpha) {
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             sum[i] *= alpha;
             m2[i] *= alpha;
         }
@@ -78,7 +76,7 @@ struct Signature  // Directional signature
 
     explicit operator PGLDirectionalSignature() const {
         PGLDirectionalSignature signature;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             signature.signature[i] = getEntry(i);
             signature.std[i] = getStd(i);
         }
@@ -89,7 +87,7 @@ struct Signature  // Directional signature
     // L2 distance between two signatures
     static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -106,7 +104,7 @@ struct Signature  // Directional signature
     // L1 distance between two signatures
     static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -122,7 +120,7 @@ struct Signature  // Directional signature
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -131,7 +129,7 @@ struct Signature  // Directional signature
             else if (ai + a_std < bi - b_std)
                 sum += 2.0f * (bi - ai - a_std - b_std) / (ai + bi);
         }
-        return sum / (float) PGL_SIGNATURE_SIZE;
+        return sum / (float) g_opgl_signature_size;
     }
 
     static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
@@ -139,7 +137,7 @@ struct Signature  // Directional signature
     }
 
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
-        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
             float a_std = a.getStd(i), b_std = b.getStd(i);
             // if interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap and SMAPE(ai, bi) > threshold => split!

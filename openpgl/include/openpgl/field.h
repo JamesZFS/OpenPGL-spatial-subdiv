@@ -37,6 +37,10 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE void pglSetOctahedralResolution(uint32_t res);
 
+    OPENPGL_CORE_INTERFACE uint32_t pglGetSignatureSize();
+
+    OPENPGL_CORE_INTERFACE void pglSetSignatureSize(uint32_t size);
+
     OPENPGL_CORE_INTERFACE uint8_t pglGetSignatureIndex(pgl_direction dir);
 
     OPENPGL_CORE_INTERFACE void pglFieldClearCEStatistics(PGLField field);
