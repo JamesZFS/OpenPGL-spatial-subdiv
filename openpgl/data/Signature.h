@@ -3,7 +3,9 @@
 
 #pragma once
 
+#ifndef PBRT_SCOPE
 #include "../openpgl_common.h"
+#endif
 
 namespace openpgl {
 
@@ -11,8 +13,20 @@ struct Signature  // Directional signature
 {
     float sum[PGL_SIGNATURE_SIZE] = {};  // sum of weights in that bin
     float m2[PGL_SIGNATURE_SIZE] = {};  // sum of squared weights in that bin
-    float numSamples = 0;  // number of samples in all bins
-    float numSamples2 = 0;  // only differs from numSamples after decay
+    float numSamples = 0;  // number of samples in all bins, or sum of sample weights
+    float numSamples2 = 0;  // sum of sample weights^2, only differs from numSamples after decay
+
+    Signature() = default;
+
+    explicit Signature(const PGLDirectionalSignature &s) {
+        numSamples = numSamples2 = s.numSamples;
+        for (uint8_t i = 0; i < PGL_SIGNATURE_SIZE; i++) {
+            sum[i] = s.signature[i] * numSamples;
+            float varNSample = s.std[i] * s.std[i];
+            float varOneSample = numSamples * varNSample;
+            m2[i] = numSamples * (varOneSample + s.signature[i] * s.signature[i]);
+        }
+    }
 
     void clear() {
         memset(sum, 0, sizeof(sum));
