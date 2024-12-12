@@ -470,6 +470,8 @@ public:
         os.write(reinterpret_cast<const char *>(&m_useStochasticNNLookUp), sizeof(m_useStochasticNNLookUp));
         os.write(reinterpret_cast<const char *>(&m_useISNNLookUp), sizeof(m_useISNNLookUp));
         m_regionKNNSearchTree.serialize(os);
+        os.write(reinterpret_cast<const char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
+        os.write(reinterpret_cast<const char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
     }
 
     void deserialize(std::istream &is)
@@ -510,6 +512,8 @@ public:
         {
             m_regionKNNSearchTree.buildRegionNeighbours();
         }
+        is.read(reinterpret_cast<char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
+        is.read(reinterpret_cast<char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
     }
 
     bool isValid() const
