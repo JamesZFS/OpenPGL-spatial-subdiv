@@ -17,7 +17,7 @@
 #include <iostream>
 #include <limits>
 
-#define THRESHOLD_VAR_RATIO         1e-4
+#define THRESHOLD_VAR_RATIO         1e-3
 
 namespace openpgl
 {
@@ -117,10 +117,10 @@ struct KDTreePartitionBuilder
         dataStorage[0].first.regionBounds = bounds;
         dataStorage[0].first.depth = 1;
 
-        update(kdTree, samples, zeroSamples, dataStorage, buildSettings);
+        update(kdTree, samples, zeroSamples, dataStorage, buildSettings, true);
     }
 
-    void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
+    void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings, bool isBuild = false) const
     {
         Timer timer;
         int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.sampleCountThreshold+32;
@@ -142,7 +142,7 @@ struct KDTreePartitionBuilder
         }
         std::cout << "Total bounds " << bounds << std::endl;
 
-        updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, buildSettings);
+        updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, buildSettings, isBuild);
         kdTree.finalize();
         double elapsedMicroSec = timer.elapsed();
         std::cout << "KDTreePartitionBuilder::update() took " << elapsedMicroSec * 1e-6 << " seconds, total valid regions: " << kdTree.getNumLeafs() << std::endl;
@@ -163,7 +163,7 @@ struct KDTreePartitionBuilder
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, size_t depth, uint8_t prevSplitDim, const BBox &bounds,
         TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
-        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings) const
+        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &settings, bool isBuild) const
     {
         uint8_t splitDim = 3;
         float splitPos;
@@ -214,13 +214,15 @@ struct KDTreePartitionBuilder
                     auto zeroSamplesMid = pivotSplitSamples(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamples.begin() + zeroSampleRange.m_end, dim, candidate.pos);
 
                     // Update signatures and energy of this split
-                    candidate.signaturesLR[0].decay(settings.signatureDecay);
-                    candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                    candidate.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
-                    candidate.signaturesLR[1].decay(settings.signatureDecay);
-                    candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
-                    candidate.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
-                    candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.stdMultiplier);
+                    if (!isBuild) {  // During buildTree, the samples are way too noisy to update the signatures
+                        candidate.signaturesLR[0].decay(settings.signatureDecay);
+                        candidate.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                        candidate.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                        candidate.signaturesLR[1].decay(settings.signatureDecay);
+                        candidate.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                        candidate.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                        candidate.energy = Signature::getDistance(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.stdMultiplier);
+                    }
 
                     // Update best candidate split and energy
                     if (candidate.energy > maxEnergy) {
@@ -278,8 +280,8 @@ struct KDTreePartitionBuilder
                                                Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
                 tbb::parallel_invoke(
-                    [&]{ updateTreeNode(kdTree, *nodesLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings); },
-                    [&]{ updateTreeNode(kdTree, *nodesLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings); }
+                    [&]{ updateTreeNode(kdTree, *nodesLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings, isBuild); },
+                    [&]{ updateTreeNode(kdTree, *nodesLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings, isBuild); }
                 );
             } else {
                 // No split! Just merge in new samples
@@ -306,8 +308,8 @@ struct KDTreePartitionBuilder
                                            Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
             tbb::parallel_invoke(
-                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings); },
-                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings); }
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings, isBuild); },
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings, isBuild); }
             );
         }
     }
