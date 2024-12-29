@@ -17,7 +17,7 @@
 #include <iostream>
 #include <limits>
 
-#define THRESHOLD_VAR_RATIO         1e-3
+#define THRESHOLD_VAR_RATIO         1e-4
 
 namespace openpgl
 {
@@ -191,9 +191,8 @@ struct KDTreePartitionBuilder
                 std::vector<uint8_t> allDims;
                 if (settings.enableThreeSplits) {
                     for (uint8_t dim = 0; dim < 3; ++dim) {
-                        if (posVariances[dim] < THRESHOLD_VAR_RATIO) {
+                        if (posVariances[dim] < std::max(THRESHOLD_VAR_RATIO * maxPosVariance, THRESHOLD_VAR_RATIO)) {
                             // degenerate dimension
-                            OPENPGL_ASSERT(!candidate.valid());
                             continue;
                         }
                         allDims.push_back(dim);
@@ -225,7 +224,9 @@ struct KDTreePartitionBuilder
                     }
 
                     // Update best candidate split and energy
-                    if (candidate.energy > maxEnergy) {
+                    if (candidate.energy > maxEnergy &&
+                        candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
+                        candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion) {
                         maxEnergy = candidate.energy;
                         region.bestSplitDim = dim;
                     }
@@ -233,8 +234,9 @@ struct KDTreePartitionBuilder
 
                 if (region.bestSplitDim < 3 && settings.enablePromotion) {
                     auto &candidate = region.getBestCandidateSplit();
-                    if (candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
-                        candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion &&
+                    if (
+                        // candidate.signaturesLR[0].getNumSamples() >= settings.minSamplesPromotion &&
+                        // candidate.signaturesLR[1].getNumSamples() >= settings.minSamplesPromotion &&
                         // Signature::differsSignificantly(candidate.signaturesLR[0], candidate.signaturesLR[1], settings.signatureDistanceThreshold)) {
                         maxEnergy > settings.signatureDistanceThreshold) {
                         splitDim = region.bestSplitDim, splitPos = candidate.pos;
