@@ -11,14 +11,16 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
 {
     static float clampValue;
 
-    float a = 0; // - <phi> * log q
-    float f = 0; // <phi>
-    float N = 0; // number of samples
+    float a = 0;  // sum(- <phi> * log q)
+    float f = 0;  // sum(<phi>)
+    float N = 0;  // number of samples
+    float m2 = 0; // sum( (<phi> * log q)^2 )
 
     inline void clear() {
         a = 0;
         f = 0;
         N = 0;
+        m2 = 0;
     }
 
     /// Add a sample to the statistics
@@ -27,8 +29,10 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
     inline void addSample(float weight, float pdf) {
         N++;
         weight = std::min(weight, clampValue);
-        a += -weight * std::log(pdf + 1e-3f);
+        float sample = -weight * std::log(pdf + 1e-3f);
+        a += sample;
         f += weight;
+        m2 += sample * sample;
         // a += std::min(-phi * std::log(pdf), clampValue);
         // f += std::min(phi, clampValue);
     }
@@ -43,6 +47,16 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
 
     inline float getCE() const {
         return f > 0 ? a / f : 0;
+    }
+
+    // Assuming fluence is constant, estimating the std of CE estimator
+    inline float getStd() const {
+        if (N <= 0) return 0;
+        // float varOneSample = m2 / N - a * a / (N * N);
+        // float varNSample = varOneSample / N;
+        // float fluence = getFluence();
+        // return std::sqrt(varNSample) / fluence;
+        return std::sqrt(m2 - a*a/N) / f;
     }
 
     inline float getNumSamples() const {
@@ -102,17 +116,19 @@ struct CEStatistics // Sufficient statistics for marginalized cross-entropies pe
         stream.write(reinterpret_cast<const char *>(&N), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&f), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&a), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&m2), sizeof(float));
     }
 
     void deserialize(std::istream &stream) {
         stream.read(reinterpret_cast<char *>(&N), sizeof(float));
         stream.read(reinterpret_cast<char *>(&f), sizeof(float));
         stream.read(reinterpret_cast<char *>(&a), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&m2), sizeof(float));
     }
 
     bool operator==(const CEStatistics &b) const {
         bool equal = true;
-        if (N != b.N || a != b.a || f != b.f) {
+        if (N != b.N || a != b.a || f != b.f || m2 != b.m2) {
             equal = false;
         }
         return equal;

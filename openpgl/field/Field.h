@@ -357,7 +357,7 @@ struct Field
 
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
-        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .ceStd = std::numeric_limits<float>::quiet_NaN()};
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
@@ -369,6 +369,7 @@ struct Field
         if (stats.numSamples > 0) {
             stats.fluence = region.ceStatistics.self.getFluence();
             stats.crossEntropy = region.ceStatistics.self.getCE();
+            stats.ceStd = region.ceStatistics.self.getStd();
         }
         stats.hasCandidateSplit = region.hasCandidateSplit();
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
@@ -385,7 +386,7 @@ struct Field
     PGLRegionStatistics getFineRegionStats(const openpgl::Point3 &pos) const
     {
         uint32_t id = getRegionId(pos);
-        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .ceStd = std::numeric_limits<float>::quiet_NaN()};
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &coarse = m_regionStorageContainer[id].first;
@@ -402,7 +403,7 @@ struct Field
 
     std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStats(const openpgl::Point3 &pos) const
     {
-        PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .ceStd = std::numeric_limits<float>::quiet_NaN()};
         PGLRegionStatistics fStats = cStats;
         uint32_t cId = getRegionId(pos);
         if (cId >= m_regionStorageContainer.size())
@@ -436,14 +437,17 @@ struct Field
             if (fRegion.ceStatistics.parent.getNumSamples() > 0) {
                 cStats.fluence = fRegion.ceStatistics.parent.getFluence();  // parent stats come from the child.parent
                 cStats.crossEntropy = fRegion.ceStatistics.parent.getCE();
+                cStats.ceStd = fRegion.ceStatistics.parent.getStd();
             }
             if (fRegion.ceStatistics.self.getNumSamples() > 0) {
                 fStats.fluence = fRegion.ceStatistics.self.getFluence();
                 fStats.crossEntropy = fRegion.ceStatistics.self.getCE();
+                fStats.ceStd = fRegion.ceStatistics.self.getStd();
             }
         } else if (cRegion.ceStatistics.self.getNumSamples() > 0) {
             cStats.fluence = cRegion.ceStatistics.self.getFluence();
             cStats.crossEntropy = cRegion.ceStatistics.self.getCE();
+            cStats.ceStd = cRegion.ceStatistics.self.getStd();
         }
         return {cStats, fStats};
     }

@@ -12,6 +12,7 @@ struct PGLRegionStatistics
     uint32_t depth = 0;
     float fluence = 0;
     float crossEntropy = 0;
+    float ceStd = 0;
     bool hasCandidateSplit = false;
     pgl_point3f lowerBounds {0, 0, 0};
     pgl_point3f upperBounds {0, 0, 0};

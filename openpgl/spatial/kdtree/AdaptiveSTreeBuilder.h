@@ -218,7 +218,7 @@ struct KDTreePartitionBuilder
 
                                 // Inherit CE stats to a tie position
                                 regionLR[i]->ceStatistics.self = regionLR[i]->ceStatistics.parent;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
+                                regionLR[i]->decayDivergence(0);
                             }
                         }
 
@@ -368,8 +368,8 @@ struct KDTreePartitionBuilder
                     rDataItr->first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, true);
 
                     regionRange.first.ceStatistics.parent = rDataItr->first.ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                    regionRange.first.decayDivergence(settings.decayRatio);
-                    rDataItr->first.decayDivergence(settings.decayRatio);
+                    regionRange.first.decayDivergence(0);
+                    rDataItr->first.decayDivergence(0);
 
                     regionRange.first.depth = rDataItr->first.depth = depth + 1;
 
@@ -417,7 +417,7 @@ struct KDTreePartitionBuilder
                         *regionLR[i] = regionRange.first;
                         regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
                         regionLR[i]->ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                        regionLR[i]->decayDivergence(settings.decayRatio);
+                        regionLR[i]->decayDivergence(0);
                         regionLR[i]->splitFlag = true;
                         if (i == 0) {
                             regionLR[i]->regionBounds.upper[splitDim] = splitPos;
