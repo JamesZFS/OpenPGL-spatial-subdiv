@@ -4,8 +4,7 @@
 #pragma once
 
 #include "../data/SampleStatistics.h"
-#include "../data/CEStatistics.h"
-// #include "../data/DivergenceStatistics.h"
+#include "../data/PairedCEStatistics.h"
 #include "../openpgl_common.h"
 #ifdef OPENPGL_RADIANCE_CACHES
 #include "../directional/OutgoingRadianceHistogram.h"
@@ -49,22 +48,7 @@ struct Region : public IRegion
         }
     } candidateSplit;
 
-    struct SelfAndParentCEStatistics {  // for lookahead regions
-        CEStatistics self;
-        CEStatistics parent;
-
-        void serialize(std::ostream &stream) const
-        {
-            self.serialize(stream);
-            parent.serialize(stream);
-        }
-
-        void deserialize(std::istream &stream)
-        {
-            self.deserialize(stream);
-            parent.deserialize(stream);
-        }
-    } ceStatistics;
+    PairedCEStatistics ceStatistics;
     uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
@@ -90,27 +74,12 @@ struct Region : public IRegion
         candidateSplit.dataIdx = leftDataIdx;
     }
 
-    inline void decayDivergence(float a) {
-        ceStatistics.self.decay(a);
-        ceStatistics.parent.decay(a);
-    }
-
     template<typename SampleIterator>
     void updateCE(const Region &parent, SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
             auto _dir = pgl_vec3f(it->direction);
             Vector3 dir{_dir.x, _dir.y, _dir.z};
-            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
-            ceStatistics.parent.addSample(it->weight, parent.distribution.pdf(dir));
-        }
-    }
-
-    template<typename SampleIterator>
-    void updateCE(SampleIterator begin, SampleIterator end) {
-        for (auto it = begin; it != end; ++it) {
-            auto _dir = pgl_vec3f(it->direction);
-            Vector3 dir{_dir.x, _dir.y, _dir.z};
-            ceStatistics.self.addSample(it->weight, distribution.pdf(dir));
+            ceStatistics.addSample(it->weight, parent.distribution.pdf(dir), distribution.pdf(dir));
         }
     }
 

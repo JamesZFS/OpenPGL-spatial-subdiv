@@ -201,7 +201,7 @@ struct KDTreePartitionBuilder
                         promoteLR[0] = promoteLR[1] = true;
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
                         for (int i: {0, 1})
-                            promoteLR[i] = regionLR[i]->ceStatistics.parent.getCE() - regionLR[i]->ceStatistics.self.getCE() > settings.maxDivReductionRate;
+                            promoteLR[i] = regionLR[i]->ceStatistics.getReducedCE() > settings.maxDivReductionRate;
                     }
                     if (promoteLR[0] || promoteLR[1]) {
                         // 2.
@@ -215,10 +215,7 @@ struct KDTreePartitionBuilder
                                 regionLR[i]->outRadianceHist = regionRange.first.outRadianceHist;
 #endif
                                 regionLR[i]->splitFlag = true;
-
-                                // Inherit CE stats to a tie position
-                                regionLR[i]->ceStatistics.self = regionLR[i]->ceStatistics.parent;
-                                regionLR[i]->decayDivergence(0);
+                                regionLR[i]->ceStatistics.clear();
                             }
                         }
 
@@ -256,8 +253,7 @@ struct KDTreePartitionBuilder
                                 // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
                                 // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
                                 regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
+                                regionLR[i]->ceStatistics.decay(settings.decayRatio);
                                 regionLR[i]->splitFlag = true;
                                 // regionBounds already adjusted
                             }
@@ -280,22 +276,8 @@ struct KDTreePartitionBuilder
                     if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                         shouldPromote = true;
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        float childEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.self, regionLR[1]->ceStatistics.self);
-                        float parentEntropy = CEStatistics::weightedAverageCE(regionLR[0]->ceStatistics.parent, regionLR[1]->ceStatistics.parent);
-                        shouldPromote = parentEntropy - childEntropy > settings.maxDivReductionRate;
+                        shouldPromote = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics) > settings.maxDivReductionRate;
                     }
-                    // if (!shouldPromote) {  // Last chance: re-propose a split position and check if we should promote based on the gain
-                    //     uint8_t splitDim = -1;
-                    //     float splitPos;
-                    //     float gain = proposeSplit(prevSplitDim, bounds, begin, end, mergedStats, splitDim, splitPos, settings);
-                    //     candidate.dim = splitDim;
-                    //     candidate.pos = splitPos;
-                    //     OPENPGL_ASSERT(candidate.dim < 3);
-                    //     rPivotItr = pivotSplitSamples(begin, end, candidate.dim, candidate.pos);
-                    //     regionLR[0]->regionBounds.upper[candidate.dim] = candidate.pos;
-                    //     regionLR[1]->regionBounds.lower[candidate.dim] = candidate.pos;
-                    //     shouldPromote = gain > settings.gainThreshold;
-                    // }
                     if (shouldPromote) {
                         regionLR[0]->unsetLookahead();
                         regionLR[1]->unsetLookahead();
@@ -316,7 +298,7 @@ struct KDTreePartitionBuilder
                         Range sampleRangeLR[2] = {
                             Range(std::distance(samples.begin(), begin), std::distance(samples.begin(), rPivotItr)),
                             Range(std::distance(samples.begin(), rPivotItr), std::distance(samples.begin(), end))
-                    };
+                        };
 
                         BBox boundsLR[2] = {bounds, bounds};
                         boundsLR[0].upper[candidate.dim] = candidate.pos;
@@ -332,8 +314,7 @@ struct KDTreePartitionBuilder
                                 // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
                                 // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
                                 regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                // regionLR[i]->ceStatistics.parent = regionLR[i]->ceStatistics.self = regionRange.first.ceStatistics.self;
-                                regionLR[i]->decayDivergence(settings.decayRatio);
+                                regionLR[i]->ceStatistics.decay(settings.decayRatio);
                                 regionLR[i]->splitFlag = true;
                                 // regionBounds already adjusted
                             }
@@ -367,9 +348,8 @@ struct KDTreePartitionBuilder
                     regionRange.first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, false);
                     rDataItr->first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, true);
 
-                    regionRange.first.ceStatistics.parent = rDataItr->first.ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                    regionRange.first.decayDivergence(0);
-                    rDataItr->first.decayDivergence(0);
+                    regionRange.first.ceStatistics.clear();
+                    rDataItr->first.ceStatistics.clear();
 
                     regionRange.first.depth = rDataItr->first.depth = depth + 1;
 
@@ -416,8 +396,7 @@ struct KDTreePartitionBuilder
                     for (int i: {0, 1}) {
                         *regionLR[i] = regionRange.first;
                         regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                        regionLR[i]->ceStatistics.parent = regionRange.first.ceStatistics.self;  // initialize with a "tie"
-                        regionLR[i]->decayDivergence(0);
+                        regionLR[i]->ceStatistics.clear();
                         regionLR[i]->splitFlag = true;
                         if (i == 0) {
                             regionLR[i]->regionBounds.upper[splitDim] = splitPos;
@@ -579,36 +558,6 @@ struct KDTreePartitionBuilder
                 dataIndsLeftRight[1] = dataIndsLeftRight[0] + 1;
             }
             else {
-                // Update CE for leaf regions without lookaheads
-                if constexpr (isNonZeroSample) {
-#if COMPUTE_CE_STYLE == 0
-                    TSamplingDistribution guidingDist;
-                    // region.ceStatistics.self.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                    // !! This can be slow
-                    for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
-                        const T &sample = samples[i];
-                        float weight = sample.weight;
-                        // Evaluate pdf
-                        const auto dist = &region.distribution;
-                        Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                        auto _dir = pgl_vec3f(sample.direction);
-                        Vector3 dir(_dir.x, _dir.y, _dir.z);
-                        guidingDist.init(dist, position); // Applied parallax shift
-                        if constexpr (isSurfaceDist) {
-                            auto _normal = pgl_vec3f(sample.normal);
-                            Vector3 normal(_normal.x, _normal.y, _normal.z);
-                            guidingDist.applyCosineProduct(normal);
-                        }
-                        float pdf = guidingDist.pdf(dir);
-                        // float pdf = sample.guidingPDF;
-                        region.ceStatistics.self.addSample(weight, pdf);
-                    }
-#else
-                    field.updateCE(region, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
-#endif
-                } else {
-                    region.ceStatistics.self.addZeroWeightSamples(sampleRange.size());
-                }
                 return;
             }
         }
@@ -649,8 +598,6 @@ struct KDTreePartitionBuilder
                 if constexpr (isNonZeroSample) {
 #if COMPUTE_CE_STYLE == 0
                     TSamplingDistribution guidingDist;
-                    // childRegion.ceStatistics.parent.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                    // childRegion.ceStatistics.self.decay(buildSettings.ceDecay);
                     // !! This can be slow
                     for (size_t i = sampleRangeLeftRight[c].m_begin; i < sampleRangeLeftRight[c].m_end; i++) {
                         const T &sample = samples[i];
@@ -668,20 +615,19 @@ struct KDTreePartitionBuilder
                             guidingDist.applyCosineProduct(normal);
                         float qp = guidingDist.pdf(dir);
                         // float qp = sample.guidingPDF;
-                        childRegion.ceStatistics.parent.addSample(weight, qp);
 
                         guidingDist.init(childDist, position); // Applied parallax shift
                         if constexpr (isSurfaceDist)
                             guidingDist.applyCosineProduct(normal);
                         float qc = guidingDist.pdf(dir);
-                        childRegion.ceStatistics.self.addSample(weight, qc);
+
+                        childRegion.ceStatistics.addSample(weight, qp, qc);
                     }
 #else
                     field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);
 #endif
                 } else {
-                    childRegion.ceStatistics.parent.addZeroWeightSamples(sampleRangeLeftRight[c].size());
-                    childRegion.ceStatistics.self.addZeroWeightSamples(sampleRangeLeftRight[c].size());
+                    childRegion.ceStatistics.addZeroWeightSamples(sampleRangeLeftRight[c].size());
                 }
             }
         }
