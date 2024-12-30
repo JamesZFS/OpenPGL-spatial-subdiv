@@ -45,6 +45,7 @@ extern "C"
         bool isKnnLookup{false};
         size_t minSamples{100};
         size_t maxSamples{PGL_TREE_MAX_SAMPLE_PER_LEAF};
+        size_t minSamplesCandidateSplit{100};
         size_t maxDepth{32};
         size_t maxDepthWithSampleCount{32};
         bool enableCE{true};
@@ -52,6 +53,7 @@ extern "C"
         bool failureDecay{false};
         bool singleSidePromotion{true};
         float ceThreshold{std::numeric_limits<float>::infinity()};
+        float stdMultiplier{2.0f};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};

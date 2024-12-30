@@ -77,6 +77,11 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
                (l.getNumSamples() + r.getNumSamples());
     }
 
+    static float weightedAverageStd(const PairedCEStatistics &l, const PairedCEStatistics &r) {
+        return (l.getStd() * l.getNumSamples() + r.getStd() * r.getNumSamples()) /
+               (l.getNumSamples() + r.getNumSamples());
+    }
+
     inline void decay(const float lambda) {
         ap *= lambda;
         ac *= lambda;

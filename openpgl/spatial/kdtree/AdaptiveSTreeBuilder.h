@@ -57,11 +57,13 @@ struct KDTreePartitionBuilder
         PGL_SPATIAL_SPLIT_TYPE splitType {PGL_SPATIAL_SPLIT_BASELINE};
         size_t minSamples {100};
         size_t maxSamples {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
+        size_t minSamplesCandidateSplit {100};  // the leaf has to have this many samples to propose candidate split
         size_t maxDepth {32};
         size_t maxDepthSPLThreshold {1};  // maximum depth with Samples-Per-Leaf threshold. Setting this to 1 means disabling it
         float decayRatio {0.25f};  // set from field
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
-        float maxDivReductionRate{0.05f}; // split if the parent's divergence - child's divergence goes beyond this
+        float ceThreshold {0.05f}; // split if the parent's divergence - child's divergence goes beyond this
+        float stdMultiplier {2.0f};
         float gainThreshold {1.0f};  // force a split if the gain is above this threshold
         bool enableCE {true};  // enable creation of lookahead children
         bool enablePromotion {true};
@@ -73,8 +75,9 @@ struct KDTreePartitionBuilder
         std::string toString() const;
 
         bool operator==(const Settings& b) const {
-            return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && maxDepth == b.maxDepth
-                && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness && maxDivReductionRate == b.maxDivReductionRate && gainThreshold == b.gainThreshold
+            return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && minSamplesCandidateSplit == b.minSamplesCandidateSplit && maxDepth == b.maxDepth
+                && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness
+                && ceThreshold == b.ceThreshold && stdMultiplier == b.stdMultiplier && gainThreshold == b.gainThreshold
                 && enableCE == b.enableCE && enablePromotion == b.enablePromotion && failureDecay == b.failureDecay && singleSidePromotion == b.singleSidePromotion;
         }
 
@@ -82,13 +85,15 @@ struct KDTreePartitionBuilder
         {
             minSamples = cfg.minSamples;
             maxSamples = cfg.maxSamples;
+            minSamplesCandidateSplit = cfg.minSamplesCandidateSplit;
             maxDepth = cfg.maxDepth;
             maxDepthSPLThreshold = cfg.maxDepthWithSampleCount;
             enableCE = cfg.enableCE;
             enablePromotion = cfg.enablePromotion;
             failureDecay = cfg.failureDecay;
             singleSidePromotion = cfg.singleSidePromotion;
-            maxDivReductionRate = cfg.ceThreshold;
+            ceThreshold = cfg.ceThreshold;
+            stdMultiplier = cfg.stdMultiplier;
             decayRatio = cfg.ceDecay;
         }
     };
@@ -174,7 +179,7 @@ struct KDTreePartitionBuilder
             mergedStats.merge(regionRange.first.sampleStatistics);
 
             bool exceedSPLThreshold = depth < std::min(settings.maxDepth, settings.maxDepthSPLThreshold) && mergedStats.getNumSamples() > settings.maxSamples;
-            bool canProposeSplit = depth < settings.maxDepth && mergedStats.getNumSamples() > 2 * settings.minSamples;  // so that a candidate split results in regions with sufficient training samples
+            bool canProposeSplit = depth < settings.maxDepth && mergedStats.getNumSamples() > settings.minSamplesCandidateSplit;
 
             OPENPGL_ASSERT(!exceedSPLThreshold || canProposeSplit);  // if SPL threshold is exceeded, we must be able to propose a split
 
@@ -200,8 +205,10 @@ struct KDTreePartitionBuilder
                     if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                         promoteLR[0] = promoteLR[1] = true;
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        for (int i: {0, 1})
-                            promoteLR[i] = regionLR[i]->ceStatistics.getReducedCE() > settings.maxDivReductionRate;
+                        for (int i: {0, 1}) {
+                            auto &stats = regionLR[i]->ceStatistics;
+                            promoteLR[i] = stats.getNumSamples() > settings.minSamples && stats.getReducedCE() > settings.stdMultiplier * stats.getStd() + settings.ceThreshold;
+                        }
                     }
                     if (promoteLR[0] || promoteLR[1]) {
                         // 2.
@@ -276,7 +283,10 @@ struct KDTreePartitionBuilder
                     if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                         shouldPromote = true;
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        shouldPromote = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics) > settings.maxDivReductionRate;
+                        float reduction = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
+                        float std = PairedCEStatistics::weightedAverageStd(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
+                        shouldPromote = std::min(regionLR[0]->ceStatistics.getNumSamples(), regionLR[1]->ceStatistics.getNumSamples()) > settings.minSamples
+                            && reduction > settings.stdMultiplier * std + settings.ceThreshold;
                     }
                     if (shouldPromote) {
                         regionLR[0]->unsetLookahead();
@@ -1276,11 +1286,13 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  splitType: " << splitType << std::endl;
     ss << "  minSamples: " << minSamples << std::endl;
     ss << "  maxSamples: " << maxSamples << std::endl;
+    ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  maxDepthSPLThreshold: " << maxDepthSPLThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
-    ss << "  maxDivReductionRate: " << maxDivReductionRate << std::endl;
+    ss << "  ceThreshold: " << ceThreshold << std::endl;
+    ss << "  stdMultiplier: " << stdMultiplier << std::endl;
     ss << "  gainThreshold: " << gainThreshold << std::endl;
     ss << "  enableCE: " << enableCE << std::endl;
 
@@ -1293,11 +1305,13 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&splitType), sizeof(PGL_SPATIAL_SPLIT_TYPE));
     stream.write(reinterpret_cast<const char*>(&minSamples), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&maxSamples), sizeof(size_t));
+    stream.write(reinterpret_cast<const char*>(&minSamplesCandidateSplit), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&maxDepth), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&maxDepthSPLThreshold), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&maxDivReductionRate), sizeof(float));
+    stream.write(reinterpret_cast<const char*>(&ceThreshold), sizeof(float));
+    stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&gainThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&enableCE), sizeof(bool));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(bool));
@@ -1311,11 +1325,13 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&splitType), sizeof(PGL_SPATIAL_SPLIT_TYPE));
     stream.read(reinterpret_cast<char*>(&minSamples), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&maxSamples), sizeof(size_t));
+    stream.read(reinterpret_cast<char*>(&minSamplesCandidateSplit), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&maxDepth), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&maxDepthSPLThreshold), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(float));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&maxDivReductionRate), sizeof(float));
+    stream.read(reinterpret_cast<char*>(&ceThreshold), sizeof(float));
+    stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(float));
     stream.read(reinterpret_cast<char*>(&gainThreshold), sizeof(float));
     stream.read(reinterpret_cast<char*>(&enableCE), sizeof(bool));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(bool));
@@ -1328,4 +1344,3 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
 #undef THRESHOLD_VAR_RATIO
 #undef MIN_SAMPLES_PER_SIDE
 #undef GAMMA_CUT
-#undef SINGLE_SIDE_PROMOTION
