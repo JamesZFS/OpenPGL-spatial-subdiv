@@ -15,6 +15,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
     float ac = 0;  // sum(- <phi> * log qc)
     float f = 0;  // sum( <phi> )
     float N = 0;  // number of samples
+    float N2 = 0; // sum of sample statistical weight^2, only differs from numSamples after decay
     float m2 = 0; // sum( (<phi> * (-log qp + log qc) )^2 )
 
     inline void clear() {
@@ -22,6 +23,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
         ac = 0;
         f = 0;
         N = 0;
+        N2 = 0;
         m2 = 0;
     }
 
@@ -30,7 +32,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
     /// @param qp: the *guiding* pdf of the parent
     /// @param qc: the *guiding* pdf of the child
     inline void addSample(float weight, float qp, float qc) {
-        N++;
+        N++, N2++;
         weight = std::min(weight, clampValue);
         float parentSample = -weight * std::log(qp + 1e-3f);
         float childSample = -weight * std::log(qc + 1e-3f);
@@ -43,6 +45,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
 
     inline void addZeroWeightSamples(size_t numSamples) {
         N += (float) numSamples;
+        N2 += (float) numSamples;
     }
 
     inline float getFluence() const {
@@ -65,7 +68,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
     inline float getStd() const {
         if (N <= 0) return 0;
         float a = ap - ac;
-        return std::sqrt(m2 - a*a/N) / f;
+        return std::sqrt(N2/N * (m2 - a*a/N)) / f;
     }
 
     inline float getNumSamples() const {
@@ -87,6 +90,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
         ac *= lambda;
         f *= lambda;
         N *= lambda;
+        N2 *= lambda * lambda;
         m2 *= lambda;
     }
 
@@ -95,6 +99,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
         ac += other.ac;
         f += other.f;
         N += other.N;
+        N2 += other.N2;
         m2 += other.m2;
     }
 
@@ -134,6 +139,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
 
     void serialize(std::ostream &stream) const {
         stream.write(reinterpret_cast<const char *>(&N), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&N2), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&f), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&ap), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&ac), sizeof(float));
@@ -142,6 +148,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
 
     void deserialize(std::istream &stream) {
         stream.read(reinterpret_cast<char *>(&N), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&N2), sizeof(float));
         stream.read(reinterpret_cast<char *>(&f), sizeof(float));
         stream.read(reinterpret_cast<char *>(&ap), sizeof(float));
         stream.read(reinterpret_cast<char *>(&ac), sizeof(float));
@@ -150,7 +157,7 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
 
     bool operator==(const PairedCEStatistics &b) const {
         bool equal = true;
-        if (N != b.N || ap != b.ap || ac != b.ac || f != b.f || m2 != b.m2) {
+        if (N != b.N || N2 != b.N2 || ap != b.ap || ac != b.ac || f != b.f || m2 != b.m2) {
             equal = false;
         }
         return equal;

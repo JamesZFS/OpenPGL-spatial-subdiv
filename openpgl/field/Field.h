@@ -318,6 +318,12 @@ struct Field
         }
     }
 
+    void decayCEStats(float lambda) {
+        for (auto &region : m_regionStorageContainer) {
+            region.first.ceStatistics.decay(lambda);
+        }
+    }
+
     void updateSubdivConfig(const PGLKDTreeArguments &cfg)
     {
         m_useStochasticNNLookUp = cfg.knnLookup;
@@ -607,8 +613,8 @@ struct Field
     {
         Timer timer;
         // 1. Evaluate regions with new-coming samples
-        // if (m_spatialSubdivBuilderSettings.enableCE) {
-        if (true) {
+        if (m_spatialSubdivBuilderSettings.enableCE) {
+            decayCEStats(m_spatialSubdivBuilderSettings.ceDecay);
             m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;

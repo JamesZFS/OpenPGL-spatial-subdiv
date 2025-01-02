@@ -60,10 +60,11 @@ struct KDTreePartitionBuilder
         size_t minSamplesCandidateSplit {100};  // the leaf has to have this many samples to propose candidate split
         size_t maxDepth {32};
         size_t maxDepthSPLThreshold {1};  // maximum depth with Samples-Per-Leaf threshold. Setting this to 1 means disabling it
-        float decayRatio {0.25f};  // set from field
+        float ceDecay {0.8f};
+        float statsDecay {0.25f};
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         float ceThreshold {0.05f}; // split if the parent's divergence - child's divergence goes beyond this
-        float stdMultiplier {2.0f};
+        float stdMultiplier {1.0f};
         float gainThreshold {1.0f};  // force a split if the gain is above this threshold
         bool enableCE {true};  // enable creation of lookahead children
         bool enablePromotion {true};
@@ -76,7 +77,7 @@ struct KDTreePartitionBuilder
 
         bool operator==(const Settings& b) const {
             return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && minSamplesCandidateSplit == b.minSamplesCandidateSplit && maxDepth == b.maxDepth
-                && maxDepthSPLThreshold == b.maxDepthSPLThreshold && decayRatio == b.decayRatio && defensiveness == b.defensiveness
+                && maxDepthSPLThreshold == b.maxDepthSPLThreshold && ceDecay == b.ceDecay && statsDecay == b.statsDecay && defensiveness == b.defensiveness
                 && ceThreshold == b.ceThreshold && stdMultiplier == b.stdMultiplier && gainThreshold == b.gainThreshold
                 && enableCE == b.enableCE && enablePromotion == b.enablePromotion && failureDecay == b.failureDecay && singleSidePromotion == b.singleSidePromotion;
         }
@@ -94,16 +95,14 @@ struct KDTreePartitionBuilder
             singleSidePromotion = cfg.singleSidePromotion;
             ceThreshold = cfg.ceThreshold;
             stdMultiplier = cfg.stdMultiplier;
-            decayRatio = cfg.ceDecay;
+            ceDecay = cfg.ceDecay;
+            statsDecay = cfg.statsDecay;
         }
     };
 
     void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings) const
     {
         std::cout << buildSettings.toString() << std::endl;
-        if (buildSettings.minSamples > buildSettings.maxSamples / 3) {
-            throw std::runtime_error("KDTreePartitionBuilder::build() minSamples must be less than maxSamples/3");
-        }
 
         kdTree.init(bounds, 4096);
         dataStorage.resize(1);
@@ -258,9 +257,9 @@ struct KDTreePartitionBuilder
                         if (settings.failureDecay) {
                             for (int i: {0, 1}) {
                                 // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
-                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                                regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                regionLR[i]->ceStatistics.decay(settings.decayRatio);
+                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.statsDecay, (bool) i);
+                                regionLR[i]->sampleStatistics.decay(settings.statsDecay);
+                                regionLR[i]->ceStatistics.decay(settings.ceDecay);
                                 regionLR[i]->splitFlag = true;
                                 // regionBounds already adjusted
                             }
@@ -322,9 +321,9 @@ struct KDTreePartitionBuilder
                         if (settings.failureDecay) {
                             for (int i: {0, 1}) {
                                 // regionLR[i]->sampleStatistics = regionRange.first.sampleStatistics;
-                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
-                                regionLR[i]->sampleStatistics.decay(settings.decayRatio);
-                                regionLR[i]->ceStatistics.decay(settings.decayRatio);
+                                // regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.statsDecay, (bool) i);
+                                regionLR[i]->sampleStatistics.decay(settings.statsDecay);
+                                regionLR[i]->ceStatistics.decay(settings.ceDecay);
                                 regionLR[i]->splitFlag = true;
                                 // regionBounds already adjusted
                             }
@@ -355,8 +354,8 @@ struct KDTreePartitionBuilder
                     // Left inherits self
                     auto rDataItr = dataStorage.push_back(regionRange);
 
-                    regionRange.first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, false);
-                    rDataItr->first.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, true);
+                    regionRange.first.sampleStatistics.split(splitDim, splitPos, settings.statsDecay, false);
+                    rDataItr->first.sampleStatistics.split(splitDim, splitPos, settings.statsDecay, true);
 
                     regionRange.first.ceStatistics.clear();
                     rDataItr->first.ceStatistics.clear();
@@ -405,7 +404,7 @@ struct KDTreePartitionBuilder
                     // Child data handling
                     for (int i: {0, 1}) {
                         *regionLR[i] = regionRange.first;
-                        regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, (bool) i);
+                        regionLR[i]->sampleStatistics.split(splitDim, splitPos, settings.statsDecay, (bool) i);
                         regionLR[i]->ceStatistics.clear();
                         regionLR[i]->splitFlag = true;
                         if (i == 0) {
@@ -1289,7 +1288,8 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  maxDepthSPLThreshold: " << maxDepthSPLThreshold << std::endl;
-    ss << "  decayRatio: " << decayRatio << std::endl;
+    ss << "  ceDecay: " << ceDecay << std::endl;
+    ss << "  statsDecay: " << statsDecay << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  ceThreshold: " << ceThreshold << std::endl;
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
@@ -1308,7 +1308,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&minSamplesCandidateSplit), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&maxDepth), sizeof(size_t));
     stream.write(reinterpret_cast<const char*>(&maxDepthSPLThreshold), sizeof(size_t));
-    stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(float));
+    stream.write(reinterpret_cast<const char*>(&ceDecay), sizeof(float));
+    stream.write(reinterpret_cast<const char*>(&statsDecay), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&ceThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(float));
@@ -1328,7 +1329,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&minSamplesCandidateSplit), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&maxDepth), sizeof(size_t));
     stream.read(reinterpret_cast<char*>(&maxDepthSPLThreshold), sizeof(size_t));
-    stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(float));
+    stream.read(reinterpret_cast<char*>(&ceDecay), sizeof(float));
+    stream.read(reinterpret_cast<char*>(&statsDecay), sizeof(float));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(float));
     stream.read(reinterpret_cast<char*>(&ceThreshold), sizeof(float));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(float));
