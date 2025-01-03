@@ -348,6 +348,11 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getLRDirectionalSignatures(pos, dim);
     }
 
+    uint8_t getDirectionalSignatureBestDim(const openpgl::Point3 &pos) const override
+    {
+        return m_surfaceField.getDirectionalSignatureBestDim(pos);
+    }
+
 private:
     size_t m_iteration{0};
     size_t m_totalSPP{0};

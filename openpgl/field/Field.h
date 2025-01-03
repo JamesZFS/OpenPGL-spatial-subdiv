@@ -362,7 +362,7 @@ public:
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
-            if (region.hasCandidateSplit()) {
+            if (region.hasCandidateSplit() && region.bestSplitDim < 3) {
                 auto &candidate = region.getBestCandidateSplit();
                 return PGLDirectionalSignature(candidate.signaturesLR[pos[region.bestSplitDim] >= candidate.pos]);
             }
@@ -370,15 +370,30 @@ public:
         return {};
     }
 
+    uint8_t getDirectionalSignatureBestDim(const openpgl::Point3 &pos) const {
+        uint32_t id = getRegionId(pos);
+        if (id < m_regionStorageContainer.size()) {
+            auto &region = m_regionStorageContainer[id].first;
+            return region.bestSplitDim;
+        }
+        return 3;  // invalid
+    }
+
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos, uint8_t dim) const {
+        // dim == 3 => getBestDim
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
             if (region.hasCandidateSplit()) {
-                auto candidate = &region.getBestCandidateSplit();
-                if (dim < 3)
-                    candidate = &region.candidateSplits[dim];
-                return {PGLDirectionalSignature(candidate->signaturesLR[0]), PGLDirectionalSignature(candidate->signaturesLR[1])};
+                if (dim < 3) {
+                    auto &candidate = region.candidateSplits[dim];
+                    return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
+                } else {
+                    if (region.bestSplitDim < 3) {
+                        auto &candidate = region.getBestCandidateSplit();
+                        return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
+                    }
+                }
             }
         }
         return {};

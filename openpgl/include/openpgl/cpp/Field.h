@@ -165,6 +165,9 @@ struct Field
     // dim == 3 means best dimension
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetLRDirectionalSignatures(openpgl::cpp::Point3f pos, uint8_t dim = 3) const;
 
+    // dim == 3 means invalid
+    uint8_t GetDirectionalSignatureBestDim(openpgl::cpp::Point3f pos, uint8_t dim = 3) const;
+
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
 
@@ -349,6 +352,11 @@ OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field
     openpgl::cpp::Point3f pos, uint8_t dim) const {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetLRDirectionalSignatures(m_fieldHandle, pos, dim);
+}
+
+OPENPGL_INLINE uint8_t Field::GetDirectionalSignatureBestDim(openpgl::cpp::Point3f pos, uint8_t dim) const {
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetDirectionalSignatureBestDim(m_fieldHandle, pos);
 }
 
 }  // namespace cpp
