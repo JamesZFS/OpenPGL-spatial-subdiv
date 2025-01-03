@@ -35,6 +35,11 @@ struct has_function_applyCosineProduct : std::false_type {};
 template <typename T>
 struct has_function_applyCosineProduct<T, std::void_t<decltype(std::declval<T>().applyCosineProduct(std::declval<Vector3>()))>> : std::true_type {};
 
+template <typename F, typename G>
+inline void invoke(const F &f, const G &g) {
+    tbb::parallel_invoke(f, g);
+}
+
 template <typename TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
 struct KDTreePartitionBuilder
 {
@@ -44,6 +49,8 @@ struct KDTreePartitionBuilder
     using RegionType = TRegion;
     using Vector3d = embree::Vec3<double>;
     constexpr static double INF = std::numeric_limits<double>::infinity();
+    mutable std::mutex mutex;
+    mutable double signatureUpdateElapsed = 0;
 
 #ifdef USE_EMBREE_PARALLEL
     static const size_t PARALLEL_THRESHOLD = 4 * 1024;
@@ -123,6 +130,8 @@ struct KDTreePartitionBuilder
     void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, const Settings &buildSettings, bool isBuild = false) const
     {
         Timer timer;
+        clock_t tic = clock();
+        signatureUpdateElapsed = 0;
         int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.sampleCountThreshold+32;
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
@@ -144,8 +153,13 @@ struct KDTreePartitionBuilder
 
         updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, buildSettings, isBuild);
         kdTree.finalize();
-        double elapsedMicroSec = timer.elapsed();
-        std::cout << "KDTreePartitionBuilder::update() took " << elapsedMicroSec * 1e-6 << " seconds, total valid regions: " << kdTree.getNumLeafs() << std::endl;
+        double updateElapsed = timer.elapsed();
+        clock_t toc = clock();
+        double cpuTime = (double) (toc - tic) / CLOCKS_PER_SEC;
+        std::cout << "KDTreePartitionBuilder::update() total update took " << updateElapsed * 1e-6 << " s, "
+            << "total cpu time " << cpuTime << ", "
+            << "percentage spent on signature update: " << signatureUpdateElapsed * 1e-6 / cpuTime * 100 << "%, "
+            << "total valid regions: " << kdTree.getNumLeafs() << std::endl;
     }
 
     template<class TContainer, class FieldType>
@@ -183,6 +197,7 @@ struct KDTreePartitionBuilder
                 shouldSplit = true;
             } else if (depth < settings.maxDepth && mergedStats.getNumSamples() >= settings.minSamplesCandidateSplit) {
                 // Update all candidate splits of three dimensions (if non-degenerate)
+                Timer timer;
                 const Vector3 posVariances = mergedStats.getVariance();
                 const Point3 posMeans = mergedStats.getMean();
                 const float maxPosVariance = reduce_max(posVariances);
@@ -243,6 +258,10 @@ struct KDTreePartitionBuilder
                         shouldSplit = true;
                     }
                 }
+                {
+                    std::lock_guard guard(mutex);
+                    signatureUpdateElapsed += timer.elapsed();
+                }
             }
 
             if (shouldSplit) {
@@ -281,7 +300,7 @@ struct KDTreePartitionBuilder
                 Range zeroSampleRangesLR[2] = {Range(zeroSampleRange.m_begin, std::distance(zeroSamples.begin(), zeroSamplesMid)),
                                                Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
-                tbb::parallel_invoke(
+                invoke(
                     [&]{ updateTreeNode(kdTree, *nodesLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings, isBuild); },
                     [&]{ updateTreeNode(kdTree, *nodesLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings, isBuild); }
                 );
@@ -309,7 +328,7 @@ struct KDTreePartitionBuilder
             Range zeroSampleRangesLR[2] = {Range(zeroSampleRange.m_begin, std::distance(zeroSamples.begin(), zeroSamplesMid)),
                                            Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
-            tbb::parallel_invoke(
+            invoke(
                 [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, settings, isBuild); },
                 [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, settings, isBuild); }
             );
@@ -425,7 +444,7 @@ struct KDTreePartitionBuilder
         sampleRangeLeftRight[0] = Range(sampleRange.m_begin, rPivotItr);
         sampleRangeLeftRight[1] = Range(rPivotItr, sampleRange.m_end);
 
-        tbb::parallel_invoke(
+        invoke(
             [&] { evaluateRegionsNode(kdTree, nodesLeftRight[0], depth + 1, samples, sampleRangeLeftRight[0], dataStorage, buildSettings, field); },
             [&] { evaluateRegionsNode(kdTree, nodesLeftRight[1], depth + 1, samples, sampleRangeLeftRight[1], dataStorage, buildSettings, field); }
         );
