@@ -614,7 +614,7 @@ struct Field
         Timer timer;
         // 1. Evaluate regions with new-coming samples
         if (m_spatialSubdivBuilderSettings.enableCE) {
-            decayCEStats(m_spatialSubdivBuilderSettings.ceDecay);
+            // decayCEStats(m_spatialSubdivBuilderSettings.ceDecay);
             m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, samples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             m_spatialSubdivBuilder.updateCEStats(m_spatialSubdiv, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "updateCEStats() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
