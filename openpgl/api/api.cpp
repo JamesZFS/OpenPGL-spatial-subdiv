@@ -365,6 +365,13 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSi
     return gField->getLRDirectionalSignatures(pos, dim);
 }
 
+extern "C" OPENPGL_DLLEXPORT uint8_t pglFieldGetDirectionalSignatureBestDim(PGLField field, pgl_point3f position)
+{
+    const auto *gField = (const IGuidingField *)field;
+    const openpgl::Point3 pos(position.x, position.y, position.z);
+    return gField->getDirectionalSignatureBestDim(pos);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SampleStorage //////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

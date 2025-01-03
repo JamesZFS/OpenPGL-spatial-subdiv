@@ -188,20 +188,20 @@ struct KDTreePartitionBuilder
                 const float maxPosVariance = reduce_max(posVariances);
                 float maxEnergy = -std::numeric_limits<float>::infinity();
 
-                std::vector<uint8_t> allDims;
+                bool dimMask[3] = {false, false, false};
                 if (settings.enableThreeSplits) {
                     for (uint8_t dim = 0; dim < 3; ++dim) {
-                        if (posVariances[dim] < std::max(THRESHOLD_VAR_RATIO * maxPosVariance, THRESHOLD_VAR_RATIO)) {
-                            // degenerate dimension
-                            continue;
-                        }
-                        allDims.push_back(dim);
+                        if (posVariances[dim] < std::max(THRESHOLD_VAR_RATIO * maxPosVariance, THRESHOLD_VAR_RATIO))  // degenerate dimension
+                            dimMask[dim] = false;
+                        else
+                            dimMask[dim] = true;
                     }
                 } else {
-                    allDims.push_back(maxDimension(posVariances));
+                    dimMask[maxDimension(posVariances)] = true;
                 }
 
-                for (uint8_t dim: allDims) {
+                for (uint8_t dim = 0; dim < 3; ++dim) {
+                    if (!dimMask[dim]) continue;
                     auto &candidate = region.candidateSplits[dim];
                     if (!candidate.valid()) {  // haven't proposed yet
                         candidate.pos = posMeans[dim];
