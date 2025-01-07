@@ -83,7 +83,7 @@ struct SampleStatistics
 
     void split(const uint8_t &splitDim, const float &splitPos, const float &decay, const bool &splitLower)
     {
-        OPENPGL_ASSERT(decay >0.0f && decay <= 1.0f) ;
+        OPENPGL_ASSERT(decay >= 0.0f && decay <= 1.0f) ;
 
         if(numSamples > 0.f)
         {
