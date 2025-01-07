@@ -25,11 +25,10 @@ struct Region : public IRegion {
     size_t numZeroValueSamples{0};
     bool splitFlag{false};
 
-    struct CandidateSplit {
+    struct SecondLevelCandidateSplit {
         float pos = std::numeric_limits<float>::quiet_NaN();
         Signature signaturesLR[2] {};  // for the lookahead children
         float energy = 0.0f;  // distance between signatures
-
         bool valid() const { return !std::isnan(pos); }
 
         void reset() {
@@ -54,6 +53,71 @@ struct Region : public IRegion {
             signaturesLR[1].deserialize(stream);
             stream.read(reinterpret_cast<char *>(&energy), sizeof(energy));
         }
+    };
+
+    struct CandidateSplit {
+        float pos = std::numeric_limits<float>::quiet_NaN();
+        Signature signaturesLR[2] {};  // for the lookahead children
+        float energy = 0.0f;  // distance between signatures
+        SampleStatistics sampleStatisticsLR[2] {};  // to infer second-level candidate split
+
+        SecondLevelCandidateSplit secondSplitsLR[2][3];
+
+        bool valid() const { return !std::isnan(pos); }
+
+        void reset() {
+            pos = std::numeric_limits<float>::quiet_NaN();
+            signaturesLR[0].clear();
+            signaturesLR[1].clear();
+            energy = 0.0f;
+
+            sampleStatisticsLR[0].clear();
+            sampleStatisticsLR[1].clear();
+            for (uint8_t c = 0; c < 2; c++) {
+                for (uint8_t i = 0; i < 3; i++) {
+                    secondSplitsLR[c][i].reset();
+                }
+            }
+        }
+
+        void serialize(std::ostream &stream) const
+        {
+            stream.write(reinterpret_cast<const char *>(&pos), sizeof(pos));
+            signaturesLR[0].serialize(stream);
+            signaturesLR[1].serialize(stream);
+            stream.write(reinterpret_cast<const char *>(&energy), sizeof(energy));
+            stream.write(reinterpret_cast<const char *>(&sampleStatisticsLR[0]), sizeof(SampleStatistics));
+            stream.write(reinterpret_cast<const char *>(&sampleStatisticsLR[1]), sizeof(SampleStatistics));
+            for (uint8_t c = 0; c < 2; c++) {
+                for (uint8_t i = 0; i < 3; i++) {
+                    secondSplitsLR[c][i].serialize(stream);
+                }
+            }
+        }
+
+        void deserialize(std::istream &stream)
+        {
+            stream.read(reinterpret_cast<char *>(&pos), sizeof(pos));
+            signaturesLR[0].deserialize(stream);
+            signaturesLR[1].deserialize(stream);
+            stream.read(reinterpret_cast<char *>(&energy), sizeof(energy));
+            stream.read(reinterpret_cast<char *>(&sampleStatisticsLR[0]), sizeof(SampleStatistics));
+            stream.read(reinterpret_cast<char *>(&sampleStatisticsLR[1]), sizeof(SampleStatistics));
+            for (uint8_t c = 0; c < 2; c++) {
+                for (uint8_t i = 0; i < 3; i++) {
+                    secondSplitsLR[c][i].deserialize(stream);
+                }
+            }
+        }
+
+        void copyFrom(const SecondLevelCandidateSplit &s) {
+            pos = s.pos;
+            signaturesLR[0] = s.signaturesLR[0];
+            signaturesLR[1] = s.signaturesLR[1];
+            energy = s.energy;
+            sampleStatisticsLR[0].clear();
+            sampleStatisticsLR[1].clear();
+        }
     } candidateSplits[3];
 
     uint8_t bestSplitDim = 3;  // candidate split dim with the maximum energy
@@ -65,13 +129,20 @@ struct Region : public IRegion {
 #endif
     // bool valid{true};
 
-    bool hasCandidateSplit() const {
-        return candidateSplits[0].valid() || candidateSplits[1].valid() || candidateSplits[2].valid();
+    bool hasBestCandidateSplit() const {
+        return bestSplitDim < 3 && candidateSplits[bestSplitDim].valid();
     }
 
     void clearCandidateSplits() {
         for (uint8_t i = 0; i < 3; i++) {
             candidateSplits[i].reset();
+        }
+        bestSplitDim = 3;
+    }
+
+    void inheritCandidateSplits(uint8_t splitDim, bool isRight) {
+        for (uint8_t i = 0; i < 3; ++i) {
+            candidateSplits[i].copyFrom(candidateSplits[splitDim].secondSplitsLR[isRight][i]);
         }
         bestSplitDim = 3;
     }

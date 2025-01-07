@@ -362,7 +362,7 @@ public:
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
-            if (region.hasCandidateSplit() && region.bestSplitDim < 3) {
+            if (region.hasBestCandidateSplit()) {
                 auto &candidate = region.getBestCandidateSplit();
                 return PGLDirectionalSignature(candidate.signaturesLR[pos[region.bestSplitDim] >= candidate.pos]);
             }
@@ -384,15 +384,14 @@ public:
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
             auto &region = m_regionStorageContainer[id].first;
-            if (region.hasCandidateSplit()) {
-                if (dim < 3) {
-                    auto &candidate = region.candidateSplits[dim];
+            if (dim < 3) {
+                auto &candidate = region.candidateSplits[dim];
+                if (candidate.valid())
                     return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
-                } else {
-                    if (region.bestSplitDim < 3) {
-                        auto &candidate = region.getBestCandidateSplit();
-                        return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
-                    }
+            } else {
+                if (region.hasBestCandidateSplit()) {
+                    auto &candidate = region.getBestCandidateSplit();
+                    return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
                 }
             }
         }
@@ -414,7 +413,7 @@ public:
             stats.fluence = region.ceStatistics.getFluence();
             stats.crossEntropy = region.ceStatistics.getCE();
         }
-        stats.hasCandidateSplit = region.hasCandidateSplit();
+        stats.hasCandidateSplit = region.hasBestCandidateSplit();
         if (stats.hasCandidateSplit) {
             auto &candidate = region.getBestCandidateSplit();
             stats.energy = candidate.energy;
@@ -439,9 +438,9 @@ public:
         cStats = getRegionStats(cId);
         auto &region = m_regionStorageContainer[cId].first;
         if (cStats.hasCandidateSplit) {
-            auto &candidate = region.getBestCandidateSplit();
             fStats.depth = region.depth + 1;
             fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
+            auto &candidate = region.getBestCandidateSplit();
             if (pos[region.bestSplitDim] >= candidate.pos) {
                 fStats.id = cId | (1 << 31);  // a fake distinct ID
                 fStats.numSamples = candidate.signaturesLR[1].getNumSamples();
