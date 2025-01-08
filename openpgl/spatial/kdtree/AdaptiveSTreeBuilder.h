@@ -64,7 +64,7 @@ struct KDTreePartitionBuilder
         float statsDecay {0.25f};
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         float ceThreshold {0.05f}; // split if the parent's divergence - child's divergence goes beyond this
-        float stdMultiplier {1.0f};
+        float safeStdMeanRatio {0.1f};
         float gainThreshold {1.0f};  // force a split if the gain is above this threshold
         bool enableCE {true};  // enable creation of lookahead children
         bool enablePromotion {true};
@@ -78,7 +78,7 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings& b) const {
             return splitType == b.splitType && minSamples == b.minSamples && maxSamples == b.maxSamples && minSamplesCandidateSplit == b.minSamplesCandidateSplit && maxDepth == b.maxDepth
                 && maxDepthSPLThreshold == b.maxDepthSPLThreshold && ceDecay == b.ceDecay && statsDecay == b.statsDecay && defensiveness == b.defensiveness
-                && ceThreshold == b.ceThreshold && stdMultiplier == b.stdMultiplier && gainThreshold == b.gainThreshold
+                && ceThreshold == b.ceThreshold && safeStdMeanRatio == b.safeStdMeanRatio && gainThreshold == b.gainThreshold
                 && enableCE == b.enableCE && enablePromotion == b.enablePromotion && failureDecay == b.failureDecay && singleSidePromotion == b.singleSidePromotion;
         }
 
@@ -94,7 +94,7 @@ struct KDTreePartitionBuilder
             failureDecay = cfg.failureDecay;
             singleSidePromotion = cfg.singleSidePromotion;
             ceThreshold = cfg.ceThreshold;
-            stdMultiplier = cfg.stdMultiplier;
+            safeStdMeanRatio = cfg.safeStdMeanRatio;
             ceDecay = cfg.ceDecay;
             statsDecay = cfg.statsDecay;
         }
@@ -206,7 +206,9 @@ struct KDTreePartitionBuilder
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
                         for (int i: {0, 1}) {
                             auto &stats = regionLR[i]->ceStatistics;
-                            promoteLR[i] = stats.getNumSamples() > settings.minSamples && stats.getReducedCE() > settings.stdMultiplier * stats.getStd() + settings.ceThreshold;
+                            float diff = stats.getReducedCE();
+                            bool reliable = stats.getNumSamples() > settings.minSamples && stats.getStd() < std::abs(diff) * settings.safeStdMeanRatio;
+                            promoteLR[i] = reliable && diff > settings.ceThreshold;
                         }
                     }
                     if (promoteLR[0] || promoteLR[1]) {
@@ -282,10 +284,10 @@ struct KDTreePartitionBuilder
                     if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                         shouldPromote = true;
                     } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
-                        float reduction = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
+                        float diff = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
                         float std = PairedCEStatistics::weightedAverageStd(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
-                        shouldPromote = std::min(regionLR[0]->ceStatistics.getNumSamples(), regionLR[1]->ceStatistics.getNumSamples()) > settings.minSamples
-                            && reduction > settings.stdMultiplier * std + settings.ceThreshold;
+                        bool reliable = std::min(regionLR[0]->ceStatistics.getNumSamples(), regionLR[1]->ceStatistics.getNumSamples()) > settings.minSamples && std < std::abs(diff) * settings.safeStdMeanRatio;
+                        shouldPromote = reliable && diff > settings.ceThreshold;
                     }
                     if (shouldPromote) {
                         regionLR[0]->unsetLookahead();
@@ -1292,7 +1294,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  statsDecay: " << statsDecay << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  ceThreshold: " << ceThreshold << std::endl;
-    ss << "  stdMultiplier: " << stdMultiplier << std::endl;
+    ss << "  safeStdMeanRatio: " << safeStdMeanRatio << std::endl;
     ss << "  gainThreshold: " << gainThreshold << std::endl;
     ss << "  enableCE: " << enableCE << std::endl;
 
@@ -1312,7 +1314,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&statsDecay), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&ceThreshold), sizeof(float));
-    stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(float));
+    stream.write(reinterpret_cast<const char*>(&safeStdMeanRatio), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&gainThreshold), sizeof(float));
     stream.write(reinterpret_cast<const char*>(&enableCE), sizeof(bool));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(bool));
@@ -1333,7 +1335,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&statsDecay), sizeof(float));
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(float));
     stream.read(reinterpret_cast<char*>(&ceThreshold), sizeof(float));
-    stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(float));
+    stream.read(reinterpret_cast<char*>(&safeStdMeanRatio), sizeof(float));
     stream.read(reinterpret_cast<char*>(&gainThreshold), sizeof(float));
     stream.read(reinterpret_cast<char*>(&enableCE), sizeof(bool));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(bool));

@@ -53,7 +53,7 @@ extern "C"
         bool failureDecay{false};
         bool singleSidePromotion{true};
         float ceThreshold{std::numeric_limits<float>::infinity()};
-        float stdMultiplier{1.0f};
+        float safeStdMeanRatio{0.1f};
         float ceDecay{0.8f};
         float statsDecay{0.25f};
         float vmmDecay{0.25f};
