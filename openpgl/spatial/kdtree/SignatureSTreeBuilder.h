@@ -191,9 +191,10 @@ struct KDTreePartitionBuilder
         if (node.isLeaf()) {
             uint32_t dataIdx = node.getDataIdx();
             auto &[region, range] = dataStorage[dataIdx];
-            // TODO: avoid double counting when this node is the result of a new split
-            SampleStatistics mergedStats = computeStats(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end);
-            mergedStats.merge(region.sampleStatistics);
+            // Avoid double counting when this node is a first-level split
+            SampleStatistics mergedStats = region.sampleStatistics;
+            if (region.splitState != RegionType::FirstLevelSplit)
+                mergedStats.merge(computeStats(samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end));
 
             bool splitTriggeredByFirstLevel = false, splitTriggeredBySecondLevel = false;
             uint8_t &firstLevelDim = splitDim;
@@ -246,7 +247,6 @@ struct KDTreePartitionBuilder
                     // TODO: maybe skip the second-level when the first-level energy already exceeds the threshold
 
                     // Update sampleStatisticsLR
-                    // TODO: be careful of doubling counting: when this node is a newly created one, we should skip this update
                     SampleStatistics incomingStatsLR[2] = {
                         computeStats(samples.begin() + sampleRange.m_begin, samplesMid),
                         computeStats(samplesMid, samples.begin() + sampleRange.m_end)
@@ -257,19 +257,22 @@ struct KDTreePartitionBuilder
                     if (isBuild) continue;  // During buildTree, the samples are way too noisy to update the signatures
 
                     // Update signatures and energy of this split
-                    candidate1.signaturesLR[0].decay(settings.signatureDecay);
-                    candidate1.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
-                    candidate1.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
-                    candidate1.signaturesLR[1].decay(settings.signatureDecay);
-                    candidate1.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
-                    candidate1.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                    // Avoid doubling counting: when this node is a first-level newly created one, the signature here is already updated at its parent
+                    if (region.splitState != RegionType::FirstLevelSplit) {
+                        candidate1.signaturesLR[0].decay(settings.signatureDecay);
+                        candidate1.signaturesLR[0].addSamples(samples.begin() + sampleRange.m_begin, samplesMid);
+                        candidate1.signaturesLR[0].addZeroSamples(std::distance(zeroSamples.begin() + zeroSampleRange.m_begin, zeroSamplesMid));
+                        candidate1.signaturesLR[1].decay(settings.signatureDecay);
+                        candidate1.signaturesLR[1].addSamples(samplesMid, samples.begin() + sampleRange.m_end);
+                        candidate1.signaturesLR[1].addZeroSamples(std::distance(zeroSamplesMid, zeroSamples.begin() + zeroSampleRange.m_end));
+                    }
                     candidate1.energy = Signature::getDistance(candidate1.signaturesLR[0], candidate1.signaturesLR[1], settings.stdMultiplier);
 
                     if (depth + 1 >= settings.maxDepth) continue;
 
                     // 2. Update second-level signatures
                     for (uint8_t c: {0, 1}) {
-                        if (candidate1.sampleStatisticsLR[c].getNumSamples() <= settings.minSamplesCandidateSplit) continue;
+                        if (candidate1.sampleStatisticsLR[c].getNumSamples() < settings.minSamplesCandidateSplit) continue;
                         auto samples1Begin = c == 0 ? samples.begin() + sampleRange.m_begin : samplesMid,
                              samples1End = c == 0 ? samplesMid : samples.begin() + sampleRange.m_end;
                         auto zeroSamples1Begin = c == 0 ? zeroSamples.begin() + zeroSampleRange.m_begin : zeroSamplesMid,
@@ -318,8 +321,7 @@ struct KDTreePartitionBuilder
                     if (!dimMask1[dim1]) continue;
                     auto &candidate1 = region.candidateSplits[dim1];
 
-                    if (candidate1.energy > maxEnergy1 &&
-                        std::min(candidate1.signaturesLR[0].getNumSamples(), candidate1.signaturesLR[1].getNumSamples()) > settings.minSamplesPromotion) {
+                    if (candidate1.energy > maxEnergy1) {
                         maxEnergy1 = candidate1.energy;
                         region.bestSplitDim = dim1;
                     }
@@ -330,7 +332,8 @@ struct KDTreePartitionBuilder
                     // Try promotion with level 1 first
                     if (region.bestSplitDim < 3) {
                         auto &candidate1 = region.getBestCandidateSplit();
-                        if (maxEnergy1 > settings.signatureDistanceThreshold) {
+                        if (maxEnergy1 > settings.signatureDistanceThreshold &&
+                            std::min(candidate1.signaturesLR[0].getNumSamples(), candidate1.signaturesLR[1].getNumSamples()) > settings.minSamplesPromotion) {
                             splitTriggeredByFirstLevel = true;
                             firstLevelDim = region.bestSplitDim, firstLevelPos = candidate1.pos;
 
@@ -392,10 +395,14 @@ struct KDTreePartitionBuilder
                 }
 
                 // ==================== Directional Signature Update End ====================
+            } else {
+                // std::cerr << "Region " << dataIdx << " has too few samples " << mergedStats.getNumSamples() << " to propose a split" << std::endl;
             }
+            region.splitState = RegionType::Normal;  // clear split state
 
             // Split Handling
             if (splitTriggeredByFirstLevel || splitTriggeredBySecondLevel) {
+                // secondLevelDimLR[0] = secondLevelDimLR[1] = 3;
                 OPENPGL_ASSERT(firstLevelDim < 3);
                 // 1. Prepare the data for new regions
 
@@ -414,7 +421,16 @@ struct KDTreePartitionBuilder
                         uint32_t childDataIdx = dataInds[i++];
                         auto &childRegion = dataStorage[childDataIdx].first;
                         auto &candidate1 = childRegion.candidateSplits[firstLevelDim];
-                        childRegion.sampleStatistics = candidate1.sampleStatisticsLR[c1];
+                        if (candidate1.valid()) {
+                            childRegion.sampleStatistics = candidate1.sampleStatisticsLR[c1];
+                            childRegion.splitState = RegionType::FirstLevelSplit;
+                        }
+                        else {
+                            // Triggered by max sample count
+                            childRegion.sampleStatistics.split(firstLevelDim, firstLevelPos, settings.decayRatio, c1);
+                            childRegion.splitState = RegionType::Normal;
+                        }
+                        // childRegion.sampleStatistics.clear();
                         childRegion.ceStatistics.decay(settings.decayRatio);
                         childRegion.splitFlag = true;
                         childRegion.depth = depth + 1;
@@ -433,6 +449,7 @@ struct KDTreePartitionBuilder
                             (c1 ? childRegion.regionBounds.lower[firstLevelDim] : childRegion.regionBounds.upper[firstLevelDim]) = firstLevelPos;
                             (c2 ? childRegion.regionBounds.lower[secondLevelDimLR[c1]] : childRegion.regionBounds.upper[secondLevelDimLR[c1]]) = secondLevelPosLR[c1];
                             childRegion.clearCandidateSplits();  // recompute signature from scratch
+                            childRegion.splitState = RegionType::SecondLevelSplit;
                         }
                     }
                 }
