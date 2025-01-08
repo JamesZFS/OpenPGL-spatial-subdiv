@@ -123,6 +123,11 @@ struct Region : public IRegion {
     CEStatistics ceStatistics;
 
     uint32_t depth = 0;  // depth in the tree
+    enum {
+        Normal = 0,
+        FirstLevelSplit,
+        SecondLevelSplit,
+    } splitState = Normal;  // internal state variable used by builder
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif

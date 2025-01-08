@@ -414,10 +414,10 @@ public:
             stats.crossEntropy = region.ceStatistics.getCE();
         }
         stats.hasCandidateSplit = region.hasBestCandidateSplit();
+        stats.splitDim = region.bestSplitDim;
         if (stats.hasCandidateSplit) {
             auto &candidate = region.getBestCandidateSplit();
             stats.energy = candidate.energy;
-            stats.splitDim = region.bestSplitDim;
             stats.splitPos = candidate.pos;
         }
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
