@@ -141,6 +141,12 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
+        // Precompute bin index for samples
+        embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
+            for (size_t i = r.begin(); i < r.end(); ++i)
+                samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
+        });
+
         KDNode &root = kdTree.getRoot();
         BBox bounds;
         if (buildSettings.splitType == PGL_SPATIAL_SPLIT_PPG) {
@@ -215,8 +221,6 @@ struct KDTreePartitionBuilder
                 // const float maxPosVariance = reduce_max(posVariances);
                 float maxEnergy1 = -std::numeric_limits<float>::infinity();
                 float maxEnergy2 = -std::numeric_limits<float>::infinity();
-
-                // TODO 0. precompute sample bin indices to avoid redundant hashing
 
                 bool dimMask1[3] = {};
                 if (settings.enableThreeSplits) {
