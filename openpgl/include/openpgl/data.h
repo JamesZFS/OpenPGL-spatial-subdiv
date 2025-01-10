@@ -58,6 +58,9 @@ struct PGLSampleData
     pgl_direction normal;
 #endif
 
+    /// Used by SignatureSTreeBuilder
+    uint8_t binIndex;
+
     /// the distance to the source of the incident radiance
     float distance;
 

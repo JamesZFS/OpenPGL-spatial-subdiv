@@ -36,7 +36,8 @@ struct Signature  // Directional signature
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
-            uint8_t idx = pgl_get_signature_index(it->direction);
+            // uint8_t idx = pgl_get_signature_index(it->direction);
+            uint8_t idx = it->binIndex;
             sum[idx] += it->weight;
             m2[idx] += it->weight * it->weight;
             ++numSamples;
