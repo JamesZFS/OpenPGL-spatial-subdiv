@@ -117,6 +117,10 @@ struct Region : public IRegion {
             energy = s.energy;
             sampleStatisticsLR[0].clear();
             sampleStatisticsLR[1].clear();
+            for (uint8_t i = 0; i < 3; ++i) {
+                secondSplitsLR[0][i].reset();
+                secondSplitsLR[1][i].reset();
+            }
         }
     } candidateSplits[3];
 

@@ -395,14 +395,11 @@ struct KDTreePartitionBuilder
                 }
 
                 // ==================== Directional Signature Update End ====================
-            } else {
-                // std::cerr << "Region " << dataIdx << " has too few samples " << mergedStats.getNumSamples() << " to propose a split" << std::endl;
             }
             region.splitState = RegionType::Normal;  // clear split state
 
             // Split Handling
             if (splitTriggeredByFirstLevel || splitTriggeredBySecondLevel) {
-                // secondLevelDimLR[0] = secondLevelDimLR[1] = 3;
                 OPENPGL_ASSERT(firstLevelDim < 3);
                 // 1. Prepare the data for new regions
 
@@ -430,7 +427,6 @@ struct KDTreePartitionBuilder
                             childRegion.sampleStatistics.split(firstLevelDim, firstLevelPos, settings.decayRatio, c1);
                             childRegion.splitState = RegionType::Normal;
                         }
-                        // childRegion.sampleStatistics.clear();
                         childRegion.ceStatistics.decay(settings.decayRatio);
                         childRegion.splitFlag = true;
                         childRegion.depth = depth + 1;
