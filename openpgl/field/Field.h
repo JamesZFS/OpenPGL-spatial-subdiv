@@ -39,6 +39,7 @@ public:
     typedef openpgl::Range RangeType;
     typedef std::pair<RegionType, RangeType> RegionStorageType;
     typedef tbb::concurrent_vector<RegionStorageType> RegionStorageContainerType;
+    typedef tbb::concurrent_vector<CandidateRegion> CandidateRegionStorageContainerType;
 
     using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;
     using SpatialStructure = typename SpatialStructureBuilder::SpatialStructure;
@@ -309,7 +310,11 @@ public:
 
     void clearSignatures() {
         for (auto &region : m_regionStorageContainer) {
-            region.first.resetSignatures();
+            region.first.candidate.energy = 0;
+        }
+        for (auto &cr : m_candidateRegionStorageContainer) {
+            cr.signature.clear();
+            cr.candidate.energy = 0;
         }
     }
 
@@ -361,38 +366,34 @@ public:
     PGLDirectionalSignature getDirectionalSignature(const openpgl::Point3 &pos) const {
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
-            auto &region = m_regionStorageContainer[id].first;
-            if (region.hasBestCandidateSplit()) {
-                auto &candidate = region.getBestCandidateSplit();
-                return PGLDirectionalSignature(candidate.signaturesLR[pos[region.bestSplitDim] >= candidate.pos]);
+            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
+            if (candidate.valid()) {
+                bool isRight = pos[candidate.dim] >= candidate.pivot;
+                uint32_t index = candidate.lChildIdx + isRight;
+                return PGLDirectionalSignature(m_candidateRegionStorageContainer[index].signature);
             }
         }
         return {};
     }
 
-    uint8_t getDirectionalSignatureBestDim(const openpgl::Point3 &pos) const {
+    uint8_t getCandidateSplitDim(const openpgl::Point3 &pos) const {
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
-            auto &region = m_regionStorageContainer[id].first;
-            return region.bestSplitDim;
+            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
+            if (candidate.valid()) return candidate.dim;
         }
         return 3;  // invalid
     }
 
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos, uint8_t dim) const {
-        // dim == 3 => getBestDim
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const {
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
-            auto &region = m_regionStorageContainer[id].first;
-            if (dim < 3) {
-                auto &candidate = region.candidateSplits[dim];
-                if (candidate.valid())
-                    return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
-            } else {
-                if (region.hasBestCandidateSplit()) {
-                    auto &candidate = region.getBestCandidateSplit();
-                    return {PGLDirectionalSignature(candidate.signaturesLR[0]), PGLDirectionalSignature(candidate.signaturesLR[1])};
-                }
+            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
+            if (candidate.valid()) {
+                return {
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[candidate.lChildIdx].signature),
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[candidate.lChildIdx + 1].signature)
+                };
             }
         }
         return {};
@@ -413,12 +414,12 @@ public:
             stats.fluence = region.ceStatistics.getFluence();
             stats.crossEntropy = region.ceStatistics.getCE();
         }
-        stats.hasCandidateSplit = region.hasBestCandidateSplit();
-        stats.splitDim = region.bestSplitDim;
+        stats.hasCandidateSplit = region.candidate.valid();
         if (stats.hasCandidateSplit) {
-            auto &candidate = region.getBestCandidateSplit();
+            const CandidateSplit &candidate = region.candidate;
+            stats.splitDim = candidate.dim;
             stats.energy = candidate.energy;
-            stats.splitPos = candidate.pos;
+            stats.splitPos = candidate.pivot;
         }
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         // stats.sampleVariance = {region.sampleStatistics.getVariance().x, region.sampleStatistics.getVariance().y, region.sampleStatistics.getVariance().z};
@@ -440,15 +441,21 @@ public:
         if (cStats.hasCandidateSplit) {
             fStats.depth = region.depth + 1;
             fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
-            auto &candidate = region.getBestCandidateSplit();
-            if (pos[region.bestSplitDim] >= candidate.pos) {
-                fStats.id = cId | (1 << 31);  // a fake distinct ID
-                fStats.numSamples = candidate.signaturesLR[1].getNumSamples();
-                fStats.lowerBounds[region.bestSplitDim] = candidate.pos;
+            const CandidateSplit &candidate = region.candidate;
+            if (pos[candidate.dim] >= candidate.pivot) {
+                fStats.id = candidate.lChildIdx + 1;
+                fStats.lowerBounds[candidate.dim] = candidate.pivot;
             } else {
-                fStats.id = cId | (1 << 30);
-                fStats.numSamples = candidate.signaturesLR[0].getNumSamples();
-                fStats.upperBounds[region.bestSplitDim] = candidate.pos;
+                fStats.id = candidate.lChildIdx;
+                fStats.upperBounds[candidate.dim] = candidate.pivot;
+            }
+            const CandidateRegion &fRegion = m_candidateRegionStorageContainer[fStats.id];
+            fStats.numSamples = fRegion.signature.getNumSamples();
+            fStats.hasCandidateSplit = fRegion.candidate.valid();
+            if (fStats.hasCandidateSplit) {
+                fStats.splitDim = fRegion.candidate.dim;
+                fStats.splitPos = fRegion.candidate.pivot;
+                fStats.energy = fRegion.candidate.energy;
             }
         }
         return {cStats, fStats};
@@ -480,6 +487,12 @@ public:
         {
             m_regionStorageContainer[i].first.serialize(os);
             m_regionStorageContainer[i].second.serialize(os);
+        }
+        size = m_candidateRegionStorageContainer.size();
+        os.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        for (size_t i = 0; i < size; i++)
+        {
+            m_candidateRegionStorageContainer[i].serialize(os);
         }
         os.write(reinterpret_cast<const char *>(&m_useStochasticNNLookUp), sizeof(m_useStochasticNNLookUp));
         os.write(reinterpret_cast<const char *>(&m_useISNNLookUp), sizeof(m_useISNNLookUp));
@@ -517,6 +530,14 @@ public:
             m_regionStorageContainer.emplace_back();
             m_regionStorageContainer[i].first.deserialize(is);
             m_regionStorageContainer[i].second.deserialize(is);
+        }
+        is.read(reinterpret_cast<char *>(&size), sizeof(size));
+        m_candidateRegionStorageContainer.clear();
+        m_candidateRegionStorageContainer.reserve(size);
+        for (size_t i = 0; i < size; i++)
+        {
+            m_candidateRegionStorageContainer.emplace_back();
+            m_candidateRegionStorageContainer[i].deserialize(is);
         }
         is.read(reinterpret_cast<char *>(&m_useStochasticNNLookUp), sizeof(m_useStochasticNNLookUp));
         is.read(reinterpret_cast<char *>(&m_useISNNLookUp), sizeof(m_useISNNLookUp));
@@ -589,7 +610,7 @@ public:
 
     inline void buildSpatialStructure(const BBox &bounds, SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.buildRegionSearchTree(m_regionStorageContainer);
@@ -603,7 +624,7 @@ public:
     inline void updateSpatialStructure(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
         Timer timer;
-        m_spatialSubdivBuilder.update(m_spatialSubdiv, samples, zeroValueSamples, m_regionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.update(m_spatialSubdiv, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.reset();
@@ -930,6 +951,7 @@ public:
 
     SpatialStructure m_spatialSubdiv;
     RegionStorageContainerType m_regionStorageContainer;
+    CandidateRegionStorageContainerType m_candidateRegionStorageContainer;
 
     bool m_useStochasticNNLookUp{false};
     bool m_useISNNLookUp{false};
