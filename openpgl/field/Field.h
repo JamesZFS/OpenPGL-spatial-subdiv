@@ -438,25 +438,27 @@ public:
             return {cStats, fStats};
         cStats = getRegionStats(cId);
         auto &region = m_regionStorageContainer[cId].first;
-        if (cStats.hasCandidateSplit) {
-            fStats.depth = region.depth + 1;
-            fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
-            const CandidateSplit &candidate = region.candidate;
-            if (pos[candidate.dim] >= candidate.pivot) {
-                fStats.id = candidate.lChildIdx + 1;
-                fStats.lowerBounds[candidate.dim] = candidate.pivot;
+        const CandidateSplit *candidate = &region.candidate;
+        fStats.energy = 0;  // max energy along the path
+        fStats.depth = region.depth;
+        fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
+        // Traverse to the deepest level
+        while (candidate->valid()) {
+            fStats.depth++;
+            fStats.energy = std::max(fStats.energy, candidate->energy);
+            if (pos[candidate->dim] >= candidate->pivot) {
+                fStats.id = candidate->lChildIdx + 1;
+                fStats.lowerBounds[candidate->dim] = candidate->pivot;
             } else {
-                fStats.id = candidate.lChildIdx;
-                fStats.upperBounds[candidate.dim] = candidate.pivot;
+                fStats.id = candidate->lChildIdx;
+                fStats.upperBounds[candidate->dim] = candidate->pivot;
             }
+            candidate = &m_candidateRegionStorageContainer[fStats.id].candidate;
+        }
+        if (fStats.id != -1) {
             const CandidateRegion &fRegion = m_candidateRegionStorageContainer[fStats.id];
             fStats.numSamples = fRegion.signature.getNumSamples();
-            fStats.hasCandidateSplit = fRegion.candidate.valid();
-            if (fStats.hasCandidateSplit) {
-                fStats.splitDim = fRegion.candidate.dim;
-                fStats.splitPos = fRegion.candidate.pivot;
-                fStats.energy = fRegion.candidate.energy;
-            }
+            fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};
     }
