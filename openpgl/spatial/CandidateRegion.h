@@ -14,6 +14,7 @@ struct CandidateSplit {
     uint8_t dim : 2 {3};
     uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
     float energy = 0.0f;  // distance between LR signatures
+    bool updated = false;  // flag to indicate if this split has seen the latest samples
 
     bool valid() const { return dim < 3; }
 
@@ -22,6 +23,7 @@ struct CandidateSplit {
         dim = 3;
         lChildIdx = 0;
         energy = 0.0f;
+        updated = false;
     }
 
     void serialize(std::ostream &stream) const
@@ -29,6 +31,7 @@ struct CandidateSplit {
         stream.write(reinterpret_cast<const char *>(&pivot), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&updated), sizeof(bool));
     }
 
     void deserialize(std::istream &stream)
@@ -36,6 +39,7 @@ struct CandidateSplit {
         stream.read(reinterpret_cast<char *>(&pivot), sizeof(float));
         stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&updated), sizeof(bool));
     }
 };
 
@@ -43,6 +47,8 @@ struct CandidateRegion {
     Signature signature;
     SampleStatistics sampleStatistics;  // TODO: maybe merge signature and sampleStats into one
     CandidateSplit candidate;
+
+    CandidateRegion &operator=(const CandidateRegion &) = delete;
 
     void serialize(std::ostream &stream) const
     {

@@ -164,6 +164,15 @@ struct KDTreePartitionBuilder
         std::cout << "Total bounds " << bounds << std::endl;
 
         updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, candidateDataStorage, buildSettings, isBuild);
+        // Clear flags
+        embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
+            for (size_t i = r.begin(); i < r.end(); ++i)
+                dataStorage[i].first.candidate.updated = false;
+        });
+        embree::parallel_for(candidateDataStorage.size(), [&](embree::range<size_t> r) {
+            for (size_t i = r.begin(); i < r.end(); ++i)
+                candidateDataStorage[i].candidate.updated = false;
+        });
         kdTree.finalize();
         double updateElapsed = timer.elapsed();
         clock_t toc = clock();
@@ -214,8 +223,8 @@ struct KDTreePartitionBuilder
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool hasSplit = false;
 
-            // 1. sample count threshold
             if (depth + 1 <= settings.maxDepthWithSampleCount && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
+                // 1. sample count threshold
                 hasSplit = true;
                 if (candidate.valid()) {
                     splitDim = candidate.dim;
@@ -231,25 +240,32 @@ struct KDTreePartitionBuilder
                     cregionLR[1] = &candidateDataStorage[candidate.lChildIdx + 1];
                 }
 
+                // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    if (candidate.valid()) regionLR[c]->sampleStatistics = cregionLR[c]->sampleStatistics;
-                    else regionLR[c]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
+                    if (candidate.valid()) {
+                        regionLR[c]->sampleStatistics = cregionLR[c]->sampleStatistics;
+                        regionLR[c]->candidate = cregionLR[c]->candidate;
+                    } else {
+                        regionLR[c]->sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
+                        OPENPGL_ASSERT(!regionLR[c]->candidate.valid())
+                    }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
-                    regionLR[c]->depth = depth + 1;
                     regionLR[c]->splitFlag = true;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
+                    regionLR[c]->depth = depth + 1;
                 }
 
+                // Extend KD tree
                 uint32_t nodeIdLeft = kdTree.addChildrenPair();
                 nodeLR[0] = &kdTree.getNode(nodeIdLeft);
                 nodeLR[1] = &kdTree.getNode(nodeIdLeft + 1);
                 node.setToInnerNode(splitDim, splitPos, nodeIdLeft);
                 nodeLR[0]->setDataNodeIdx(dataIdx);
                 nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
-            } else if (!isBuild && depth + 1 <= settings.maxDepth) {
+            } else if (!isBuild && depth + 1 <= settings.maxDepth) {  // during build, samples are way too noisy
                 // 2. Signature splitting
                 Timer timer;
-                if (!candidate.valid() && mergedStats.getNumSamples() > settings.minSamplesCandidateSplit) {  // propose a new split
+                if (!candidate.valid() && mergedStats.getNumSamples() >= settings.minSamplesCandidateSplit) {  // propose a new split
                     splitBaseline(mergedStats, splitDim, splitPos);
                     candidate.dim = splitDim, candidate.pivot = splitPos;
                     candidate.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
@@ -262,6 +278,7 @@ struct KDTreePartitionBuilder
                 if (candidate.valid()) {
                     splitDim = candidate.dim, splitPos = candidate.pivot;
                     std::vector<std::pair<uint32_t, uint32_t>> newLeafs;
+                    newLeafs.reserve(8);
                     uint32_t leftNodeId = updateCandidateRegions(depth + 1, 1, kdTree, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
                     if (leftNodeId > 0) {
                         hasSplit = true;
@@ -272,6 +289,8 @@ struct KDTreePartitionBuilder
                         for (int i = 1; i < newLeafs.size(); ++i) {
                             dataInds[i] = std::distance(dataStorage.begin(), firstdataItr) + i - 1;
                         }
+
+                        // Inheritance
                         for (int i = 0; i < newLeafs.size(); ++i) {
                             uint32_t newNodeId = newLeafs[i].first, canDataIdx = newLeafs[i].second;
                             KDNode &newNode = kdTree.getNode(newNodeId);
@@ -322,6 +341,9 @@ struct KDTreePartitionBuilder
                 region.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
                 region.numZeroValueSamples = zeroSampleRange.size();
                 range = sampleRange;
+                if (sampleRange.size() == 0) {
+                    std::cerr << "Warning: empty region at depth " << depth << " id = " << dataIdx << std::endl;
+                }
 #ifdef OPENPGL_RADIANCE_CACHES
                 range.m_is_begin = zeroSampleRange.m_begin;
                 range.m_is_end = zeroSampleRange.m_end;
@@ -367,18 +389,21 @@ struct KDTreePartitionBuilder
         CandidateRegion &leftRegion = candidateDataStorage[candidate.lChildIdx];
         CandidateRegion &rightRegion = candidateDataStorage[candidate.lChildIdx + 1];
 
-        leftRegion.sampleStatistics.merge(computeStats(samplesBegin, samplesMid));
-        rightRegion.sampleStatistics.merge(computeStats(samplesMid, samplesEnd));
+        if (!candidate.updated) {  // to avoid double counting
+            leftRegion.signature.decay(settings.signatureDecay);
+            leftRegion.signature.addSamples(samplesBegin, samplesMid);
+            leftRegion.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesMid));
+            leftRegion.sampleStatistics.merge(computeStats(samplesBegin, samplesMid));
 
-        leftRegion.signature.decay(settings.signatureDecay);
-        leftRegion.signature.addSamples(samplesBegin, samplesMid);
-        leftRegion.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesMid));
+            rightRegion.signature.decay(settings.signatureDecay);
+            rightRegion.signature.addSamples(samplesMid, samplesEnd);
+            rightRegion.signature.addZeroSamples(std::distance(zeroSamplesMid, zeroSamplesEnd));
+            rightRegion.sampleStatistics.merge(computeStats(samplesMid, samplesEnd));
 
-        rightRegion.signature.decay(settings.signatureDecay);
-        rightRegion.signature.addSamples(samplesMid, samplesEnd);
-        rightRegion.signature.addZeroSamples(std::distance(zeroSamplesMid, zeroSamplesEnd));
+            candidate.energy = Signature::getDistance(leftRegion.signature, rightRegion.signature, settings.stdMultiplier);
+            candidate.updated = true;
+        }
 
-        candidate.energy = Signature::getDistance(leftRegion.signature, rightRegion.signature, settings.stdMultiplier);
         uint32_t lChildIdx = candidate.lChildIdx;
         uint8_t splitDim;
 
