@@ -296,8 +296,8 @@ public:
 
             Timer timer;
             // Only update CE stats and signatures, no subdivision or fitting
-            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
-            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, samples_, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings, *this);
+            m_spatialSubdivBuilder.evaluateRegions(m_spatialSubdiv, zeroValueSamples_, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings, *this);
             std::cout << "evaluateRegions() took " << timer.elapsed() * 1e-3f << " ms" << std::endl;
         }
     }
