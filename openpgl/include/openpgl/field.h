@@ -101,11 +101,7 @@ typedef ManagedObject Field;
     // Deprecated
     OPENPGL_CORE_INTERFACE std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position);
 
-    OPENPGL_CORE_INTERFACE PGLDirectionalSignature pglFieldGetDirectionalSignature(PGLField field, pgl_point3f position);
-
-    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetLRDirectionalSignatures(PGLField field, pgl_point3f position);
-
-    OPENPGL_CORE_INTERFACE uint8_t pglFieldGetCandidateSplitDim(PGLField field, pgl_point3f position);
+    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -158,15 +158,11 @@ struct Field
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
 
+    /// Returns the leaf region and the deepest candidate region's information located at pos
     std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
-    PGLDirectionalSignature GetDirectionalSignature(openpgl::cpp::Point3f pos) const;
-
-    // dim == 3 means best dimension
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetLRDirectionalSignatures(openpgl::cpp::Point3f pos) const;
-
-    // dim == 3 means invalid
-    uint8_t GetCandidateSplitDim(openpgl::cpp::Point3f pos) const;
+    /// Returns the LR directional signatures of the regions at the given position and lookahead level (1 <= lookaheadDepth <= max lookaheadDepth)
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const;
 
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
@@ -342,21 +338,10 @@ OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoa
     return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
 }
 
-OPENPGL_INLINE PGLDirectionalSignature Field::GetDirectionalSignature(openpgl::cpp::Point3f pos) const
+OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetDirectionalSignature(m_fieldHandle, pos);
-}
-
-OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetLRDirectionalSignatures(
-    openpgl::cpp::Point3f pos) const {
-    OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetLRDirectionalSignatures(m_fieldHandle, pos);
-}
-
-OPENPGL_INLINE uint8_t Field::GetCandidateSplitDim(openpgl::cpp::Point3f pos) const {
-    OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetCandidateSplitDim(m_fieldHandle, pos);
+    return pglFieldGetDirectionalSignatures(m_fieldHandle, pos, lookaheadDepth, splitDim, isRight);
 }
 
 }  // namespace cpp

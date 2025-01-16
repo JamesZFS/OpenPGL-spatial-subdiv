@@ -363,36 +363,28 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
-    PGLDirectionalSignature getDirectionalSignature(const openpgl::Point3 &pos) const {
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
+        splitDim = 3;
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
-            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
-            if (candidate.valid()) {
-                bool isRight = pos[candidate.dim] >= candidate.pivot;
-                uint32_t index = candidate.lChildIdx + isRight;
-                return PGLDirectionalSignature(m_candidateRegionStorageContainer[index].signature);
+            const CandidateSplit *candidate = &m_regionStorageContainer[id].first.candidate;
+            uint32_t index = -1;
+            while (candidate->valid() && lookaheadDepth) {
+                --lookaheadDepth;
+                splitDim = candidate->dim;
+                isRight = pos[candidate->dim] >= candidate->pivot;
+                index = candidate->lChildIdx + isRight;
+                candidate = &m_candidateRegionStorageContainer[index].candidate;
             }
-        }
-        return {};
-    }
-
-    uint8_t getCandidateSplitDim(const openpgl::Point3 &pos) const {
-        uint32_t id = getRegionId(pos);
-        if (id < m_regionStorageContainer.size()) {
-            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
-            if (candidate.valid()) return candidate.dim;
-        }
-        return 3;  // invalid
-    }
-
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const {
-        uint32_t id = getRegionId(pos);
-        if (id < m_regionStorageContainer.size()) {
-            const CandidateSplit &candidate = m_regionStorageContainer[id].first.candidate;
-            if (candidate.valid()) {
+            if (lookaheadDepth) {
+                splitDim = 3;
+                return {};
+            }
+            if (index != -1) {
+                uint32_t lChildIdx = index - isRight;
                 return {
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[candidate.lChildIdx].signature),
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[candidate.lChildIdx + 1].signature)
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signature),
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signature)
                 };
             }
         }
@@ -444,6 +436,8 @@ public:
         fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
         // Traverse to the deepest level
         while (candidate->valid()) {
+            fStats.splitDim = candidate->dim;
+            fStats.splitPos = candidate->pivot;
             fStats.depth++;
             fStats.energy = std::max(fStats.energy, candidate->energy);
             if (pos[candidate->dim] >= candidate->pivot) {
