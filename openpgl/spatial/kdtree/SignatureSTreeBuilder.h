@@ -482,7 +482,6 @@ struct KDTreePartitionBuilder
     template<class TContainer, class FieldType>
     void evaluateRegionsNode(KDTree &kdTree, KDNode &node, size_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<CandidateRegion> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) const
     {
-        OPENPGL_ASSERT(node != nullptr);
         using T = typename TContainer::value_type;
         constexpr bool isNonZeroSample = has_member_weight<T>::value;
         constexpr bool isSurfaceDist = has_function_applyCosineProduct<TSamplingDistribution>::value;

@@ -77,13 +77,8 @@ struct ISurfaceVolumeField
 
     virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;
 
-    // Deprecated
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;
 
-    virtual PGLDirectionalSignature getDirectionalSignature(const Point3 &pos) const = 0;
-
-    virtual std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getLRDirectionalSignatures(const openpgl::Point3 &pos) const = 0;
-
-    virtual uint8_t getCandidateSplitDim(const openpgl::Point3 &pos) const = 0;
+    virtual std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const = 0;
 };
 }  // namespace openpgl
