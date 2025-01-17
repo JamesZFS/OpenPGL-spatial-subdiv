@@ -61,6 +61,9 @@ struct PGLSampleData
     /// Used by SignatureSTreeBuilder
     uint8_t binIndex;
 
+    // non-negative cosine term
+    float cosineTerm;
+
     /// the distance to the source of the incident radiance
     float distance;
 

@@ -452,6 +452,9 @@ public:
         if (fStats.id != -1) {
             const CandidateRegion &fRegion = m_candidateRegionStorageContainer[fStats.id];
             fStats.numSamples = fRegion.signature.getNumSamples();
+            fStats.fluence = 0.0f;
+            for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
+                fStats.fluence += fRegion.signature.getEntry(i);
             fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};
