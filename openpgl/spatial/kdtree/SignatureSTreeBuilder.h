@@ -77,6 +77,7 @@ struct KDTreePartitionBuilder
         bool enablePromotion {true};
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
+        bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -89,7 +90,7 @@ struct KDTreePartitionBuilder
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay;
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -105,6 +106,7 @@ struct KDTreePartitionBuilder
             signatureDecay = cfg.signatureDecay;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
+            multiplyCosine = cfg.multiplyCosine;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -118,6 +120,7 @@ struct KDTreePartitionBuilder
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
+            cfg.multiplyCosine = multiplyCosine;
         }
     };
 
@@ -398,12 +401,12 @@ struct KDTreePartitionBuilder
 
         if (!candidate.updated) {  // to avoid double counting
             leftRegion.signature.decay(settings.signatureDecay);
-            leftRegion.signature.addSamples(samplesBegin, samplesMid);
+            leftRegion.signature.addSamples(samplesBegin, samplesMid, settings.multiplyCosine);
             leftRegion.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesMid));
             leftRegion.sampleStatistics.merge(computeStats(samplesBegin, samplesMid));
 
             rightRegion.signature.decay(settings.signatureDecay);
-            rightRegion.signature.addSamples(samplesMid, samplesEnd);
+            rightRegion.signature.addSamples(samplesMid, samplesEnd, settings.multiplyCosine);
             rightRegion.signature.addZeroSamples(std::distance(zeroSamplesMid, zeroSamplesEnd));
             rightRegion.sampleStatistics.merge(computeStats(samplesMid, samplesEnd));
 
@@ -578,9 +581,9 @@ struct KDTreePartitionBuilder
 
         if constexpr (isNonZeroSample) {
             leftRegion.signature.decay(settings.signatureDecay);
-            leftRegion.signature.addSamples(samplesBegin, samplesMid);
+            leftRegion.signature.addSamples(samplesBegin, samplesMid, settings.multiplyCosine);
             rightRegion.signature.decay(settings.signatureDecay);
-            rightRegion.signature.addSamples(samplesMid, samplesEnd);
+            rightRegion.signature.addSamples(samplesMid, samplesEnd, settings.multiplyCosine);
         } else {
             leftRegion.signature.addZeroSamples(std::distance(samplesBegin, samplesMid));
             rightRegion.signature.addZeroSamples(std::distance(samplesMid, samplesEnd));
@@ -1235,6 +1238,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
+    ss << "  multiplyCosine: " << multiplyCosine << std::endl;
 
     return ss.str();
 }
@@ -1255,6 +1259,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
+    stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1273,6 +1278,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
+    stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
 }
 
 }

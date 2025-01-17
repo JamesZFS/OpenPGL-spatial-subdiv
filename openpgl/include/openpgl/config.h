@@ -56,6 +56,7 @@ extern "C"
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};
+        bool multiplyCosine{false};
     };
 
     struct PGLVMMFactoryArguments
