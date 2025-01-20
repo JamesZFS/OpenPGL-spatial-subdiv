@@ -225,6 +225,7 @@ struct KDTreePartitionBuilder
             SampleStatistics mergedStats = region.sampleStatistics;
             if (region.depth == 0) {   // a result of a recent signature-based split
                 region.depth = depth;
+                region.splitFlag = (uint8_t) depth - region.splitFlag;
                 region.regionBounds = bounds;
             } else {
                 mergedStats.merge(computeStats(samplesBegin, samplesEnd));
@@ -260,7 +261,7 @@ struct KDTreePartitionBuilder
                         OPENPGL_ASSERT(!regionLR[c]->candidate.valid())
                     }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
-                    regionLR[c]->splitFlag = true;
+                    regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                     regionLR[c]->depth = depth + 1;
                 }
@@ -309,9 +310,9 @@ struct KDTreePartitionBuilder
                             RegionType &newRegion = dataStorage[dataInds[i]].first;
                             newRegion.sampleStatistics = canRegion.sampleStatistics;
                             newRegion.ceStatistics.decay(settings.decayRatio);
-                            newRegion.splitFlag = true;
-                            // Depth and regionBounds set later
+                            // Depth, splitFlag, and regionBounds set later
                             newRegion.depth = 0;  // a special flag
+                            newRegion.splitFlag = (uint8_t) depth;  // to be used later
                             newRegion.candidate = canRegion.candidate;
                         }
 

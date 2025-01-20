@@ -414,9 +414,10 @@ public:
             stats.splitPos = candidate.pivot;
         }
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
-        // stats.sampleVariance = {region.sampleStatistics.getVariance().x, region.sampleStatistics.getVariance().y, region.sampleStatistics.getVariance().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
+        // auto var = region.sampleStatistics.getVariance();
+        // stats.sampleVariance = { var.x, var.y, var.z };
         return stats;
     }
 
@@ -683,13 +684,13 @@ public:
                             std::cout << "!!!! " << (m_isSurface ? "Surface" : "Volume") << " regionStorage.first.valid !!! " << regionStorage.first.distribution.toString()
                                       << std::endl;
 #endif
-                        regionStorage.first.splitFlag = false;
+                        regionStorage.first.splitFlag = 0;
                     }
                 }
                 else
                 {
                     regionStorage.first.valid = false;
-                    regionStorage.first.splitFlag = false;
+                    regionStorage.first.splitFlag = 0;
                 }
                 regionStorage.second.reset();
                 OPENPGL_ASSERT(regionStorage.first.isValid());
@@ -714,14 +715,14 @@ public:
 #endif
             {
                 RegionStorageType &regionStorage = m_regionStorageContainer[n];
-                if (regionStorage.first.splitFlag)
+                while (regionStorage.first.splitFlag)
                 {
                     regionStorage.first.distribution.decay(this->m_decayOnSpatialSplit);
                     regionStorage.first.trainingStatistics.decay(this->m_decayOnSpatialSplit);
 #ifdef OPENPGL_RADIANCE_CACHES
                     regionStorage.first.outRadianceHist.decay(this->m_decayOnSpatialSplit);
 #endif
-                    regionStorage.first.splitFlag = false;
+                    regionStorage.first.splitFlag--;
                 }
 
                 openpgl::Point3 sampleMean = regionStorage.first.sampleStatistics.mean;
@@ -775,10 +776,10 @@ public:
                 else
                 {
                     RegionStorageType &regionStorage = m_regionStorageContainer[n];
-                    if (regionStorage.first.splitFlag)
+                    while (regionStorage.first.splitFlag)
                     {
                         regionStorage.first.trainingStatistics.decay(this->m_decayOnSpatialSplit);
-                        regionStorage.first.splitFlag = false;
+                        regionStorage.first.splitFlag--;
                     }
                 }
                 regionStorage.second.reset();
