@@ -22,7 +22,7 @@ struct Region : public IRegion {
     SampleStatistics sampleStatistics;
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
-    bool splitFlag{false};  // TODO: should also indicate if it's a newly promoted region
+    uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
 
     CandidateSplit candidate;
     CEStatistics ceStatistics;
