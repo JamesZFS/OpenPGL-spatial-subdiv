@@ -283,7 +283,7 @@ struct KDTreePartitionBuilder
                     bool shouldPromote = false;
                     if (exceedSPLThreshold) {  // Possibly force a promotion with SPL threshold
                         shouldPromote = true;
-                    } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
+                        } else if (settings.enablePromotion) {  // Check if we should promote based on the divergence reduction
                         float diff = PairedCEStatistics::weightedAverageReducedCE(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
                         float std = PairedCEStatistics::weightedAverageStd(regionLR[0]->ceStatistics, regionLR[1]->ceStatistics);
                         bool reliable = std::min(regionLR[0]->ceStatistics.getNumSamples(), regionLR[1]->ceStatistics.getNumSamples()) > settings.minSamples && std < std::abs(diff) * settings.safeStdMeanRatio;
@@ -612,7 +612,6 @@ struct KDTreePartitionBuilder
                     // !! This can be slow
                     for (size_t i = sampleRangeLeftRight[c].m_begin; i < sampleRangeLeftRight[c].m_end; i++) {
                         const T &sample = samples[i];
-                        float weight = sample.weight;
                         // Evaluate pdf
                         const auto childDist = &childRegion.distribution;
                         Point3 position(sample.position.x, sample.position.y, sample.position.z);
@@ -632,7 +631,7 @@ struct KDTreePartitionBuilder
                             guidingDist.applyCosineProduct(normal);
                         float qc = guidingDist.pdf(dir);
 
-                        childRegion.ceStatistics.addSample(weight, qp, qc);
+                        childRegion.ceStatistics.addSample(sample.weight, sample.pdf, qp, qc);
                     }
 #else
                     field.updateCE(childRegion, parentRegion, samples.begin() + sampleRangeLeftRight[c].m_begin, samples.begin() + sampleRangeLeftRight[c].m_end);

@@ -6,6 +6,8 @@
 #include "../openpgl_common.h"
 #define COMPUTE_CE_STYLE 0  // 0: instantiating (parallaxed, cosined) guiding distributions at each sample location; 1: projecting samples to the center of the region
 
+#define USE_CHI2
+
 namespace openpgl {
 struct PairedCEStatistics // Parent/child sufficient statistics for marginalized cross-entropies per region
 {
@@ -29,13 +31,19 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
 
     /// Add a sample to the statistics
     /// @param weight: the Monte-Carlo weight, i.e., the Li estimate divided by sampling pdf
+    /// @param qs: the *sampling* pdf
     /// @param qp: the *guiding* pdf of the parent
     /// @param qc: the *guiding* pdf of the child
-    inline void addSample(float weight, float qp, float qc) {
+    inline void addSample(float weight, float qs, float qp, float qc) {
         N++, N2++;
         weight = std::min(weight, clampValue);
+#ifdef USE_CHI2
+        float parentSample = weight * weight * qs / (qp + 1e-3f);
+        float childSample = weight * weight * qs / (qc + 1e-3f);
+#else
         float parentSample = -weight * std::log(qp + 1e-3f);
         float childSample = -weight * std::log(qc + 1e-3f);
+#endif
         ap += parentSample;
         ac += childSample;
         f += weight;
@@ -53,22 +61,38 @@ struct PairedCEStatistics // Parent/child sufficient statistics for marginalized
     }
 
     inline float getParentCE() const {
+#ifdef USE_CHI2
+        return f > 0 ? N * ap / (f * f) - 1 : 0;
+#else
         return f > 0 ? ap / f : 0;
+#endif
     }
 
     inline float getChildCE() const {
+#ifdef USE_CHI2
+        return f > 0 ? N * ac / (f * f) - 1 : 0;
+#else
         return f > 0 ? ac / f : 0;
+#endif
     }
 
     inline float getReducedCE() const {
+#ifdef USE_CHI2
+        return f > 0 ? N * (ap - ac) / (f * f) : 0;
+#else
         return f > 0 ? (ap - ac) / f : 0;
+#endif
     }
 
     // Assuming fluence is constant, estimating the std of reduced CE estimator
     inline float getStd() const {
         if (N <= 0) return 0;
         float a = ap - ac;
+#ifdef USE_CHI2
+        return std::sqrt(N2*N * (m2 - a*a/N)) / (f * f);
+#else
         return std::sqrt(N2/N * (m2 - a*a/N)) / f;
+#endif
     }
 
     inline float getNumSamples() const {
