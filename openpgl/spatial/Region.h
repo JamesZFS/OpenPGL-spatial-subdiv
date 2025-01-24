@@ -5,27 +5,74 @@
 
 #include "../data/SampleStatistics.h"
 #include "../data/CEStatistics.h"
+#include "../data/Signature.h"
 #include "../openpgl_common.h"
 #ifdef OPENPGL_RADIANCE_CACHES
 #include "../directional/OutgoingRadianceHistogram.h"
 #endif
 #include "IRegion.h"
-#include "CandidateRegion.h"
+// #include "CandidateRegion.h"
 
 namespace openpgl
 {
+struct SubdivisionData {
+    Signature signature;
+    SampleStatistics sampleStatistics;
+
+    float pivot {0};
+    uint8_t dim : 2 {3};
+    uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
+
+    float energy = 0.0f;  // distance between self and the parent node
+    uint8_t depth {0};
+    bool updated = false;  // flag to indicate if this split has seen the latest samples
+
+    bool hasSplit() const { return dim < 3; }
+
+    void reset() {
+        signature.clear();
+        sampleStatistics.clear();
+        pivot = 0;
+        dim = 3;
+        lChildIdx = 0;
+        energy = 0.0f;
+        depth = 0;
+        updated = false;
+    }
+
+    void serialize(std::ostream &stream) const
+    {
+        signature.serialize(stream);
+        sampleStatistics.serialize(stream);
+        stream.write(reinterpret_cast<const char *>(&pivot), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
+        stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&depth), sizeof(uint8_t));
+        stream.write(reinterpret_cast<const char *>(&updated), sizeof(bool));
+    }
+
+    void deserialize(std::istream &stream)
+    {
+        signature.deserialize(stream);
+        sampleStatistics.deserialize(stream);
+        stream.read(reinterpret_cast<char *>(&pivot), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
+        stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&depth), sizeof(uint8_t));
+        stream.read(reinterpret_cast<char *>(&updated), sizeof(bool));
+    }
+};
+
 template <typename TDistribution, typename TTrainingStatistics>
 struct Region : public IRegion {
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
-    SampleStatistics sampleStatistics;
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
 
-    CandidateSplit candidate;
+    SubdivisionData candidate;  // TODO: maybe use shared ptr?
     CEStatistics ceStatistics;
-    uint32_t depth = 0;  // depth in the tree
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
@@ -38,7 +85,7 @@ struct Region : public IRegion {
 
     inline const BBox &getSampleBounds() const
     {
-        return sampleStatistics.sampleBounds;
+        return candidate.sampleStatistics.sampleBounds;
     }
 
 #ifdef OPENPGL_RADIANCE_CACHES
@@ -84,7 +131,7 @@ struct Region : public IRegion {
         distribution.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&regionBounds), sizeof(regionBounds));
         trainingStatistics.serialize(stream);
-        sampleStatistics.serialize(stream);
+        candidate.sampleStatistics.serialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.serialize(stream);
 #endif
@@ -92,7 +139,6 @@ struct Region : public IRegion {
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
         candidate.serialize(stream);
         ceStatistics.serialize(stream);
-        stream.write(reinterpret_cast<const char *>(&depth), sizeof(depth));
     }
 
     void deserialize(std::istream &stream)
@@ -101,7 +147,7 @@ struct Region : public IRegion {
         distribution.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&regionBounds), sizeof(regionBounds));
         trainingStatistics.deserialize(stream);
-        sampleStatistics.deserialize(stream);
+        candidate.sampleStatistics.deserialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.deserialize(stream);
 #endif
@@ -109,7 +155,6 @@ struct Region : public IRegion {
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
         candidate.deserialize(stream);
         ceStatistics.deserialize(stream);
-        stream.read(reinterpret_cast<char *>(&depth), sizeof(depth));
     }
 
     bool isValid() const
@@ -129,7 +174,7 @@ struct Region : public IRegion {
         ss << "\t regionBounds: " << regionBounds << std::endl;
         ss << "\t distribution: " << distribution.toString() << std::endl;
         ss << "\t trainingStatistics: " << trainingStatistics.toString() << std::endl;
-        ss << "\t sampleStatistics: " << sampleStatistics.toString() << std::endl;
+        ss << "\t sampleStatistics: " << candidate.sampleStatistics.toString() << std::endl;
         ss << "\t splitFlag: " << splitFlag << std::endl;
         ss << "\t valid: " << valid << std::endl;
         return ss.str();
@@ -138,7 +183,7 @@ struct Region : public IRegion {
     bool operator==(const Region &b) const
     {
         bool equal = true;
-        if (!sampleStatistics.operator==(b.sampleStatistics) || splitFlag != b.splitFlag)
+        if (!candidate.sampleStatistics.operator==(b.candidate.sampleStatistics) || splitFlag != b.splitFlag)
         {
             equal = false;
         }

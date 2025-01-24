@@ -136,7 +136,7 @@ struct Signature  // Directional signature
         float sum = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            if (ai == 0 && bi == 0) continue;
+            if (ai == 0 || bi == 0) continue;
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
