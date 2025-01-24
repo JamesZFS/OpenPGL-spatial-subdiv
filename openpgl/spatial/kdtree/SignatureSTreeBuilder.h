@@ -256,7 +256,9 @@ struct KDTreePartitionBuilder
             if (depth + 1 <= settings.maxDepthWithSampleCount && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
                 // 1. sample count threshold
                 triggersSplit = true;
-                if (candidate.hasSplit()) {
+                bool hasCandidateSplit = candidate.hasSplit();
+                uint32_t lChildIdx = candidate.lChildIdx;
+                if (hasCandidateSplit) {
                     splitDim = candidate.dim;
                     splitPos = candidate.pivot;
                 } else splitBaseline(mergedStats, splitDim, splitPos);
@@ -267,9 +269,10 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    if (candidate.hasSplit()) {
-                        regionLR[c]->candidate = candidateDataStorage[candidate.lChildIdx + c];
+                    if (hasCandidateSplit) {
+                        regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
                         regionLR[c]->candidate.energy = 0;
+                        OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
                     } else {
                         regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                         regionLR[c]->candidate.depth = depth + 1;
@@ -356,7 +359,7 @@ struct KDTreePartitionBuilder
                 }
                 region.numZeroValueSamples = zeroSampleRange.size();
                 if (sampleRange.size() == 0) {
-                    std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << std::endl;
+                    std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << " bounds = " << region.regionBounds << std::endl;
                 }
                 range = sampleRange;
 #ifdef OPENPGL_RADIANCE_CACHES
@@ -391,6 +394,7 @@ struct KDTreePartitionBuilder
         typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
         typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd,
         tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &settings, std::vector<std::pair<uint32_t, uint32_t>> &newLeafs) const {
+        OPENPGL_ASSERT(depth == current.depth);
         OPENPGL_ASSERT(root.depth <= depth && depth <= settings.maxDepth);
         const uint8_t lookaheadLevel = current.depth - root.depth;
         OPENPGL_ASSERT(lookaheadLevel <= settings.lookaheadDepth)
@@ -402,10 +406,10 @@ struct KDTreePartitionBuilder
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
 
-            OPENPGL_ASSERT(root.depth != current.depth || current.energy == 0);
             current.updated = true;
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
+        OPENPGL_ASSERT(root.depth != current.depth || current.energy == 0);
 
         // Lookahead
         if (!current.hasSplit()
