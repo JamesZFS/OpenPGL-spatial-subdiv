@@ -133,18 +133,18 @@ struct Signature  // Directional signature
     // SMAPE: symmetric mean absolute percentage error
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
-        float sum = 0;
+        float num = 0, denom = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
-            if (ai == 0 || bi == 0) continue;
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
-                sum += 2.0f * (ai - bi - a_std - b_std) / (ai + bi);
+                num += ai - bi - a_std - b_std;
             else if (ai + a_std < bi - b_std)
-                sum += 2.0f * (bi - ai - a_std - b_std) / (ai + bi);
+                num += bi - ai - a_std - b_std;
+            denom += ai + bi;
         }
-        return sum / (float) g_opgl_signature_size;
+        return denom == 0 ? 0 : 2.0f * num / denom;
     }
 
     static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
