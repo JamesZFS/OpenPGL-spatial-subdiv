@@ -16,6 +16,8 @@
 
 #include <iostream>
 #include <limits>
+#include <random>
+#include <chrono>
 
 #define THRESHOLD_VAR_RATIO         1e-4
 #define PGL_SIGNATURE_MAX_SAMPLES   8e6
@@ -80,6 +82,7 @@ struct KDTreePartitionBuilder
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
+        bool jitterSample {false};  // whether to jitter sample direction into nearby octahedral cells
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -92,7 +95,7 @@ struct KDTreePartitionBuilder
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine;
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && jitterSample == b.jitterSample;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -109,6 +112,7 @@ struct KDTreePartitionBuilder
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
             multiplyCosine = cfg.multiplyCosine;
+            jitterSample = cfg.jitterSample;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -123,6 +127,7 @@ struct KDTreePartitionBuilder
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
+            cfg.jitterSample = jitterSample;
         }
     };
 
@@ -147,7 +152,7 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
-        computeSampleBinIndex(samples);
+        computeSampleBinIndex(samples, buildSettings);
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
@@ -194,7 +199,7 @@ struct KDTreePartitionBuilder
     template<class TContainer, class FieldType>
     void evaluateRegions(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) {
         constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
-        if constexpr(isNonZeroSample) computeSampleBinIndex(samples);
+        if constexpr(isNonZeroSample) computeSampleBinIndex(samples, buildSettings);
 
         KDNode &root = kdTree.getRoot();
 
@@ -219,12 +224,49 @@ struct KDTreePartitionBuilder
         });
     }
 
-    void computeSampleBinIndex(TSamplesContainer &samples) const {
+    void computeSampleBinIndex(TSamplesContainer &samples, const Settings &settings) const {
         // Precompute bin index for samples
-        embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
-            for (size_t i = r.begin(); i < r.end(); ++i)
-                samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
-        });
+        if (settings.jitterSample) {
+            // Get current time as seed
+            unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+            std::mt19937 generator(seed);  // Initialize a random number generator
+            std::uniform_real_distribution<double> distribution(0, 1);
+
+            // CDF of the 3x3 Gaussian kernel PMF
+            constexpr std::array<double, 9> CDF = {
+                0.0625, 0.1875, 0.25,     
+                0.375, 0.625, 0.75, 
+                0.8125, 0.9375, 1.0
+            };
+
+            constexpr std::array<std::pair<int, int>, 9> offsets = {{
+                {-1, -1}, {0, -1}, {+1, -1},
+                {-1,  0}, {0,  0}, {+1,  0},
+                {-1, +1}, {0, +1}, {+1, +1}
+            }};
+
+            // Function to perform binary search on CDF
+            auto binarySearchCDF = [&](double u) {
+                auto it = std::lower_bound(CDF.begin(), CDF.end(), u);
+                return std::distance(CDF.begin(), it);
+            };
+
+            embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
+                for (size_t i = r.begin(); i < r.end(); ++i) {
+                    double u = distribution(generator);
+                    auto idx = binarySearchCDF(u);
+                    OPENPGL_ASSERT(0 <= idx && idx < 9);
+                    auto [dx, dy] = offsets[idx];
+
+                    samples[i].binIndex = pgl_get_signature_index_jitter(samples[i].direction, dx, dy);
+                }
+            });
+        } else {
+            embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
+                for (size_t i = r.begin(); i < r.end(); ++i)
+                    samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
+            });
+        }
     }
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,

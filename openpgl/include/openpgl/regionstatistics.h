@@ -68,3 +68,19 @@ inline uint8_t pgl_get_signature_index(const pgl_direction &dir) {
     uint32_t hash = pgl_pcg2d(ix, iy).first;
     return hash % g_opgl_signature_size;
 }
+
+inline uint8_t pgl_get_signature_index_jitter(const pgl_direction &dir, int dx, int dy) {
+    // 1. Convert the sample.direction into [0, 1] representation
+    auto uv_ = pgl_vec2f(dir);  // [-1, 1]
+    float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
+    float y = uv_.y * 0.5f + 0.5f;
+
+    // 2. Find the histogram bin on the (conceptual) octahedral map, jittered by (dx, dy)
+    int ix = std::clamp((int)(x * g_opgl_octahedral_resolution) + dx, 0, (int)g_opgl_octahedral_resolution - 1);
+    int iy = std::clamp((int)(y * g_opgl_octahedral_resolution) + dy, 0, (int)g_opgl_octahedral_resolution - 1);
+
+    // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
+    // uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
+    uint32_t hash = pgl_pcg2d(ix, iy).first;
+    return hash % g_opgl_signature_size;
+}
