@@ -17,7 +17,6 @@
 #include <iostream>
 #include <limits>
 #include <random>
-#include <chrono>
 
 #define THRESHOLD_VAR_RATIO         1e-4
 #define PGL_SIGNATURE_MAX_SAMPLES   8e6
@@ -227,11 +226,6 @@ struct KDTreePartitionBuilder
     void computeSampleBinIndex(TSamplesContainer &samples, const Settings &settings) const {
         // Precompute bin index for samples
         if (settings.jitterSample) {
-            // Get current time as seed
-            unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-            std::mt19937 generator(seed);  // Initialize a random number generator
-            std::uniform_real_distribution<double> distribution(0, 1);
-
             // CDF of the 3x3 Gaussian kernel PMF
             constexpr std::array<double, 9> CDF = {
                 0.0625, 0.1875, 0.25,     
@@ -252,6 +246,9 @@ struct KDTreePartitionBuilder
             };
 
             embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
+                thread_local unsigned seed = r.begin();
+                thread_local std::mt19937 generator(seed);  // Initialize a random number generator
+                std::uniform_real_distribution<double> distribution(0, 1);
                 for (size_t i = r.begin(); i < r.end(); ++i) {
                     double u = distribution(generator);
                     auto idx = binarySearchCDF(u);
