@@ -346,7 +346,8 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.depth = depth + 1;
                     }
                     if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
-                        regionLR[c]->candidate.signature.clear();  // * signatures must be recomputed when root changes
+                        // * Signatures must be recomputed when the parent region changes
+                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
                     }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
@@ -392,6 +393,10 @@ struct KDTreePartitionBuilder
                         newRegion.ceStatistics.decay(settings.decayRatio);
                         newRegion.candidate = candidateDataStorage[canDataIdx];
                         newRegion.candidate.energy = 0;
+                        if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+                            // * Signatures must be recomputed when the parent region changes
+                            clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
+                        }
                         // regionBounds set later
                         OPENPGL_ASSERT(newRegion.candidate.depth > depth);
                         newRegion.splitFlag = newRegion.candidate.depth - depth;
@@ -483,7 +488,7 @@ struct KDTreePartitionBuilder
 
             current.updated = true;
         } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
-            current.signature.clear();  // * signatures must be recomputed when root changes
+            OPENPGL_ASSERT(current.signature.numSamples == 0);
             current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, false);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         }
@@ -550,6 +555,17 @@ struct KDTreePartitionBuilder
         }
 
         return 0;
+    }
+
+    // Clear the signatures beneath current
+    void clearCandidateSignatures(SubdivisionData &current, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage) const {
+        current.signature.clear();
+        if (current.hasSplit()) {
+            SubdivisionData &left = candidateDataStorage[current.lChildIdx];
+            SubdivisionData &right = candidateDataStorage[current.lChildIdx + 1];
+            clearCandidateSignatures(left, candidateDataStorage);
+            clearCandidateSignatures(right, candidateDataStorage);
+        }
     }
 
     static std::pair<BBox, BBox> splitBBox(const BBox &bounds, uint8_t splitDim, float splitPos)
