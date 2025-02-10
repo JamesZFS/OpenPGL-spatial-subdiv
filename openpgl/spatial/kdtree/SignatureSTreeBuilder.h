@@ -258,11 +258,39 @@ struct KDTreePartitionBuilder
                     samples[i].binIndex = pgl_get_signature_index_jitter(samples[i].direction, dx, dy);
                 }
             });
+        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+            // Pass. The binIndex is calculated before each updateCandidateRegions call
         } else {
             embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
                 for (size_t i = r.begin(); i < r.end(); ++i)
                     samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
             });
+        }
+    }
+
+    void computeSampleBinIndexReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats) const {
+        openpgl::Vector3 sampleVariance = stats.getVariance();
+        float minDistance = length(sampleVariance);
+        minDistance = 3.f * 3.f * sqrt(minDistance);
+
+        for (auto it = samplesBegin; it != samplesEnd; ++it) {
+            // Find the reprojected direction: nd = (pos + dist * dir - pivot).normalized()
+            if (std::isinf(it->distance) || !(it->distance > 0.0f)) {
+                it->binIndex = pgl_get_signature_index(it->direction);
+                continue;
+            }
+
+            const float distance = fmaxf(minDistance, it->distance);
+            const openpgl::Point3 samplePosition(it->position.x, it->position.y, it->position.z);
+            pgl_vec3f direction = it->direction;
+            const openpgl::Vector3 sampleDirection(direction.x, direction.y, direction.z);
+            const openpgl::Point3 originPosition = samplePosition + sampleDirection * distance;
+            openpgl::Vector3 newDirection = originPosition - stats.mean;
+            const float newDistance = embree::length(newDirection);
+            newDirection = newDirection / newDistance;
+
+            pgl_vec3f reprojectedDirection = {newDirection[0], newDirection[1], newDirection[2]};
+            it->binIndex = pgl_get_signature_index(reprojectedDirection);
         }
     }
 
@@ -314,7 +342,11 @@ struct KDTreePartitionBuilder
                         OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
                     } else {
                         regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
+                        regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
+                    }
+                    if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+                        regionLR[c]->candidate.signature.clear();  // * signatures must be recomputed when root changes
                     }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
@@ -334,8 +366,12 @@ struct KDTreePartitionBuilder
                 
                 std::vector<std::pair<uint32_t, uint32_t>> newLeafs;
                 newLeafs.reserve(8);
+
+                if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT)
+                    computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats);
                 uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
-                if (leftNodeId > 0) {
+
+                if (leftNodeId > 0) {  // has promotion
                     OPENPGL_ASSERT(candidate.hasSplit());
                     splitDim = candidate.dim, splitPos = candidate.pivot;
                     triggersSplit = true;
@@ -426,7 +462,7 @@ struct KDTreePartitionBuilder
         }
     }
 
-    // Update and try promotion recursively at the candidate nodes beneath candidate
+    // Update and try promotion recursively at the candidate nodes beneath current
     // Constructs the subtree and returns the *kdNode idx of the left child to current* if there is any promotion under current
     // Outputs new leaf nodes' (kd node id, candidate data idx) into newLeafs, in the DFS order
     uint32_t updateCandidateRegions(uint8_t depth, KDTree &kdTree, const SubdivisionData &root, SubdivisionData &current,
@@ -446,6 +482,10 @@ struct KDTreePartitionBuilder
             current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
 
             current.updated = true;
+        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+            current.signature.clear();  // * signatures must be recomputed when root changes
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, false);
+            current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
         OPENPGL_ASSERT(root.depth != current.depth || current.energy == 0);
