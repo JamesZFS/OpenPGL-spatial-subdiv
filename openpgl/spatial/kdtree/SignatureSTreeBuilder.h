@@ -81,7 +81,7 @@ struct KDTreePartitionBuilder
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
-        bool jitterSample {false};  // whether to jitter sample direction into nearby octahedral cells
+        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_DETERM};  // how to treat samples when contributing to the bins
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -94,7 +94,7 @@ struct KDTreePartitionBuilder
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && jitterSample == b.jitterSample;
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && contribType == b.contribType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -111,7 +111,7 @@ struct KDTreePartitionBuilder
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
             multiplyCosine = cfg.multiplyCosine;
-            jitterSample = cfg.jitterSample;
+            contribType = cfg.contribType;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -126,7 +126,7 @@ struct KDTreePartitionBuilder
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
-            cfg.jitterSample = jitterSample;
+            cfg.contribType = contribType;
         }
     };
 
@@ -225,7 +225,7 @@ struct KDTreePartitionBuilder
 
     void computeSampleBinIndex(TSamplesContainer &samples, const Settings &settings) const {
         // Precompute bin index for samples
-        if (settings.jitterSample) {
+        if (settings.contribType == PGL_SPATIAL_CONTRIB_JITTER) {
             // CDF of the 3x3 Gaussian kernel PMF
             constexpr std::array<double, 9> CDF = {
                 0.0625, 0.1875, 0.25,     
@@ -441,7 +441,7 @@ struct KDTreePartitionBuilder
         // Update current
         if (!current.updated) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
 
@@ -610,7 +610,7 @@ struct KDTreePartitionBuilder
         // Update self
         if constexpr (isNonZeroSample) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT);
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
@@ -1289,6 +1289,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
+    stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1308,6 +1309,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
+    stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
 }
 
 }

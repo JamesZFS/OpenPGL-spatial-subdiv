@@ -34,27 +34,61 @@ struct Signature  // Directional signature
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine) {
-        if (multiplyCosine) addSamples<true>(begin, end);
-        else addSamples<false>(begin, end);
+    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, bool splat) {
+        if (splat) {
+            if (multiplyCosine) addSamples<true, true>(begin, end);
+            else addSamples<false, true>(begin, end);
+        } else {
+            if (multiplyCosine) addSamples<true, false>(begin, end);
+            else addSamples<false, false>(begin, end);
+        }
     }
 
-    template<bool multiplyCosine, typename SampleIterator>
+    template<bool multiplyCosine, bool splat, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
-            // uint8_t idx = pgl_get_signature_index(it->direction);
-            uint8_t idx = it->binIndex;
-            float w = it->weight;
-            if constexpr(multiplyCosine) {
-                w *= it->cosineTerm;
-                // pgl_vec3f dir = it->direction;
-                // pgl_vec3f normal = it->normal;
-                // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
+            if constexpr(splat) {
+                // 3x3 Gaussian kernel
+                constexpr std::array<float, 9> kernelCoeffs = {
+                    0.0625, 0.125, 0.0625,
+                    0.125,  0.25,  0.125,
+                    0.0625, 0.125, 0.0625,
+                };
+
+                constexpr std::array<std::pair<int, int>, 9> offsets = {{
+                    {-1, -1}, {0, -1}, {+1, -1},
+                    {-1,  0}, {0,  0}, {+1,  0},
+                    {-1, +1}, {0, +1}, {+1, +1}
+                }};
+
+                // Contribute to nearbying bins
+                for (int i = 0; i < 9; ++i) {
+                    float k = kernelCoeffs[i];
+                    auto [dx, dy] = offsets[i];
+                    uint8_t idx = pgl_get_signature_index_jitter(it->direction, dx, dy);  // TODO: can be optimized to get all bins in one call
+                    float w = it->weight;
+                    if constexpr(multiplyCosine) w *= it->cosineTerm;
+
+                    sum[idx] += k * w;
+                    m2[idx] += k * w * w;
+                    numSamples2 += k * k;  // * Special
+                }
+                ++numSamples;
+            } else {
+                // uint8_t idx = pgl_get_signature_index(it->direction);
+                uint8_t idx = it->binIndex;
+                float w = it->weight;
+                if constexpr(multiplyCosine) {
+                    w *= it->cosineTerm;
+                    // pgl_vec3f dir = it->direction;
+                    // pgl_vec3f normal = it->normal;
+                    // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
+                }
+                sum[idx] += w;
+                m2[idx] += w * w;
+                ++numSamples;
+                ++numSamples2;
             }
-            sum[idx] += w;
-            m2[idx] += w * w;
-            ++numSamples;
-            ++numSamples2;
         }
     }
 
