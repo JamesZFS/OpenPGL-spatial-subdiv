@@ -258,7 +258,7 @@ struct KDTreePartitionBuilder
                     samples[i].binIndex = pgl_get_signature_index_jitter(samples[i].direction, dx, dy);
                 }
             });
-        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
             // Pass. The binIndex is calculated before each updateCandidateRegions call
         } else {
             embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
@@ -290,7 +290,8 @@ struct KDTreePartitionBuilder
             newDirection = newDirection / newDistance;
 
             pgl_vec3f reprojectedDirection = {newDirection[0], newDirection[1], newDirection[2]};
-            it->binIndex = pgl_get_signature_index(reprojectedDirection);
+            it->reprojectedDirection = reprojectedDirection;
+            it->binIndex = pgl_get_signature_index(it->reprojectedDirection);
         }
     }
 
@@ -345,7 +346,7 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
-                    if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+                    if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
                         // * Signatures must be recomputed when the parent region changes
                         clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
                     }
@@ -368,7 +369,7 @@ struct KDTreePartitionBuilder
                 std::vector<std::pair<uint32_t, uint32_t>> newLeafs;
                 newLeafs.reserve(8);
 
-                if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT)
+                if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT)
                     computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats);
                 uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
@@ -393,7 +394,7 @@ struct KDTreePartitionBuilder
                         newRegion.ceStatistics.decay(settings.decayRatio);
                         newRegion.candidate = candidateDataStorage[canDataIdx];
                         newRegion.candidate.energy = 0;
-                        if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+                        if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
                             // * Signatures must be recomputed when the parent region changes
                             clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
                         }
@@ -482,14 +483,14 @@ struct KDTreePartitionBuilder
         // Update current
         if (!current.updated) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
 
             current.updated = true;
-        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT) {
+        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
             OPENPGL_ASSERT(current.signature.numSamples == 0);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, false);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
@@ -666,7 +667,7 @@ struct KDTreePartitionBuilder
         // Update self
         if constexpr (isNonZeroSample) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
