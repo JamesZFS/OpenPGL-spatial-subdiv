@@ -44,30 +44,59 @@ struct Signature  // Directional signature
         }
     }
 
+    // Convert the direction into [0, 1] representation on the octahedral map
+    pgl_vec2f dir_to_oct(const pgl_direction &dir) {
+        auto uv = pgl_vec2f(dir);  // [-1, 1]
+        return {uv.x * 0.5f + 0.5f, uv.y * 0.5f + 0.5f};
+    }
+
     template<bool multiplyCosine, bool splat, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
             if constexpr(splat) {
                 // 3x3 Gaussian kernel
-                constexpr std::array<float, 9> kernelCoeffs = {
-                    0.0625, 0.125, 0.0625,
-                    0.125,  0.25,  0.125,
-                    0.0625, 0.125, 0.0625,
-                };
+                float kernelCoeffs[9];
+                uint8_t binIndices[9];
+                constexpr float alpha = -std::log(2.f);  // alpha = -1/(2sigma^2)
 
-                constexpr std::array<std::pair<int, int>, 9> offsets = {{
+                constexpr pgl_vec2i offsets[9] = {
                     {-1, -1}, {0, -1}, {+1, -1},
                     {-1,  0}, {0,  0}, {+1,  0},
                     {-1, +1}, {0, +1}, {+1, +1}
-                }};
+                };
 
-                // Contribute to nearbying bins
+                pgl_vec2f p = dir_to_oct(it->direction);  // [0, 1]^2
+                pgl_vec2i pi{
+                    std::clamp((int)(p.x * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1),
+                    std::clamp((int)(p.y * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1)
+                };  // {0, .., g_opgl_octahedral_resolution-1}
+
+                // Dynamically compute kernel weights of each neighbor's center
+                float sumCoeff = 0;
+                for (int i = 0; i < 9; ++i) {
+                    pgl_vec2i qi = {
+                        std::clamp(pi.x + offsets[i].x, 0, (int)g_opgl_octahedral_resolution - 1), 
+                        std::clamp(pi.y + offsets[i].y, 0, (int)g_opgl_octahedral_resolution - 1)
+                    };
+                    binIndices[i] = pgl_pcg2d(qi.x, qi.y).first % g_opgl_signature_size;  // hash to bin
+                    
+                    // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
+                    pgl_vec2f delta = {p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f), p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)};
+                    kernelCoeffs[i] = std::exp(alpha * (delta.x*delta.x + delta.y*delta.y));
+                    sumCoeff += kernelCoeffs[i];
+                }
+
+                // Normalize weights
+                for (int i = 0; i < 9; ++i) {
+                    kernelCoeffs[i] /= sumCoeff;
+                }
+
+                // Splat the contribution to nearbying bins, each one with the statistical weight set as the kernelCoeff
                 for (int i = 0; i < 9; ++i) {
                     float k = kernelCoeffs[i];
-                    auto [dx, dy] = offsets[i];
-                    uint8_t idx = pgl_get_signature_index_jitter(it->direction, dx, dy);  // TODO: can be optimized to get all bins in one call
                     float w = it->weight;
                     if constexpr(multiplyCosine) w *= it->cosineTerm;
+                    uint8_t idx = binIndices[i];
 
                     sum[idx] += k * w;
                     m2[idx] += k * w * w;
