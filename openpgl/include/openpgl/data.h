@@ -60,6 +60,7 @@ struct PGLSampleData
 
     /// Used by SignatureSTreeBuilder
     uint8_t binIndex;
+    pgl_direction reprojectedDirection;
 
     // non-negative cosine term
     float cosineTerm;

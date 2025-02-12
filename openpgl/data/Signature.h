@@ -65,7 +65,7 @@ struct Signature  // Directional signature
                     {-1, +1}, {0, +1}, {+1, +1}
                 };
 
-                pgl_vec2f p = dir_to_oct(it->direction);  // [0, 1]^2
+                pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 pgl_vec2i pi{
                     std::clamp((int)(p.x * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1),
                     std::clamp((int)(p.y * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1)
@@ -104,12 +104,12 @@ struct Signature  // Directional signature
                 }
                 ++numSamples;
             } else {
-                // uint8_t idx = pgl_get_signature_index(it->direction);
+                // uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 uint8_t idx = it->binIndex;
                 float w = it->weight;
                 if constexpr(multiplyCosine) {
                     w *= it->cosineTerm;
-                    // pgl_vec3f dir = it->direction;
+                    // pgl_vec3f dir = it->reprojectedDirection;
                     // pgl_vec3f normal = it->normal;
                     // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
                 }

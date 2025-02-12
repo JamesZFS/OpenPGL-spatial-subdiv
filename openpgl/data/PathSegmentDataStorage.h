@@ -354,6 +354,7 @@ struct PathSegmentDataStorage
                         dsd.position = {pos[0], pos[1], pos[2]};
                         pgl_vec3f pglDirection = {dir[0], dir[1], dir[2]};
                         dsd.direction = pglDirection;
+                        dsd.reprojectedDirection = pglDirection;
                         dsd.weight = weight;
 #ifdef OPENPGL_RADIANCE_CACHES
                         pgl_vec3f pgl_directionOut = {dirOut[0], dirOut[1], dirOut[2]};
