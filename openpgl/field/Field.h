@@ -509,6 +509,7 @@ public:
         m_regionKNNSearchTree.serialize(os);
         os.write(reinterpret_cast<const char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
         os.write(reinterpret_cast<const char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
+        os.write(reinterpret_cast<const char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
     }
 
     void deserialize(std::istream &is)
@@ -559,6 +560,7 @@ public:
         }
         is.read(reinterpret_cast<char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
         is.read(reinterpret_cast<char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
+        is.read(reinterpret_cast<char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
     }
 
     bool isValid() const

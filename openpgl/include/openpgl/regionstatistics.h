@@ -4,6 +4,7 @@
 
 extern uint32_t g_opgl_octahedral_resolution;
 extern uint32_t g_opgl_signature_size;
+extern float g_opgl_splat_sigma;
 #define PGL_SIGNATURE_MAX_SIZE 8u
 
 /// Helper struct to communicate between OpenPGL and the renderer/visualizer to output debug information.
