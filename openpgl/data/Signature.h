@@ -57,7 +57,7 @@ struct Signature  // Directional signature
                 // 3x3 Gaussian kernel
                 float kernelCoeffs[9];
                 uint8_t binIndices[9];
-                constexpr float alpha = -std::log(2.f);  // alpha = -1/(2sigma^2)
+                const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
 
                 constexpr pgl_vec2i offsets[9] = {
                     {-1, -1}, {0, -1}, {+1, -1},

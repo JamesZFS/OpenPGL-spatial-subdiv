@@ -145,6 +145,16 @@ extern "C" OPENPGL_DLLEXPORT uint8_t pglGetSignatureIndex(pgl_direction dir)
     return pgl_get_signature_index(dir);
 }
 
+extern "C" OPENPGL_DLLEXPORT float pglGetSplatSigma()
+{
+    return g_opgl_splat_sigma;
+}
+
+extern "C" OPENPGL_DLLEXPORT void pglSetSplatSigma(float sigma)
+{
+    g_opgl_splat_sigma = sigma;
+}
+
 extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;
@@ -1033,5 +1043,6 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
 float CEStatistics::clampValue = 1e5f;
 uint32_t g_opgl_octahedral_resolution = 64;
 uint32_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
+float g_opgl_splat_sigma = 1.2887839413f;
 
 #endif
