@@ -25,9 +25,7 @@ enum PGL_SPATIAL_SPLIT_TYPE  // for PGL_SPATIAL_STRUCTURE_GENERIC_STREE
 
 enum PGL_SPATIAL_CONTRIB_TYPE
 {
-    PGL_SPATIAL_CONTRIB_DETERM = 0,
-    PGL_SPATIAL_CONTRIB_JITTER,
-    PGL_SPATIAL_CONTRIB_SPLAT,
-    PGL_SPATIAL_CONTRIB_REPROJECT,
-    PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT,
+    PGL_SPATIAL_CONTRIB_NN = 0,  // contribute directional samples to their nearest neighboring octahedral cell
+    PGL_SPATIAL_CONTRIB_SPLAT,   // splat contribution of each samples to 9 neighboring cells
+    PGL_SPATIAL_CONTRIB_BASIS,   // contribute directional samples to all signature bins using basis functions
 };

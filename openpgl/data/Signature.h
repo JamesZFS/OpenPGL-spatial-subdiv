@@ -34,13 +34,30 @@ struct Signature  // Directional signature
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, bool splat) {
-        if (splat) {
-            if (multiplyCosine) addSamples<true, true>(begin, end);
-            else addSamples<false, true>(begin, end);
+    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType) {
+        // Forwarding to the appropriate function
+        if (multiplyCosine) {
+            switch (contribType) {
+                case PGL_SPATIAL_CONTRIB_NN:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_NN>(begin, end);
+                case PGL_SPATIAL_CONTRIB_SPLAT:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
+                default:
+                    throw std::runtime_error("Unknown contribution type");
+            }
         } else {
-            if (multiplyCosine) addSamples<true, false>(begin, end);
-            else addSamples<false, false>(begin, end);
+            switch (contribType) {
+                case PGL_SPATIAL_CONTRIB_NN:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_NN>(begin, end);
+                case PGL_SPATIAL_CONTRIB_SPLAT:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
+                default:
+                    throw std::runtime_error("Unknown contribution type");
+            }
         }
     }
 
@@ -76,14 +93,13 @@ struct Signature  // Directional signature
         return x - std::floor(x);
     }
 
-    template<bool multiplyCosine, bool splat, typename SampleIterator>
+    template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         for (auto it = begin; it != end; ++it) {
-            if constexpr(splat) {
+            if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
-#if 1
                 // Disjoint Octave Noise basis function
-                const uint8_t octave_min = PGL_OCTAVE_MIN, octave_max = PGL_OCTAVE_MAX;
+                const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
                 const uint8_t S = g_opgl_signature_size;
                 float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
                 for (uint8_t j = 0; j < S; ++j)
@@ -127,7 +143,8 @@ struct Signature  // Directional signature
                 }
                 ++numSamples;
                 ++numSamples2;
-#else
+            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_SPLAT) {
+                pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Splatting
                 // 3x3 Gaussian kernel
                 float kernelCoeffs[9];
@@ -177,8 +194,7 @@ struct Signature  // Directional signature
                     numSamples2 += k * k;  // * Special
                 }
                 ++numSamples;
-#endif
-            } else {
+            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_NN) {
                 // uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 uint8_t idx = it->binIndex;
                 float w = it->weight;
@@ -192,6 +208,8 @@ struct Signature  // Directional signature
                 m2[idx] += w * w;
                 ++numSamples;
                 ++numSamples2;
+            } else {
+                throw std::runtime_error("Unknown contribution type");
             }
         }
     }
