@@ -81,7 +81,8 @@ struct KDTreePartitionBuilder
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
-        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_DETERM};  // how to treat samples when contributing to the bins
+        bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
+        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -94,7 +95,8 @@ struct KDTreePartitionBuilder
                    maxDepthWithSampleCount == b.maxDepthWithSampleCount && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && contribType == b.contribType;
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && 
+                   reproject == b.reproject && contribType == b.contribType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -111,6 +113,7 @@ struct KDTreePartitionBuilder
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
             multiplyCosine = cfg.multiplyCosine;
+            reproject = cfg.reproject;
             contribType = cfg.contribType;
         }
 
@@ -126,6 +129,7 @@ struct KDTreePartitionBuilder
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
+            cfg.reproject = reproject;
             cfg.contribType = contribType;
         }
     };
@@ -225,45 +229,14 @@ struct KDTreePartitionBuilder
 
     void computeSampleBinIndex(TSamplesContainer &samples, const Settings &settings) const {
         // Precompute bin index for samples
-        if (settings.contribType == PGL_SPATIAL_CONTRIB_JITTER) {
-            // CDF of the 3x3 Gaussian kernel PMF
-            constexpr std::array<double, 9> CDF = {
-                0.0625, 0.1875, 0.25,     
-                0.375, 0.625, 0.75, 
-                0.8125, 0.9375, 1.0
-            };
-
-            constexpr std::array<std::pair<int, int>, 9> offsets = {{
-                {-1, -1}, {0, -1}, {+1, -1},
-                {-1,  0}, {0,  0}, {+1,  0},
-                {-1, +1}, {0, +1}, {+1, +1}
-            }};
-
-            // Function to perform binary search on CDF
-            auto binarySearchCDF = [&](double u) {
-                auto it = std::lower_bound(CDF.begin(), CDF.end(), u);
-                return std::distance(CDF.begin(), it);
-            };
-
-            embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
-                thread_local unsigned seed = r.begin();
-                thread_local std::mt19937 generator(seed);  // Initialize a random number generator
-                std::uniform_real_distribution<double> distribution(0, 1);
-                for (size_t i = r.begin(); i < r.end(); ++i) {
-                    double u = distribution(generator);
-                    auto idx = binarySearchCDF(u);
-                    OPENPGL_ASSERT(0 <= idx && idx < 9);
-                    auto [dx, dy] = offsets[idx];
-
-                    samples[i].binIndex = pgl_get_signature_index_jitter(samples[i].direction, dx, dy);
-                }
-            });
-        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
+        if (settings.reproject) {
             // Pass. The binIndex is calculated before each updateCandidateRegions call
         } else {
             embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
-                for (size_t i = r.begin(); i < r.end(); ++i)
+                for (size_t i = r.begin(); i < r.end(); ++i) {
                     samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
+                    samples[i].reprojectedDirection = samples[i].direction;
+                }
             });
         }
     }
@@ -346,7 +319,7 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
-                    if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
+                    if (settings.reproject) {
                         // * Signatures must be recomputed when the parent region changes
                         clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
                     }
@@ -369,7 +342,7 @@ struct KDTreePartitionBuilder
                 std::vector<std::pair<uint32_t, uint32_t>> newLeafs;
                 newLeafs.reserve(8);
 
-                if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT)
+                if (settings.reproject)
                     computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats);
                 uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
@@ -394,7 +367,7 @@ struct KDTreePartitionBuilder
                         newRegion.ceStatistics.decay(settings.decayRatio);
                         newRegion.candidate = candidateDataStorage[canDataIdx];
                         newRegion.candidate.energy = 0;
-                        if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
+                        if (settings.reproject) {
                             // * Signatures must be recomputed when the parent region changes
                             clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
                         }
@@ -483,14 +456,14 @@ struct KDTreePartitionBuilder
         // Update current
         if (!current.updated) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
 
             current.updated = true;
-        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_REPROJECT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT) {
+        } else if (settings.reproject) {
             OPENPGL_ASSERT(current.signature.numSamples == 0);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
@@ -667,7 +640,7 @@ struct KDTreePartitionBuilder
         // Update self
         if constexpr (isNonZeroSample) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT || settings.contribType == PGL_SPATIAL_CONTRIB_SPLAT_REPROJECT);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
@@ -1323,8 +1296,11 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  signatureDistanceThreshold: " << signatureDistanceThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
+    ss << "  stdMultiplier: " << stdMultiplier << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
+    ss << "  reproject: " << reproject << std::endl;
+    ss << "  contribType: " << contribType << std::endl;
 
     return ss.str();
 }
@@ -1346,6 +1322,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
+    stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
 }
 
@@ -1366,6 +1343,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
+    stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
 }
 

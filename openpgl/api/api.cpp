@@ -130,12 +130,12 @@ extern "C" OPENPGL_DLLEXPORT void pglSetOctahedralResolution(uint32_t res)
     g_opgl_octahedral_resolution = res;
 }
 
-extern "C" OPENPGL_DLLEXPORT uint32_t pglGetSignatureSize()
+extern "C" OPENPGL_DLLEXPORT uint8_t pglGetSignatureSize()
 {
     return g_opgl_signature_size;
 }
 
-extern "C" OPENPGL_DLLEXPORT void pglSetSignatureSize(uint32_t size)
+extern "C" OPENPGL_DLLEXPORT void pglSetSignatureSize(uint8_t size)
 {
     g_opgl_signature_size = size;
 }
@@ -153,6 +153,26 @@ extern "C" OPENPGL_DLLEXPORT float pglGetSplatSigma()
 extern "C" OPENPGL_DLLEXPORT void pglSetSplatSigma(float sigma)
 {
     g_opgl_splat_sigma = sigma;
+}
+
+extern "C" OPENPGL_DLLEXPORT uint8_t pglGetOctaveMin()
+{
+    return g_opgl_octave_min;
+}
+
+extern "C" OPENPGL_DLLEXPORT void pglSetOctaveMin(uint8_t min)
+{
+    g_opgl_octave_min = min;
+}
+
+extern "C" OPENPGL_DLLEXPORT uint8_t pglGetOctaveMax()
+{
+    return g_opgl_octave_max;
+}
+
+extern "C" OPENPGL_DLLEXPORT void pglSetOctaveMax(uint8_t max)
+{
+    g_opgl_octave_max = max;
 }
 
 extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPENPGL_CATCH_BEGIN
@@ -1042,7 +1062,9 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
 
 float CEStatistics::clampValue = 1e5f;
 uint32_t g_opgl_octahedral_resolution = 64;
-uint32_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
+uint8_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
 float g_opgl_splat_sigma = 1.2887839413f;
+uint8_t g_opgl_octave_min = 3u;
+uint8_t g_opgl_octave_max = 7u;
 
 #endif

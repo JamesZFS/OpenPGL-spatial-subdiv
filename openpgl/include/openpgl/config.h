@@ -57,7 +57,8 @@ extern "C"
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};
         bool multiplyCosine{false};
-        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_DETERM};
+        bool reproject{false};
+        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
     };
 
     struct PGLVMMFactoryArguments
