@@ -85,21 +85,49 @@ struct Signature  // Directional signature
         return x;
     }
 
-    static float mix(float a, float b, float t) {
+    inline static float mix(float a, float b, float t) {
         return (1 - t) * a + t * b;
     }
 
-    static float fract(float x) {
+    inline static float fract(float x) {
         return x - std::floor(x);
+    }
+
+    // Implements wrapping of k-bit indices in a way that is compatible with
+    // octahedral maps
+    inline static void wrap(uint32_t &x, uint32_t &y, uint32_t res) {
+        const uint32_t hres = res >> 1;
+        if (x > hres && (y == 0u || y == res)) {
+            x = res - x;
+        }
+        if (y > hres && (x == 0u || x == res)) {
+            y = res - y;
+        }
+    }
+
+    // Wrapping for splatting
+    inline static void wrap_splat(int &x, int &y, uint32_t res) {
+        if (x < 0 || x >= res) {
+            x = std::clamp(x, 0, (int)res - 1);
+            y = res - 1 - y;
+        }
+        if (y < 0 || y >= res) {
+            y = std::clamp(y, 0, (int)res - 1);
+            x = res - 1 - x;
+        }
     }
 
     template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
+        const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
+        const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
+        const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
+        const float kernel_lb = std::exp(alpha);
+
         for (auto it = begin; it != end; ++it) {
             if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Disjoint Octave Noise basis function
-                const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
                 const uint8_t S = g_opgl_signature_size;
                 float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
                 for (uint8_t j = 0; j < S; ++j)
@@ -108,16 +136,24 @@ struct Signature  // Directional signature
                 // * Evaluates all basis functions at the given coordinate
                 // Iterate over all octaves
                 for (uint8_t k = octave_min; k <= octave_max; ++k) {
+                    const uint32_t res = 1 << k;
+                    const float scale = pow(0.5, float(k)) / basis_normalizer;
                     // Discretize uv at the appropriate resolution
-                    pgl_vec2f octave_uv = {p.x * float(1u << k), p.y * float(1u << k)};
-                    uint32_t x0 = uint32_t(octave_uv.x), y0 = uint32_t(octave_uv.y);
-                    // Generate offset versions with wrapping
-                    uint32_t x1 = (x0 + 1u) & ((1u << k) - 1u);
-                    uint32_t y1 = (y0 + 1u) & ((1u << k) - 1u);
-                    uint8_t h00 = pcg_3d(x0, y0, k) % S;
-                    uint8_t h01 = pcg_3d(x0, y1, k) % S;
-                    uint8_t h10 = pcg_3d(x1, y0, k) % S;
-                    uint8_t h11 = pcg_3d(x1, y1, k) % S;
+                    pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
+                    uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
+                    // Generate offsets
+                    uint32_t x01 = x00, y01 = y00 + 1;
+                    uint32_t x10 = x00 + 1, y10 = y00;
+                    uint32_t x11 = x00 + 1, y11 = y00 + 1;
+                    // Apply wrapping to ensure continuity on the sphere domain
+                    wrap(x00, y00, res);
+                    wrap(x01, y01, res);
+                    wrap(x10, y10, res);
+                    wrap(x11, y11, res);
+                    uint8_t h00 = pcg_3d(x00, y00, k) % S;
+                    uint8_t h01 = pcg_3d(x01, y01, k) % S;
+                    uint8_t h10 = pcg_3d(x10, y10, k) % S;
+                    uint8_t h11 = pcg_3d(x11, y11, k) % S;
 
                     for (uint8_t j = 0; j < S; ++j) {
                         // Determine whether this bin gets the sample
@@ -130,7 +166,7 @@ struct Signature  // Directional signature
                         float M1 = mix(M10, M11, fract(octave_uv.y));
                         float M = mix(M0, M1, fract(octave_uv.x));
                         // Accumulate into the result
-                        basisFunctions[j] += pow(0.5, float(k)) / (pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max))) * M;
+                        basisFunctions[j] += scale * M;
                     }
                 }
 
@@ -149,7 +185,6 @@ struct Signature  // Directional signature
                 // 3x3 Gaussian kernel
                 float kernelCoeffs[9];
                 uint8_t binIndices[9];
-                const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
 
                 constexpr pgl_vec2i offsets[9] = {
                     {-1, -1}, {0, -1}, {+1, -1},
@@ -165,16 +200,14 @@ struct Signature  // Directional signature
                 // Dynamically compute kernel weights of each neighbor's center
                 float sumCoeff = 0;
                 for (int i = 0; i < 9; ++i) {
-                    pgl_vec2i qi = {
-                        std::clamp(pi.x + offsets[i].x, 0, (int)g_opgl_octahedral_resolution - 1), 
-                        std::clamp(pi.y + offsets[i].y, 0, (int)g_opgl_octahedral_resolution - 1)
-                    };
-                    binIndices[i] = pgl_pcg2d(qi.x, qi.y).first % g_opgl_signature_size;  // hash to bin
-                    
+                    pgl_vec2i qi = {pi.x + offsets[i].x, pi.y + offsets[i].y};
                     // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
                     pgl_vec2f delta = {p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f), p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)};
-                    kernelCoeffs[i] = std::exp(alpha * (delta.x*delta.x + delta.y*delta.y));
+                    kernelCoeffs[i] = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
                     sumCoeff += kernelCoeffs[i];
+                    
+                    wrap_splat(qi.x, qi.y, g_opgl_octahedral_resolution);
+                    binIndices[i] = pgl_pcg2d(qi.x, qi.y).first % g_opgl_signature_size;  // hash to bin
                 }
 
                 // Normalize weights
