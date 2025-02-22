@@ -197,6 +197,12 @@ public:
             });
             m_timeLastUpdateCopySamples = updateStep.elapsed() * 1e-3f;
 
+            if (m_deterministic)
+            {
+                std::sort(samples_.begin(), samples_.end(), SampleDataLess);
+                std::sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
+            }
+
             if (!m_isSceneBoundsSet)
             {
                 estimateSceneBounds(samples_);
@@ -248,6 +254,12 @@ public:
                     zeroValueSamples_[i] = samples.zeroValueSamples[i];
             });
             m_timeLastUpdateCopySamples = updateStep.elapsed() * 1e-3f;
+
+            if (m_deterministic)
+            {
+                std::sort(samples_.begin(), samples_.end(), SampleDataLess);
+                std::sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
+            }
 
             updateStep.reset();
             updateSpatialStructure(samples_, zeroValueSamples_);
@@ -672,11 +684,6 @@ public:
                 openpgl::Point3 sampleMean = regionStorage.first.candidate.sampleStatistics.getMean();
                 if (regionStorage.second.size() > 0)
                 {
-                    if (m_deterministic)
-                    {
-                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
-                    }
-
                     if (m_fitRegions)
                     {
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
@@ -749,11 +756,6 @@ public:
 #ifdef OPENPGL_DEBUG_MODE
                     RegionType oldRegion = regionStorage.first;
 #endif
-                    if (m_deterministic)
-                    {
-                        std::sort(samples.begin() + regionStorage.second.m_begin, samples.begin() + regionStorage.second.m_end, SampleDataLess);
-                    }
-
                     if (m_fitRegions)
                     {
                         // TODO: we should move applying the paralax comp to the Distribution to the factory
