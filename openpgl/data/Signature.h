@@ -69,6 +69,7 @@ struct Signature  // Directional signature
 
     //A pseudorandom number generator with a seed consisting of 3 uints
     static uint32_t pcg_3d(uint32_t x, uint32_t y, uint32_t z) {
+        x ^= 12312u;
         // Taken from: https://www.shadertoy.com/view/XlGcRh
         x = x * 1664525u + 1013904223u;
         y = y * 1664525u + 1013904223u;
@@ -119,6 +120,7 @@ struct Signature  // Directional signature
 
     template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
+        const uint8_t S = g_opgl_signature_size;
         const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
         const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
         const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
@@ -128,7 +130,6 @@ struct Signature  // Directional signature
             if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Disjoint Octave Noise basis function
-                const uint8_t S = g_opgl_signature_size;
                 float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
                 for (uint8_t j = 0; j < S; ++j)
                     basisFunctions[j] = 0.0;
@@ -183,8 +184,9 @@ struct Signature  // Directional signature
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Splatting
                 // 3x3 Gaussian kernel
-                float kernelCoeffs[9];
-                uint8_t binIndices[9];
+                float maskingFunctions[PGL_SIGNATURE_MAX_SIZE];
+                for (uint8_t j = 0; j < S; ++j)
+                    maskingFunctions[j] = 0.0;
 
                 constexpr pgl_vec2i offsets[9] = {
                     {-1, -1}, {0, -1}, {+1, -1},
@@ -203,30 +205,28 @@ struct Signature  // Directional signature
                     pgl_vec2i qi = {pi.x + offsets[i].x, pi.y + offsets[i].y};
                     // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
                     pgl_vec2f delta = {p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f), p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)};
-                    kernelCoeffs[i] = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
-                    sumCoeff += kernelCoeffs[i];
+                    float k = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
+                    sumCoeff += k;
                     
                     wrap_splat(qi.x, qi.y, g_opgl_octahedral_resolution);
-                    binIndices[i] = pgl_pcg2d(qi.x, qi.y).first % g_opgl_signature_size;  // hash to bin
+                    uint8_t j = pgl_pcg2d(qi.x, qi.y).first % S;  // hash to bin
+                    maskingFunctions[j] += k;
                 }
 
                 // Normalize weights
-                for (int i = 0; i < 9; ++i) {
-                    kernelCoeffs[i] /= sumCoeff;
+                for (uint8_t j = 0; j < S; ++j) {
+                    maskingFunctions[j] /= sumCoeff;
                 }
 
                 // Splat the contribution to nearbying bins, each one with the statistical weight set as the kernelCoeff
-                for (int i = 0; i < 9; ++i) {
-                    float k = kernelCoeffs[i];
-                    float w = it->weight;
+                for (uint8_t j = 0; j < S; ++j) {
+                    float w = maskingFunctions[j] * it->weight;
                     if constexpr(multiplyCosine) w *= it->cosineTerm;
-                    uint8_t idx = binIndices[i];
-
-                    sum[idx] += k * w;
-                    m2[idx] += k * w * w;
-                    numSamples2 += k * k;  // * Special
+                    sum[j] += w;
+                    m2[j] += w * w;
                 }
                 ++numSamples;
+                ++numSamples2;
             } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_NN) {
                 // uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 uint8_t idx = it->binIndex;
