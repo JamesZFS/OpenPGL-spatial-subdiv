@@ -41,6 +41,7 @@ extern "C"
 
     struct PGLKDTreeArguments
     {
+        bool deterministic{true};
         bool knnLookup{true};
         bool isKnnLookup{false};
         uint32_t maxDepth {32};
@@ -59,6 +60,7 @@ extern "C"
         bool multiplyCosine{false};
         bool reproject{false};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
+        bool enableSignature{true};
     };
 
     struct PGLVMMFactoryArguments

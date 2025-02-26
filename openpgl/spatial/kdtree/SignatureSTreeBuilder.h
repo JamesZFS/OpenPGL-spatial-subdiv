@@ -83,6 +83,7 @@ struct KDTreePartitionBuilder
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
+        bool enableSignature {true};  // if disabled, this will behave like the standard OpenPGL subdivision scheme
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -96,7 +97,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && 
-                   reproject == b.reproject && contribType == b.contribType;
+                   reproject == b.reproject && contribType == b.contribType && enableSignature == b.enableSignature;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -115,6 +116,7 @@ struct KDTreePartitionBuilder
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
             contribType = cfg.contribType;
+            enableSignature = cfg.enableSignature;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -131,6 +133,7 @@ struct KDTreePartitionBuilder
             cfg.multiplyCosine = multiplyCosine;
             cfg.reproject = reproject;
             cfg.contribType = contribType;
+            cfg.enableSignature = enableSignature;
         }
     };
 
@@ -155,7 +158,7 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
-        computeSampleBinIndex(samples, buildSettings);
+        if (buildSettings.enableSignature) computeSampleBinIndex(samples, buildSettings);
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
@@ -174,21 +177,23 @@ struct KDTreePartitionBuilder
 
         updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, candidateDataStorage, buildSettings, isBuild);
 
-        // Postprocessing: clear flags, decay signature when a region has way too many samples
-        embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
-            for (size_t i = r.begin(); i < r.end(); ++i) {
-                dataStorage[i].first.candidate.updated = false;
-                if (dataStorage[i].first.candidate.signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                    dataStorage[i].first.candidate.signature.decay(0.5f);
-            }
-        });
-        embree::parallel_for(candidateDataStorage.size(), [&](embree::range<size_t> r) {
-            for (size_t i = r.begin(); i < r.end(); ++i) {
-                candidateDataStorage[i].updated = false;
-                if (candidateDataStorage[i].signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                    candidateDataStorage[i].signature.decay(0.5f);
-            }
-        });
+        if (buildSettings.enableSignature) {
+            // Postprocessing: clear flags, decay signature when a region has way too many samples
+            embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
+                for (size_t i = r.begin(); i < r.end(); ++i) {
+                    dataStorage[i].first.candidate.updated = false;
+                    if (dataStorage[i].first.candidate.signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                        dataStorage[i].first.candidate.signature.decay(0.5f);
+                }
+            });
+            embree::parallel_for(candidateDataStorage.size(), [&](embree::range<size_t> r) {
+                for (size_t i = r.begin(); i < r.end(); ++i) {
+                    candidateDataStorage[i].updated = false;
+                    if (candidateDataStorage[i].signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                        candidateDataStorage[i].signature.decay(0.5f);
+                }
+            });
+        }
         kdTree.finalize();
         double updateElapsed = timer.elapsed();
         clock_t toc = clock();
@@ -231,7 +236,7 @@ struct KDTreePartitionBuilder
         // Precompute bin index for samples
         if (settings.reproject) {
             // Pass. The binIndex is calculated before each updateCandidateRegions call
-        } else {
+        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) {
             embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
                 for (size_t i = r.begin(); i < r.end(); ++i) {
                     samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
@@ -241,7 +246,7 @@ struct KDTreePartitionBuilder
         }
     }
 
-    void computeSampleBinIndexReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats) const {
+    void computeSampleBinIndexReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats, const Settings &settings) const {
         openpgl::Vector3 sampleVariance = stats.getVariance();
         float minDistance = length(sampleVariance);
         minDistance = 3.f * 3.f * sqrt(minDistance);
@@ -249,7 +254,7 @@ struct KDTreePartitionBuilder
         for (auto it = samplesBegin; it != samplesEnd; ++it) {
             // Find the reprojected direction: nd = (pos + dist * dir - pivot).normalized()
             if (std::isinf(it->distance) || !(it->distance > 0.0f)) {
-                it->binIndex = pgl_get_signature_index(it->direction);
+                if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) it->binIndex = pgl_get_signature_index(it->direction);
                 continue;
             }
 
@@ -264,7 +269,7 @@ struct KDTreePartitionBuilder
 
             pgl_vec3f reprojectedDirection = {newDirection[0], newDirection[1], newDirection[2]};
             it->reprojectedDirection = reprojectedDirection;
-            it->binIndex = pgl_get_signature_index(it->reprojectedDirection);
+            if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) it->binIndex = pgl_get_signature_index(it->reprojectedDirection);
         }
     }
 
@@ -297,7 +302,7 @@ struct KDTreePartitionBuilder
             if (depth + 1 <= settings.maxDepthWithSampleCount && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
                 // 1. sample count threshold
                 triggersSplit = true;
-                bool hasCandidateSplit = candidate.hasSplit();
+                bool hasCandidateSplit = settings.enableSignature && candidate.hasSplit();
                 uint32_t lChildIdx = candidate.lChildIdx;
                 if (hasCandidateSplit) {
                     splitDim = candidate.dim;
@@ -319,7 +324,7 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
-                    if (settings.reproject) {
+                    if (settings.enableSignature && settings.reproject) {
                         // * Signatures must be recomputed when the parent region changes
                         clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
                     }
@@ -335,7 +340,7 @@ struct KDTreePartitionBuilder
                 node.setToInnerNode(splitDim, splitPos, nodeIdLeft);
                 nodeLR[0]->setDataNodeIdx(dataIdx);
                 nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
-            } else if (!isBuild && depth <= settings.maxDepth) {  // during build, samples are way too noisy
+            } else if (settings.enableSignature && !isBuild && depth <= settings.maxDepth) {  // during build, samples are way too noisy
                 // 2. Signature splitting
                 Timer timer;
                 
@@ -343,7 +348,7 @@ struct KDTreePartitionBuilder
                 newLeafs.reserve(8);
 
                 if (settings.reproject)
-                    computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats);
+                    computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats, settings);
                 uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
                 if (leftNodeId > 0) {  // has promotion
@@ -1301,6 +1306,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  contribType: " << contribType << std::endl;
+    ss << "  enableSignature: " << enableSignature << std::endl;
 
     return ss.str();
 }
@@ -1324,6 +1330,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
+    stream.write(reinterpret_cast<const char*>(&enableSignature), sizeof(enableSignature));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1345,6 +1352,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
+    stream.read(reinterpret_cast<char*>(&enableSignature), sizeof(enableSignature));
 }
 
 }

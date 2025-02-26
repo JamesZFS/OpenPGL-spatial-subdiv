@@ -333,6 +333,7 @@ public:
 
     void updateSubdivConfig(const PGLKDTreeArguments &cfg)
     {
+        m_deterministic = cfg.deterministic;
         m_useStochasticNNLookUp = cfg.knnLookup;
         m_useISNNLookUp = cfg.isKnnLookup;
         m_decayOnSpatialSplit = cfg.vmmDecay;
@@ -342,6 +343,7 @@ public:
 
     void loadSubdivConfig(PGLKDTreeArguments &cfg) const
     {
+        cfg.deterministic = m_deterministic;
         cfg.knnLookup = m_useStochasticNNLookUp;
         cfg.isKnnLookup = m_useISNNLookUp;
         cfg.vmmDecay = m_decayOnSpatialSplit;
