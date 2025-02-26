@@ -175,6 +175,16 @@ extern "C" OPENPGL_DLLEXPORT void pglSetOctaveMax(uint8_t max)
     g_opgl_octave_max = max;
 }
 
+extern "C" OPENPGL_DLLEXPORT float pglGetOctaveGamma()
+{
+    return g_opgl_octave_gamma;
+}
+
+extern "C" OPENPGL_DLLEXPORT void pglSetOctaveGamma(float gamma)
+{
+    g_opgl_octave_gamma = gamma;
+}
+
 extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;
@@ -1066,5 +1076,6 @@ uint8_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
 float g_opgl_splat_sigma = 1.0f;
 uint8_t g_opgl_octave_min = 3u;
 uint8_t g_opgl_octave_max = 7u;
+float g_opgl_octave_gamma = 0.5f;
 
 #endif

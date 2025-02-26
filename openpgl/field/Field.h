@@ -524,6 +524,7 @@ public:
         os.write(reinterpret_cast<const char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
         os.write(reinterpret_cast<const char *>(&g_opgl_octave_min), sizeof(g_opgl_octave_min));
         os.write(reinterpret_cast<const char *>(&g_opgl_octave_max), sizeof(g_opgl_octave_max));
+        os.write(reinterpret_cast<const char *>(&g_opgl_octave_gamma), sizeof(g_opgl_octave_gamma));
     }
 
     void deserialize(std::istream &is)
@@ -577,6 +578,7 @@ public:
         is.read(reinterpret_cast<char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
         is.read(reinterpret_cast<char *>(&g_opgl_octave_min), sizeof(g_opgl_octave_min));
         is.read(reinterpret_cast<char *>(&g_opgl_octave_max), sizeof(g_opgl_octave_max));
+        is.read(reinterpret_cast<char *>(&g_opgl_octave_gamma), sizeof(g_opgl_octave_gamma));
     }
 
     bool isValid() const
