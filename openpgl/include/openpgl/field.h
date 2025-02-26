@@ -53,6 +53,10 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE void pglSetOctaveMax(uint8_t max);
 
+    OPENPGL_CORE_INTERFACE float pglGetOctaveGamma();
+
+    OPENPGL_CORE_INTERFACE void pglSetOctaveGamma(float gamma);
+
     OPENPGL_CORE_INTERFACE uint8_t pglGetSignatureIndex(pgl_direction dir);
 
     OPENPGL_CORE_INTERFACE void pglFieldClearCEStatistics(PGLField field);

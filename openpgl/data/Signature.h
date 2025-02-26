@@ -122,8 +122,9 @@ struct Signature  // Directional signature
     void addSamples(SampleIterator begin, SampleIterator end) {
         const uint8_t S = g_opgl_signature_size;
         const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
-        const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
+        // const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
         const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
+        const float gamma = g_opgl_octave_gamma;
         const float kernel_lb = std::exp(alpha);
 
         for (auto it = begin; it != end; ++it) {
@@ -133,12 +134,15 @@ struct Signature  // Directional signature
                 float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
                 for (uint8_t j = 0; j < S; ++j)
                     basisFunctions[j] = 0.0;
+                float normalizer = 0.0f;
                 
                 // * Evaluates all basis functions at the given coordinate
                 // Iterate over all octaves
                 for (uint8_t k = octave_min; k <= octave_max; ++k) {
                     const uint32_t res = 1 << k;
-                    const float scale = pow(0.5, float(k)) / basis_normalizer;
+                    // const float weight = pow(0.5, float(k)) / basis_normalizer;
+                    const float weight = std::pow(gamma, float(k));
+                    normalizer += weight;
                     // Discretize uv at the appropriate resolution
                     pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
                     uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
@@ -167,13 +171,13 @@ struct Signature  // Directional signature
                         float M1 = mix(M10, M11, fract(octave_uv.y));
                         float M = mix(M0, M1, fract(octave_uv.x));
                         // Accumulate into the result
-                        basisFunctions[j] += scale * M;
+                        basisFunctions[j] += weight * M;
                     }
                 }
 
                 // Contribute to all bins, each one attenuated with its basis function
                 for (uint8_t j = 0; j < S; ++j) {
-                    float w = basisFunctions[j] * it->weight;
+                    float w = basisFunctions[j] / normalizer * it->weight;
                     if constexpr(multiplyCosine) w *= it->cosineTerm;
                     sum[j] += w;
                     m2[j] += w * w;
