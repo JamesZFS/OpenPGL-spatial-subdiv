@@ -71,8 +71,8 @@ struct KDTreePartitionBuilder
         uint32_t maxDepth {32};
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
-        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // force a split if the number of samples exceeds this threshold and the depth is less than maxDepthSPLThreshold
-        uint32_t maxDepthWithSampleCount {1};  // maximum depth with sample count threshold. Setting this to 1 means disabling it
+        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
+        uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {3};  // levels of lookahead
         float signatureDistanceThreshold {1.0f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
         float decayRatio {0.25f};  // set from field
@@ -83,7 +83,6 @@ struct KDTreePartitionBuilder
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
-        bool enableSignature {true};  // if disabled, this will behave like the standard OpenPGL subdivision scheme
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -93,11 +92,11 @@ struct KDTreePartitionBuilder
         {
             return splitType == b.splitType && maxDepth == b.maxDepth && minSamplesCandidateSplit == b.minSamplesCandidateSplit &&
                    minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
-                   maxDepthWithSampleCount == b.maxDepthWithSampleCount && lookaheadDepth == b.lookaheadDepth &&
+                   initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && 
-                   reproject == b.reproject && contribType == b.contribType && enableSignature == b.enableSignature;
+                   reproject == b.reproject && contribType == b.contribType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -106,7 +105,7 @@ struct KDTreePartitionBuilder
             minSamplesCandidateSplit = cfg.minSamplesCandidateSplit;
             minSamplesPromotion = cfg.minSamplesPromotion;
             sampleCountThreshold = cfg.sampleCountThreshold;
-            maxDepthWithSampleCount = cfg.maxDepthWithSampleCount;
+            initializingIters = cfg.initializingIters;
             lookaheadDepth = cfg.lookaheadDepth;
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             stdMultiplier = cfg.stdMultiplier;
@@ -116,7 +115,6 @@ struct KDTreePartitionBuilder
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
             contribType = cfg.contribType;
-            enableSignature = cfg.enableSignature;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -125,7 +123,7 @@ struct KDTreePartitionBuilder
             cfg.minSamplesCandidateSplit = minSamplesCandidateSplit;
             cfg.minSamplesPromotion = minSamplesPromotion;
             cfg.sampleCountThreshold = sampleCountThreshold;
-            cfg.maxDepthWithSampleCount = maxDepthWithSampleCount;
+            cfg.initializingIters = initializingIters;
             cfg.lookaheadDepth = lookaheadDepth;
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.enablePromotion = enablePromotion;
@@ -133,11 +131,10 @@ struct KDTreePartitionBuilder
             cfg.multiplyCosine = multiplyCosine;
             cfg.reproject = reproject;
             cfg.contribType = contribType;
-            cfg.enableSignature = enableSignature;
         }
     };
 
-    void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings) const
+    void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, uint32_t iteration) const
     {
         std::cout << buildSettings.toString() << std::endl;
 
@@ -146,10 +143,10 @@ struct KDTreePartitionBuilder
         dataStorage[0].first.regionBounds = bounds;
         dataStorage[0].first.candidate.depth = 1;
 
-        update(kdTree, samples, zeroSamples, dataStorage, candidateDataStorage, buildSettings, true);
+        update(kdTree, samples, zeroSamples, dataStorage, candidateDataStorage, buildSettings, iteration);
     }
 
-    void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, bool isBuild = false) const
+    void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, uint32_t iteration) const
     {
         Timer timer;
         clock_t tic = clock();
@@ -158,7 +155,7 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
-        if (buildSettings.enableSignature) computeSampleBinIndex(samples, buildSettings);
+        if (iteration >= buildSettings.initializingIters) computeSampleBinIndex(samples, buildSettings);
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
@@ -175,9 +172,9 @@ struct KDTreePartitionBuilder
         }
         std::cout << "Total bounds " << bounds << std::endl;
 
-        updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, candidateDataStorage, buildSettings, isBuild);
+        updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, candidateDataStorage, buildSettings, iteration);
 
-        if (buildSettings.enableSignature) {
+        if (iteration >= buildSettings.initializingIters) {
             // Postprocessing: clear flags, decay signature when a region has way too many samples
             embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
                 for (size_t i = r.begin(); i < r.end(); ++i) {
@@ -276,7 +273,7 @@ struct KDTreePartitionBuilder
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,
                         TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
                         tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage,
-                        const Settings &settings, bool isBuild) const
+                        const Settings &settings, uint32_t iteration) const
     {
         OPENPGL_ASSERT(depth <= settings.maxDepth);
         uint8_t splitDim = 3;
@@ -299,15 +296,12 @@ struct KDTreePartitionBuilder
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool triggersSplit = false;
 
-            if (depth + 1 <= settings.maxDepthWithSampleCount && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
+            if (depth + 1 <= settings.maxDepth && iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
                 // 1. sample count threshold
+                OPENPGL_ASSERT(!candidate.hasSplit());
                 triggersSplit = true;
-                bool hasCandidateSplit = settings.enableSignature && candidate.hasSplit();
                 uint32_t lChildIdx = candidate.lChildIdx;
-                if (hasCandidateSplit) {
-                    splitDim = candidate.dim;
-                    splitPos = candidate.pivot;
-                } else splitBaseline(mergedStats, splitDim, splitPos);
+                splitBaseline(mergedStats, splitDim, splitPos);
                 OPENPGL_ASSERT(splitDim < 3);
 
                 auto rDataItr = dataStorage.emplace_back(region, Range());
@@ -315,19 +309,9 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    if (hasCandidateSplit) {
-                        regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
-                        regionLR[c]->candidate.energy = 0;
-                        OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
-                    } else {
-                        regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
-                        regionLR[c]->candidate.signature.decay(settings.decayRatio);
-                        regionLR[c]->candidate.depth = depth + 1;
-                    }
-                    if (settings.enableSignature && settings.reproject) {
-                        // * Signatures must be recomputed when the parent region changes
-                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
-                    }
+                    regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
+                    regionLR[c]->candidate.signature.decay(settings.decayRatio);
+                    regionLR[c]->candidate.depth = depth + 1;
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
@@ -340,7 +324,7 @@ struct KDTreePartitionBuilder
                 node.setToInnerNode(splitDim, splitPos, nodeIdLeft);
                 nodeLR[0]->setDataNodeIdx(dataIdx);
                 nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
-            } else if (settings.enableSignature && !isBuild && depth <= settings.maxDepth) {  // during build, samples are way too noisy
+            } else if (depth + 1 <= settings.maxDepth && iteration >= settings.initializingIters) {
                 // 2. Signature splitting
                 Timer timer;
                 
@@ -407,8 +391,8 @@ struct KDTreePartitionBuilder
                 auto boundsLR = splitBBox(bounds, splitDim, splitPos);
 
                 invoke(
-                    [&] { updateTreeNode(kdTree, *nodeLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangeLR[0], zeroSamples, zeroSampleRangeLR[0], dataStorage, candidateDataStorage, settings, isBuild); },
-                    [&] { updateTreeNode(kdTree, *nodeLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangeLR[1], zeroSamples, zeroSampleRangeLR[1], dataStorage, candidateDataStorage, settings, isBuild); }
+                    [&] { updateTreeNode(kdTree, *nodeLR[0], depth + 1, splitDim, boundsLR.first, samples, sampleRangeLR[0], zeroSamples, zeroSampleRangeLR[0], dataStorage, candidateDataStorage, settings, iteration); },
+                    [&] { updateTreeNode(kdTree, *nodeLR[1], depth + 1, splitDim, boundsLR.second, samples, sampleRangeLR[1], zeroSamples, zeroSampleRangeLR[1], dataStorage, candidateDataStorage, settings, iteration); }
                 );
             } else {
                 // No split! Just merge in new samples
@@ -440,8 +424,8 @@ struct KDTreePartitionBuilder
                                            Range(std::distance(zeroSamples.begin(), zeroSamplesMid), zeroSampleRange.m_end)};
 
             invoke(
-                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, candidateDataStorage, settings, isBuild); },
-                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, candidateDataStorage, settings, isBuild); }
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[0]), depth + 1, splitDim, boundsLR.first, samples, sampleRangesLR[0], zeroSamples, zeroSampleRangesLR[0], dataStorage, candidateDataStorage, settings, iteration); },
+                [&]{ updateTreeNode(kdTree, kdTree.getNode(nodeIdsLR[1]), depth + 1, splitDim, boundsLR.second, samples, sampleRangesLR[1], zeroSamples, zeroSampleRangesLR[1], dataStorage, candidateDataStorage, settings, iteration); }
             );
         }
     }
@@ -1296,7 +1280,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
     ss << "  minSamplesPromotion: " << minSamplesPromotion << std::endl;
     ss << "  sampleCountThreshold: " << sampleCountThreshold << std::endl;
-    ss << "  maxDepthWithSampleCount: " << maxDepthWithSampleCount << std::endl;
+    ss << "  initializingIters: " << initializingIters << std::endl;
     ss << "  lookaheadDepth: " << lookaheadDepth << std::endl;
     ss << "  signatureDistanceThreshold: " << signatureDistanceThreshold << std::endl;
     ss << "  decayRatio: " << decayRatio << std::endl;
@@ -1306,7 +1290,6 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  contribType: " << contribType << std::endl;
-    ss << "  enableSignature: " << enableSignature << std::endl;
 
     return ss.str();
 }
@@ -1319,7 +1302,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
     stream.write(reinterpret_cast<const char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.write(reinterpret_cast<const char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
-    stream.write(reinterpret_cast<const char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
+    stream.write(reinterpret_cast<const char*>(&initializingIters), sizeof(initializingIters));
     stream.write(reinterpret_cast<const char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.write(reinterpret_cast<const char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
     stream.write(reinterpret_cast<const char*>(&decayRatio), sizeof(decayRatio));
@@ -1330,7 +1313,6 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
-    stream.write(reinterpret_cast<const char*>(&enableSignature), sizeof(enableSignature));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1341,7 +1323,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
     stream.read(reinterpret_cast<char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.read(reinterpret_cast<char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
-    stream.read(reinterpret_cast<char*>(&maxDepthWithSampleCount), sizeof(maxDepthWithSampleCount));
+    stream.read(reinterpret_cast<char*>(&initializingIters), sizeof(initializingIters));
     stream.read(reinterpret_cast<char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.read(reinterpret_cast<char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
     stream.read(reinterpret_cast<char*>(&decayRatio), sizeof(decayRatio));
@@ -1352,7 +1334,6 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
-    stream.read(reinterpret_cast<char*>(&enableSignature), sizeof(enableSignature));
 }
 
 }

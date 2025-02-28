@@ -199,8 +199,8 @@ public:
 
             if (m_deterministic)
             {
-                std::sort(samples_.begin(), samples_.end(), SampleDataLess);
-                std::sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
+                tbb::parallel_sort(samples_.begin(), samples_.end(), SampleDataLess);
+                tbb::parallel_sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
             }
 
             if (!m_isSceneBoundsSet)
@@ -257,8 +257,8 @@ public:
 
             if (m_deterministic)
             {
-                std::sort(samples_.begin(), samples_.end(), SampleDataLess);
-                std::sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
+                tbb::parallel_sort(samples_.begin(), samples_.end(), SampleDataLess);
+                tbb::parallel_sort(zeroValueSamples_.begin(), zeroValueSamples_.end(), ZeroValueSampleDataLess);
             }
 
             updateStep.reset();
@@ -642,7 +642,7 @@ public:
 
     inline void buildSpatialStructure(const BBox &bounds, SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
-        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.build(m_spatialSubdiv, bounds, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings, m_iteration);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.buildRegionSearchTree(m_regionStorageContainer);
@@ -656,7 +656,7 @@ public:
     inline void updateSpatialStructure(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
         Timer timer;
-        m_spatialSubdivBuilder.update(m_spatialSubdiv, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings);
+        m_spatialSubdivBuilder.update(m_spatialSubdiv, samples, zeroValueSamples, m_regionStorageContainer, m_candidateRegionStorageContainer, m_spatialSubdivBuilderSettings, m_iteration);
         if (m_useStochasticNNLookUp)
         {
             m_regionKNNSearchTree.reset();
