@@ -72,7 +72,7 @@ struct KDTreePartitionBuilder
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
-        uint32_t forcedSampleCountThreshold {16 * PGL_TREE_MAX_SAMPLE_PER_LEAF};  // sample count to force a split during the signature splitting stage
+        uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // sample count to force a split during the signature splitting stage
         uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {3};  // levels of lookahead
         float signatureDistanceThreshold {1.0f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
