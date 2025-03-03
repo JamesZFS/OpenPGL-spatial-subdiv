@@ -72,6 +72,7 @@ struct KDTreePartitionBuilder
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
+        uint32_t forcedSampleCountThreshold {16 * PGL_TREE_MAX_SAMPLE_PER_LEAF};  // sample count to force a split during the signature splitting stage
         uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {3};  // levels of lookahead
         float signatureDistanceThreshold {1.0f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
@@ -91,7 +92,7 @@ struct KDTreePartitionBuilder
         bool operator==(const Settings &b) const
         {
             return splitType == b.splitType && maxDepth == b.maxDepth && minSamplesCandidateSplit == b.minSamplesCandidateSplit &&
-                   minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold &&
+                   minSamplesPromotion == b.minSamplesPromotion && sampleCountThreshold == b.sampleCountThreshold && forcedSampleCountThreshold == b.forcedSampleCountThreshold &&
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
@@ -105,6 +106,7 @@ struct KDTreePartitionBuilder
             minSamplesCandidateSplit = cfg.minSamplesCandidateSplit;
             minSamplesPromotion = cfg.minSamplesPromotion;
             sampleCountThreshold = cfg.sampleCountThreshold;
+            forcedSampleCountThreshold = cfg.forcedSampleCountThreshold;
             initializingIters = cfg.initializingIters;
             lookaheadDepth = cfg.lookaheadDepth;
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
@@ -123,6 +125,7 @@ struct KDTreePartitionBuilder
             cfg.minSamplesCandidateSplit = minSamplesCandidateSplit;
             cfg.minSamplesPromotion = minSamplesPromotion;
             cfg.sampleCountThreshold = sampleCountThreshold;
+            cfg.forcedSampleCountThreshold = forcedSampleCountThreshold;
             cfg.initializingIters = initializingIters;
             cfg.lookaheadDepth = lookaheadDepth;
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
@@ -296,12 +299,17 @@ struct KDTreePartitionBuilder
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool triggersSplit = false;
 
-            if (depth + 1 <= settings.maxDepth && iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
+            if (depth + 1 <= settings.maxDepth && 
+                (iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) ||
+                (iteration >= settings.initializingIters && mergedStats.getNumSamples() > settings.forcedSampleCountThreshold)) {
                 // 1. sample count threshold
-                OPENPGL_ASSERT(!candidate.hasSplit());
                 triggersSplit = true;
+                bool hasCandidateSplit = iteration >= settings.initializingIters && candidate.hasSplit();
                 uint32_t lChildIdx = candidate.lChildIdx;
-                splitBaseline(mergedStats, splitDim, splitPos);
+                if (hasCandidateSplit) {
+                    splitDim = candidate.dim;
+                    splitPos = candidate.pivot;
+                } else splitBaseline(mergedStats, splitDim, splitPos);
                 OPENPGL_ASSERT(splitDim < 3);
 
                 auto rDataItr = dataStorage.emplace_back(region, Range());
@@ -309,9 +317,19 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
-                    regionLR[c]->candidate.signature.decay(settings.decayRatio);
-                    regionLR[c]->candidate.depth = depth + 1;
+                    if (hasCandidateSplit) {
+                        regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
+                        regionLR[c]->candidate.energy = 0;
+                        OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
+                    } else {
+                        regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
+                        regionLR[c]->candidate.signature.decay(settings.decayRatio);
+                        regionLR[c]->candidate.depth = depth + 1;
+                    }
+                    if (iteration >= settings.initializingIters && settings.reproject) {
+                        // * Signatures must be recomputed when the parent region changes
+                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
+                    }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
@@ -1280,6 +1298,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
     ss << "  minSamplesPromotion: " << minSamplesPromotion << std::endl;
     ss << "  sampleCountThreshold: " << sampleCountThreshold << std::endl;
+    ss << "  forcedSampleCountThreshold: " << forcedSampleCountThreshold << std::endl;
     ss << "  initializingIters: " << initializingIters << std::endl;
     ss << "  lookaheadDepth: " << lookaheadDepth << std::endl;
     ss << "  signatureDistanceThreshold: " << signatureDistanceThreshold << std::endl;
@@ -1302,6 +1321,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
     stream.write(reinterpret_cast<const char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.write(reinterpret_cast<const char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
+    stream.write(reinterpret_cast<const char*>(&forcedSampleCountThreshold), sizeof(forcedSampleCountThreshold));
     stream.write(reinterpret_cast<const char*>(&initializingIters), sizeof(initializingIters));
     stream.write(reinterpret_cast<const char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.write(reinterpret_cast<const char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
@@ -1323,6 +1343,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&minSamplesCandidateSplit), sizeof(minSamplesCandidateSplit));
     stream.read(reinterpret_cast<char*>(&minSamplesPromotion), sizeof(minSamplesPromotion));
     stream.read(reinterpret_cast<char*>(&sampleCountThreshold), sizeof(sampleCountThreshold));
+    stream.read(reinterpret_cast<char*>(&forcedSampleCountThreshold), sizeof(forcedSampleCountThreshold));
     stream.read(reinterpret_cast<char*>(&initializingIters), sizeof(initializingIters));
     stream.read(reinterpret_cast<char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.read(reinterpret_cast<char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
