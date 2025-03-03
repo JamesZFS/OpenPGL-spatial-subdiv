@@ -28,4 +28,5 @@ enum PGL_SPATIAL_CONTRIB_TYPE
     PGL_SPATIAL_CONTRIB_NN = 0,  // contribute directional samples to their nearest neighboring octahedral cell
     PGL_SPATIAL_CONTRIB_SPLAT,   // splat contribution of each samples to 9 neighboring cells
     PGL_SPATIAL_CONTRIB_BASIS,   // contribute directional samples to all signature bins using basis functions
+    PGL_SPATIAL_CONTRIB_BASIS_XI,   // basis functions enhanced with xi-sequence
 };

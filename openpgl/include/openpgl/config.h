@@ -48,7 +48,7 @@ extern "C"
         uint32_t minSamplesCandidateSplit {1000};
         uint32_t minSamplesPromotion {1000};
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};
-        uint32_t forcedSampleCountThreshold {16 * PGL_TREE_MAX_SAMPLE_PER_LEAF};
+        uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // disabled by default
         uint32_t initializingIters {1};
         uint32_t lookaheadDepth {3};
         float signatureDistanceThreshold{1.0f};
