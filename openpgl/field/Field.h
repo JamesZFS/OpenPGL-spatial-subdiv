@@ -17,7 +17,7 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #endif
-#define USE_PRECOMPUTED_NN 1
+#define USE_PRECOMPUTED_NN 0
 
 namespace openpgl
 {
