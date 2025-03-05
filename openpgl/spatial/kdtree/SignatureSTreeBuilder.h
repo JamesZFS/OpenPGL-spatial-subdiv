@@ -72,7 +72,7 @@ struct KDTreePartitionBuilder
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
-        uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // sample count to force a split during the signature splitting stage
+        uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // sample count to force a split during the signature splitting stage in the first iteration
         uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {3};  // levels of lookahead
         float signatureDistanceThreshold {1.0f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
@@ -298,10 +298,12 @@ struct KDTreePartitionBuilder
 
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool triggersSplit = false;
+            float forcedSampleCountThreshold = settings.forcedSampleCountThreshold == (uint32_t) -1 ?
+                std::numeric_limits<float>::infinity() : settings.forcedSampleCountThreshold * std::sqrt(iteration + 1);  // iteration starts from 0
 
             if (depth + 1 <= settings.maxDepth && 
                 (iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) ||
-                (iteration >= settings.initializingIters && mergedStats.getNumSamples() > settings.forcedSampleCountThreshold)) {
+                (iteration >= settings.initializingIters && mergedStats.getNumSamples() > forcedSampleCountThreshold)) {
                 // 1. sample count threshold
                 triggersSplit = true;
                 bool hasCandidateSplit = iteration >= settings.initializingIters && candidate.hasSplit();
@@ -507,9 +509,10 @@ struct KDTreePartitionBuilder
             rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
             // Try promotion of the current split: either child should exceed the energy threshold
+            float threshold = settings.signatureDistanceThreshold < 0 ? std::numeric_limits<float>::infinity() : settings.signatureDistanceThreshold;
             bool shouldPromoteCurrentSplit = settings.enablePromotion &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.energy > settings.signatureDistanceThreshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.energy > settings.signatureDistanceThreshold));
+                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.energy > threshold) ||
+                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.energy > threshold));
 
             // Extend KD tree if: 1) current split is promoted, 2) left or right child has promotion
             if (shouldPromoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
