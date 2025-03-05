@@ -30,3 +30,10 @@ enum PGL_SPATIAL_CONTRIB_TYPE
     PGL_SPATIAL_CONTRIB_BASIS,   // contribute directional samples to all signature bins using basis functions
     PGL_SPATIAL_CONTRIB_BASIS_XI,   // basis functions enhanced with xi-sequence
 };
+
+enum PGL_SPATIAL_DEFENSIVE_TYPE
+{
+    PGL_SPATIAL_DEFENSIVE_FIXED = 0,  // use fixed defensive sample count threshold
+    PGL_SPATIAL_DEFENSIVE_SQRT,       // grow the defensive sample count with the speed of sqrt(iteration)
+    PGL_SPATIAL_DEFENSIVE_PPG,        // set the defensive sample count to sqrt(iteration) only at iteration=2^k
+};

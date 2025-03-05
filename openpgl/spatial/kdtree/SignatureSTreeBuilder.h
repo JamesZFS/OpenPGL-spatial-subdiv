@@ -84,6 +84,7 @@ struct KDTreePartitionBuilder
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
+        PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};  // how to grow the defensive sample count threshold
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -97,7 +98,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && 
-                   reproject == b.reproject && contribType == b.contribType;
+                   reproject == b.reproject && contribType == b.contribType && defensiveType == b.defensiveType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -117,6 +118,7 @@ struct KDTreePartitionBuilder
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
             contribType = cfg.contribType;
+            defensiveType = cfg.defensiveType;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -134,6 +136,7 @@ struct KDTreePartitionBuilder
             cfg.multiplyCosine = multiplyCosine;
             cfg.reproject = reproject;
             cfg.contribType = contribType;
+            cfg.defensiveType = defensiveType;
         }
     };
 
@@ -298,12 +301,11 @@ struct KDTreePartitionBuilder
 
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool triggersSplit = false;
-            float forcedSampleCountThreshold = settings.forcedSampleCountThreshold == (uint32_t) -1 ?
-                std::numeric_limits<float>::infinity() : settings.forcedSampleCountThreshold * std::sqrt(iteration + 1);  // iteration starts from 0
+            float defensiveThreshold = getDefensiveSampleCount(settings.forcedSampleCountThreshold, iteration, settings);
 
             if (depth + 1 <= settings.maxDepth && 
                 (iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) ||
-                (iteration >= settings.initializingIters && mergedStats.getNumSamples() > forcedSampleCountThreshold)) {
+                (iteration >= settings.initializingIters && mergedStats.getNumSamples() > defensiveThreshold)) {
                 // 1. sample count threshold
                 triggersSplit = true;
                 bool hasCandidateSplit = iteration >= settings.initializingIters && candidate.hasSplit();
@@ -509,10 +511,9 @@ struct KDTreePartitionBuilder
             rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
             // Try promotion of the current split: either child should exceed the energy threshold
-            float threshold = settings.signatureDistanceThreshold < 0 ? std::numeric_limits<float>::infinity() : settings.signatureDistanceThreshold;
             bool shouldPromoteCurrentSplit = settings.enablePromotion &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.energy > threshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.energy > threshold));
+                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.energy > settings.signatureDistanceThreshold) ||
+                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.energy > settings.signatureDistanceThreshold));
 
             // Extend KD tree if: 1) current split is promoted, 2) left or right child has promotion
             if (shouldPromoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
@@ -539,6 +540,27 @@ struct KDTreePartitionBuilder
         }
 
         return 0;
+    }
+
+    static float getDefensiveSampleCount(uint32_t c0, uint32_t iteration, const Settings &settings) {
+        if (c0 == (uint32_t) -1) return std::numeric_limits<float>::infinity();
+        iteration++;  // 1, 2, 3, ..
+        switch (settings.defensiveType) {
+            case PGL_SPATIAL_DEFENSIVE_FIXED: return c0;
+            case PGL_SPATIAL_DEFENSIVE_SQRT: return c0 * std::sqrt(iteration);
+            case PGL_SPATIAL_DEFENSIVE_PPG: {
+                // In alignment with PPG
+                // * sqrt(2) from c0 when iteration = 2^k {at iter 1, 2, 4, 8, ...}
+                float c = c0;
+                constexpr float scale = std::sqrt(2.f);
+                while (iteration > 1) {
+                    iteration >>= 1;
+                    c *= scale;
+                }
+                return c;
+            }
+            default: throw std::runtime_error("Unknown defensive type");
+        };
     }
 
     // Clear the signatures beneath current
@@ -1312,6 +1334,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  contribType: " << contribType << std::endl;
+    ss << "  defensiveType: " << defensiveType << std::endl;
 
     return ss.str();
 }
@@ -1336,6 +1359,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
+    stream.write(reinterpret_cast<const char*>(&defensiveType), sizeof(defensiveType));
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1358,6 +1382,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
+    stream.read(reinterpret_cast<char*>(&defensiveType), sizeof(defensiveType));
 }
 
 }
