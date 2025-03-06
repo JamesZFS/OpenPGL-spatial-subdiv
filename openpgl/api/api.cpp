@@ -1043,6 +1043,7 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
     auto *gImageSpaceGuidingBuffer = (openpgl::ImageSpaceGuidingBuffer *)imageSpaceGuidingBuffer;
     gImageSpaceGuidingBuffer->reset();
 }
+#endif
 
 // float CEStatistics::clampValue = 1e5f;
 uint32_t g_opgl_octahedral_resolution = 64;
@@ -1051,5 +1052,3 @@ float g_opgl_splat_sigma = 1.0f;
 uint8_t g_opgl_octave_min = 3u;
 uint8_t g_opgl_octave_max = 7u;
 float g_opgl_octave_gamma = 0.5f;
-
-#endif
