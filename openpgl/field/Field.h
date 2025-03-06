@@ -324,10 +324,12 @@ public:
         for (auto &region : m_regionStorageContainer) {
             region.first.candidate.signature.clear();
             region.first.candidate.energy = 0;
+            region.first.candidate.risk = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signature.clear();
             cr.energy = 0;
+            cr.risk = 0;
         }
     }
 
@@ -434,6 +436,7 @@ public:
             stats.splitPos = candidate.pivot;
         }
         stats.energy = region.candidate.energy;
+        stats.risk = region.candidate.risk;
         stats.fluence = 0.0f;
         for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
             stats.fluence += region.candidate.signature.getEntry(i);
@@ -457,6 +460,7 @@ public:
         auto &region = m_regionStorageContainer[cId].first;
         const SubdivisionData *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
+        fStats.risk = cStats.risk;
         fStats.depth = region.candidate.depth;
         fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
         // Traverse to the deepest level
@@ -473,6 +477,7 @@ public:
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
             fStats.energy = std::max(fStats.energy, candidate->energy);
+            fStats.risk = std::max(fStats.risk, candidate->risk);
         }
         if (fStats.id != -1) {
             fStats.depth = candidate->depth;

@@ -483,6 +483,7 @@ struct KDTreePartitionBuilder
             current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
+        current.risk = current.signature.getRisk();
         OPENPGL_ASSERT(root.depth != current.depth || current.energy == 0);
 
         // Lookahead
@@ -516,10 +517,10 @@ struct KDTreePartitionBuilder
             rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
             // Try promotion of the current split: either child should exceed the energy threshold
-            // TODO skip this if leftLeftNodeId || leftLeftNodeId
-            bool shouldPromoteCurrentSplit = settings.enablePromotion && Signature::isSafe(root.signature, settings.riskTolerance) &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && Signature::isSafe(left.signature, settings.riskTolerance) && left.energy > settings.signatureDistanceThreshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && Signature::isSafe(left.signature, settings.riskTolerance) && right.energy > settings.signatureDistanceThreshold));
+            // TODO ! change the order of promotion, when this level already promotes, no need to go down further
+            bool shouldPromoteCurrentSplit = settings.enablePromotion && root.risk <= settings.riskTolerance &&
+                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||
+                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold));
 
             // Extend KD tree if: 1) current split is promoted, 2) left or right child has promotion
             if (shouldPromoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
@@ -683,6 +684,7 @@ struct KDTreePartitionBuilder
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
         current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);
+        current.risk = current.signature.getRisk();
 
         if (current.hasSplit()) {
             // Split samples
