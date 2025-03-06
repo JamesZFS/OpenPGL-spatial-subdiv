@@ -418,6 +418,16 @@ struct Signature  // Directional signature
         return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
+    // A signature is safe if for all bins, std / mean <= riskTolerance
+    static bool isSafe(const Signature &a, float riskTolerance) {
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+            float ai = a.getEntry(i), a_std = a.getStd(i);
+            if (a_std > riskTolerance * ai)
+                return false;
+        }
+        return true;
+    }
+
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float ai = a.getEntry(i), bi = b.getEntry(i);
