@@ -81,6 +81,7 @@ struct KDTreePartitionBuilder
         bool enablePromotion {true};
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
+        float riskTolerance {100.0f}; // reject the signature subdivision if std / mean is above this threshold
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
@@ -97,8 +98,8 @@ struct KDTreePartitionBuilder
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && multiplyCosine == b.multiplyCosine && 
-                   reproject == b.reproject && contribType == b.contribType && defensiveType == b.defensiveType;
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && riskTolerance == b.riskTolerance &&
+                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && contribType == b.contribType && defensiveType == b.defensiveType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -113,6 +114,7 @@ struct KDTreePartitionBuilder
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             stdMultiplier = cfg.stdMultiplier;
             signatureDecay = cfg.signatureDecay;
+            riskTolerance = cfg.riskTolerance;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
             multiplyCosine = cfg.multiplyCosine;
@@ -131,6 +133,9 @@ struct KDTreePartitionBuilder
             cfg.initializingIters = initializingIters;
             cfg.lookaheadDepth = lookaheadDepth;
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
+            cfg.stdMultiplier = stdMultiplier;
+            cfg.signatureDecay = signatureDecay;
+            cfg.riskTolerance = riskTolerance;
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
@@ -511,9 +516,10 @@ struct KDTreePartitionBuilder
             rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
 
             // Try promotion of the current split: either child should exceed the energy threshold
-            bool shouldPromoteCurrentSplit = settings.enablePromotion &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.energy > settings.signatureDistanceThreshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.energy > settings.signatureDistanceThreshold));
+            // TODO skip this if leftLeftNodeId || leftLeftNodeId
+            bool shouldPromoteCurrentSplit = settings.enablePromotion && Signature::isSafe(root.signature, settings.riskTolerance) &&
+                ((left.signature.getNumSamples() > settings.minSamplesPromotion && Signature::isSafe(left.signature, settings.riskTolerance) && left.energy > settings.signatureDistanceThreshold) ||
+                (right.signature.getNumSamples() > settings.minSamplesPromotion && Signature::isSafe(left.signature, settings.riskTolerance) && right.energy > settings.signatureDistanceThreshold));
 
             // Extend KD tree if: 1) current split is promoted, 2) left or right child has promotion
             if (shouldPromoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
@@ -1330,6 +1336,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
+    ss << "  riskTolerance: " << riskTolerance << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
@@ -1356,6 +1363,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
+    stream.write(reinterpret_cast<const char*>(&riskTolerance), sizeof(riskTolerance));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
@@ -1379,6 +1387,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
+    stream.read(reinterpret_cast<char*>(&riskTolerance), sizeof(riskTolerance));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
