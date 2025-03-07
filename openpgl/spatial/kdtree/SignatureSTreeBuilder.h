@@ -428,9 +428,9 @@ struct KDTreePartitionBuilder
                     region.candidate.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
                 }
                 region.numZeroValueSamples = zeroSampleRange.size();
-                if (sampleRange.size() == 0) {
-                    std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << " bounds = " << region.regionBounds << std::endl;
-                }
+                // if (sampleRange.size() == 0) {
+                //     std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << " bounds = " << region.regionBounds << std::endl;
+                // }
                 range = sampleRange;
 #ifdef OPENPGL_RADIANCE_CACHES
                 range.m_is_begin = zeroSampleRange.m_begin;
@@ -467,24 +467,31 @@ struct KDTreePartitionBuilder
         OPENPGL_ASSERT(depth == current.depth);
         OPENPGL_ASSERT(root.depth <= depth && depth <= settings.maxDepth);
         const uint8_t lookaheadLevel = current.depth - root.depth;
-        OPENPGL_ASSERT(lookaheadLevel <= settings.lookaheadDepth)
+        OPENPGL_ASSERT(lookaheadLevel <= settings.lookaheadDepth);
+
+        auto update = [&settings, &root](SubdivisionData &region,
+            typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
+            typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
+            if (!region.updated) {
+                region.signature.decay(settings.signatureDecay);
+                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
+                region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
+                region.updated = true;
+            } else if (settings.reproject) {
+                OPENPGL_ASSERT(region.signature.numSamples == 0);
+                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
+            }
+            region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
+            region.risk = region.signature.getRisk();
+        };
 
         // Update current
-        if (!current.updated) {
-            current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
-            current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            current.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
-
-            current.updated = true;
-        } else if (settings.reproject) {
-            OPENPGL_ASSERT(current.signature.numSamples == 0);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
-            current.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
+        if (lookaheadLevel == 0) {  // at the root
+            update(current, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd);
+            OPENPGL_ASSERT(current.energy == 0);
         }
-        current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
-        current.risk = current.signature.getRisk();
-        OPENPGL_ASSERT(root.depth != current.depth || current.energy == 0);
 
         // Lookahead
         if (!current.hasSplit()
@@ -508,22 +515,27 @@ struct KDTreePartitionBuilder
             auto samplesMid = pivotSplitSamples(samplesBegin, samplesEnd, current.dim, current.pivot);
             auto zeroSamplesMid = pivotSplitSamples(zeroSamplesBegin, zeroSamplesEnd, current.dim, current.pivot);
 
-            // Update L/R recursively
             SubdivisionData &left = candidateDataStorage[current.lChildIdx];
             SubdivisionData &right = candidateDataStorage[current.lChildIdx + 1];
 
-            uint32_t leftLeftNodeId = 0, rightLeftNodeId = 0;
-            leftLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid, candidateDataStorage, settings, newLeafs);
-            rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
+            // Update L/R signatures
+            update(left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid);
+            update(right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd);
 
             // Try promotion of the current split: either child should exceed the energy threshold
-            // TODO ! change the order of promotion, when this level already promotes, no need to go down further
-            bool shouldPromoteCurrentSplit = settings.enablePromotion && root.risk <= settings.riskTolerance &&
+            bool promoteCurrentSplit = settings.enablePromotion && root.risk <= settings.riskTolerance &&
                 ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||
                 (right.signature.getNumSamples() > settings.minSamplesPromotion && right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold));
 
+            uint32_t leftLeftNodeId = 0, rightLeftNodeId = 0;
+            if (!promoteCurrentSplit && lookaheadLevel + 1 < settings.lookaheadDepth) {
+                // Update L/R recursively
+                leftLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid, candidateDataStorage, settings, newLeafs);
+                rightLeftNodeId = updateCandidateRegions(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
+            }
+
             // Extend KD tree if: 1) current split is promoted, 2) left or right child has promotion
-            if (shouldPromoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
+            if (promoteCurrentSplit || leftLeftNodeId || rightLeftNodeId) {
                 uint32_t leftNodeId = kdTree.addChildrenPair();
                 KDNode &leftNode = kdTree.getNode(leftNodeId), &rightNode = kdTree.getNode(leftNodeId + 1);
                 if (leftLeftNodeId) {
@@ -1203,7 +1215,7 @@ struct KDTreePartitionBuilder
     std::string toString() const { return "KDTreePartitionBuilder\n"; }
 
     template<typename SampleIterator>
-    inline SampleStatistics computeStats(SampleIterator begin, SampleIterator end) const {
+    static SampleStatistics computeStats(SampleIterator begin, SampleIterator end) {
         SampleStatistics sampleStats;
         for (auto itr = begin; itr != end; ++itr) {
             const Point3 position(itr->position.x, itr->position.y, itr->position.z);
