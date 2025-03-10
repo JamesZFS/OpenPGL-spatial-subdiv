@@ -346,6 +346,25 @@ struct Signature  // Directional signature
         return std::sqrt(varNSample);
     }
 
+    float getTotalAvg() const {
+        float tot = 0.0;
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+            tot += sum[i];
+        }
+        return tot / numSamples;
+    }
+
+    float getTotalStd() const {
+        float tot = 0.0;
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+            tot += m2[i];
+        }
+        float avg = getTotalAvg();
+        float varOneSample = tot / numSamples - avg * avg;
+        float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
+        return std::sqrt(varNSample);
+    }
+
     void decay(float alpha) {
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             sum[i] *= alpha;
@@ -418,8 +437,9 @@ struct Signature  // Directional signature
         return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
-    // maximum value of std / mean per bin
     float getRisk() const {
+#if 1
+        // maximum value of std / mean per bin
         float maxRisk = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             float mean = getEntry(i);
@@ -428,6 +448,9 @@ struct Signature  // Directional signature
             maxRisk = std::max(maxRisk, std / mean);
         }
         return maxRisk;
+#else
+        return getTotalStd() / getTotalAvg();
+#endif
     }
 
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
