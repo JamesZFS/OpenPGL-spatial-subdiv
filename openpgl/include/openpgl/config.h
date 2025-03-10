@@ -61,6 +61,7 @@ extern "C"
         float ceClampValue{1e5f};
         bool multiplyCosine{false};
         bool reproject{false};
+        bool nonRecursive{false};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
     };
