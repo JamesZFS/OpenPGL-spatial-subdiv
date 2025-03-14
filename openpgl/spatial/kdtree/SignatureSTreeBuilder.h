@@ -82,6 +82,7 @@ struct KDTreePartitionBuilder
         float stdMultiplier {1.0f};
         float signatureDecay {1.0f};
         float riskTolerance {100.0f}; // reject the signature subdivision if std / mean is above this threshold
+        float inlierPercent {1.0};  // filter outlier samples for signature computation
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         bool nonRecursive {false};  // if enabled, promote at most one level for each parent node and stop the subdivision there
@@ -99,7 +100,7 @@ struct KDTreePartitionBuilder
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && riskTolerance == b.riskTolerance &&
+                   stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && riskTolerance == b.riskTolerance && inlierPercent == b.inlierPercent &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive &&
                    contribType == b.contribType && defensiveType == b.defensiveType;
         }
@@ -117,6 +118,7 @@ struct KDTreePartitionBuilder
             stdMultiplier = cfg.stdMultiplier;
             signatureDecay = cfg.signatureDecay;
             riskTolerance = cfg.riskTolerance;
+            inlierPercent = cfg.inlierPercent;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
             multiplyCosine = cfg.multiplyCosine;
@@ -139,6 +141,7 @@ struct KDTreePartitionBuilder
             cfg.stdMultiplier = stdMultiplier;
             cfg.signatureDecay = signatureDecay;
             cfg.riskTolerance = riskTolerance;
+            cfg.inlierPercent = inlierPercent;
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
@@ -339,9 +342,8 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
-                    if (iteration >= settings.initializingIters && settings.reproject) {
-                        // * Signatures must be recomputed when the parent region changes
-                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
+                    if (iteration >= settings.initializingIters) {
+                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage, settings.nonRecursive);
                     }
                     regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
@@ -380,10 +382,7 @@ struct KDTreePartitionBuilder
                             regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
                             regionLR[c]->candidate.energy = 0;
                             OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
-                            if (settings.reproject) {
-                                // * Signatures must be recomputed when the parent region changes
-                                clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
-                            }
+                            clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage, true);
                             regionLR[c]->ceStatistics.decay(settings.decayRatio);
                             regionLR[c]->splitFlag = 1;
                             // (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
@@ -422,10 +421,7 @@ struct KDTreePartitionBuilder
                             newRegion.ceStatistics.decay(settings.decayRatio);
                             newRegion.candidate = candidateDataStorage[canDataIdx];
                             newRegion.candidate.energy = 0;
-                            if (settings.reproject) {
-                                // * Signatures must be recomputed when the parent region changes
-                                clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
-                            }
+                            clearCandidateSignatures(newRegion.candidate, candidateDataStorage, false);
                             // regionBounds set later
                             OPENPGL_ASSERT(newRegion.candidate.depth > depth);
                             newRegion.splitFlag += newRegion.candidate.depth - depth;
@@ -510,8 +506,9 @@ struct KDTreePartitionBuilder
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
             OPENPGL_ASSERT(!region.updated);
+            auto samplesInliersEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             region.signature.decay(settings.signatureDecay);
-            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+            region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
             region.updated = true;
@@ -554,11 +551,15 @@ struct KDTreePartitionBuilder
             update(left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid);
             update(right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd);
 
+            // float energyLR = Signature::getDistance(left.signature, right.signature, settings.stdMultiplier);
+
             // Try promotion of the current split: either child should exceed the energy threshold
             if (settings.enablePromotion && root.risk <= settings.riskTolerance &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold)))
-                return true;
+                left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion && (
+                    // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
+                    (left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||   // P and L
+                    (right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold)    // P and R
+                )) return true;
 
             if (lookaheadLevel + 1 < settings.lookaheadDepth) {
                 // Update L/R recursively
@@ -585,15 +586,16 @@ struct KDTreePartitionBuilder
         auto update = [&settings, &root](SubdivisionData &region,
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
+            auto samplesInliersEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             if (!region.updated) {
                 region.signature.decay(settings.signatureDecay);
-                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
                 region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else if (settings.reproject) {
                 OPENPGL_ASSERT(region.signature.numSamples == 0);
-                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
                 region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             }
             region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
@@ -635,10 +637,16 @@ struct KDTreePartitionBuilder
             update(left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid);
             update(right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd);
 
+            // float energyLR = Signature::getDistance(left.signature, right.signature, settings.stdMultiplier);
+
             // Try promotion of the current split: either child should exceed the energy threshold
             bool promoteCurrentSplit = settings.enablePromotion && root.risk <= settings.riskTolerance &&
-                ((left.signature.getNumSamples() > settings.minSamplesPromotion && left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||
-                (right.signature.getNumSamples() > settings.minSamplesPromotion && right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold));
+                left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
+                (
+                    // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
+                    (left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||   // P and L
+                    (right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold)    // P and R
+                );
 
             uint32_t leftLeftNodeId = 0, rightLeftNodeId = 0;
             if (!promoteCurrentSplit && lookaheadLevel + 1 < settings.lookaheadDepth) {
@@ -674,6 +682,14 @@ struct KDTreePartitionBuilder
         return 0;
     }
 
+    static typename TSamplesContainer::iterator filterSamples(typename TSamplesContainer::iterator begin, typename TSamplesContainer::iterator end, float inlierPercent) {
+        // Partition the samples according to their weight, and return the pivot pointing at 100 inlierPercent %
+        const size_t N = std::distance(begin, end);
+        auto pivot = begin + std::min((size_t) (inlierPercent * N), N);
+        std::nth_element(begin, pivot, end, [](auto a, auto b) { return a.weight < b.weight; });
+        return pivot;
+    }
+
     static float getDefensiveSampleCount(uint32_t c0, uint32_t iteration, const Settings &settings) {
         if (c0 == (uint32_t) -1) return std::numeric_limits<float>::infinity();
         iteration++;  // 1, 2, 3, ..
@@ -696,13 +712,15 @@ struct KDTreePartitionBuilder
     }
 
     // Clear the signatures beneath current
-    void clearCandidateSignatures(SubdivisionData &current, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage) const {
+    void clearCandidateSignatures(SubdivisionData &current, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, bool nonRecursive) const {
         current.signature.clear();
+        current.energy = current.risk = 0;
+        if (!nonRecursive) current.updated = false;
         if (current.hasSplit()) {
             SubdivisionData &left = candidateDataStorage[current.lChildIdx];
             SubdivisionData &right = candidateDataStorage[current.lChildIdx + 1];
-            clearCandidateSignatures(left, candidateDataStorage);
-            clearCandidateSignatures(right, candidateDataStorage);
+            clearCandidateSignatures(left, candidateDataStorage, nonRecursive);
+            clearCandidateSignatures(right, candidateDataStorage, nonRecursive);
         }
     }
 
@@ -1464,6 +1482,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
     ss << "  riskTolerance: " << riskTolerance << std::endl;
+    ss << "  inlierPercent: " << inlierPercent << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
@@ -1492,6 +1511,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&signatureDecay), sizeof(signatureDecay));
     stream.write(reinterpret_cast<const char*>(&riskTolerance), sizeof(riskTolerance));
+    stream.write(reinterpret_cast<const char*>(&inlierPercent), sizeof(inlierPercent));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&nonRecursive), sizeof(nonRecursive));
@@ -1517,6 +1537,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&signatureDecay), sizeof(signatureDecay));
     stream.read(reinterpret_cast<char*>(&riskTolerance), sizeof(riskTolerance));
+    stream.read(reinterpret_cast<char*>(&inlierPercent), sizeof(inlierPercent));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&nonRecursive), sizeof(nonRecursive));
