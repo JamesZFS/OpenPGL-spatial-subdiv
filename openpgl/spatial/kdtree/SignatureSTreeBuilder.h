@@ -506,9 +506,8 @@ struct KDTreePartitionBuilder
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
             OPENPGL_ASSERT(!region.updated);
-            auto samplesInliersEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             region.signature.decay(settings.signatureDecay);
-            region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
+            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
             region.updated = true;
@@ -518,6 +517,8 @@ struct KDTreePartitionBuilder
 
         // Update current
         if (lookaheadLevel == 0) {  // at the root
+            // Filter outliers once at the root level
+            samplesEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             update(current, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd);
             OPENPGL_ASSERT(current.energy == 0);
         }
@@ -586,16 +587,15 @@ struct KDTreePartitionBuilder
         auto update = [&settings, &root](SubdivisionData &region,
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
-            auto samplesInliersEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             if (!region.updated) {
                 region.signature.decay(settings.signatureDecay);
-                region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
                 region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else if (settings.reproject) {
                 OPENPGL_ASSERT(region.signature.numSamples == 0);
-                region.signature.addSamples(samplesBegin, samplesInliersEnd, settings.multiplyCosine, settings.contribType);
+                region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
                 region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             }
             region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
@@ -604,6 +604,8 @@ struct KDTreePartitionBuilder
 
         // Update current
         if (lookaheadLevel == 0) {  // at the root
+            // Filter outliers once at the root level
+            samplesEnd = filterSamples(samplesBegin, samplesEnd, settings.inlierPercent);
             update(current, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd);
             OPENPGL_ASSERT(current.energy == 0);
         }
