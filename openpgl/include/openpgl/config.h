@@ -56,7 +56,9 @@ extern "C"
         float stdMultiplier{1.0f};
         float signatureDecay{1.0f};
         float riskTolerance {100.0f};
+        bool DBOR{false};
         float inlierPercent {1.0};
+        float DBORstdMultiplier {3.0f};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};
