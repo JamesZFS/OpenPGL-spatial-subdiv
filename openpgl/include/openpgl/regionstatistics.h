@@ -29,6 +29,8 @@ struct PGLRegionStatistics
     // pgl_vec3f sampleVariance {0, 0, 0};
     pgl_point3f lowerBounds {0, 0, 0};
     pgl_point3f upperBounds {0, 0, 0};
+    float dborMean = 0;
+    float dborStd = 0;
 };
 
 struct PGLDirectionalSignature

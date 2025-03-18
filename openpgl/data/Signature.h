@@ -107,13 +107,13 @@ struct Signature  // Directional signature
 
 
     // Creates a Morton code from two 8-bit integers (costs more than morton_8())
-    static uint32_t morton_16(uint32_t x, uint32_t y) {
+    static inline uint32_t morton_16(uint32_t x, uint32_t y) {
         return (part_1_by_1(y) << 1u) ^ part_1_by_1(x);
     }
 
 
     // Inverse of xi() for max_depth = 16 (or maybe not)
-    uint32_t invert_xi_16(uint32_t x, uint32_t y) {
+    inline uint32_t invert_xi_16(uint32_t x, uint32_t y) {
         x ^= 2631929843u, y ^= 3492732422u;
         uint32_t z = morton_16(x >> 16u, y >> 16u);
         constexpr uint32_t U[4] = {0u, 1790330939u, 2934368918u, 3293618861u};
@@ -125,7 +125,7 @@ struct Signature  // Directional signature
 
 
     // Inverse of xi() (or maybe not)
-    uint32_t invert_xi(uint32_t x, uint32_t y, uint32_t max_depth) {
+    inline uint32_t invert_xi(uint32_t x, uint32_t y, uint32_t max_depth) {
         uint32_t mask = (1u << (2u * max_depth)) - 1u;
         mask = (max_depth == 16u) ? 0xffffffffu : mask;
         return invert_xi_16(x << (32u - max_depth), y << (32u - max_depth)) & mask;

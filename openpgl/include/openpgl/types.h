@@ -37,3 +37,11 @@ enum PGL_SPATIAL_DEFENSIVE_TYPE
     PGL_SPATIAL_DEFENSIVE_SQRT,       // grow the defensive sample count with the speed of sqrt(iteration)
     PGL_SPATIAL_DEFENSIVE_PPG,        // set the defensive sample count to sqrt(iteration) only at iteration=2^k
 };
+
+enum PGL_SPATIAL_FILTER_TYPE
+{
+    PGL_SPATIAL_FILTER_NONE = 0,
+    PGL_SPATIAL_FILTER_PERCENTAGE,
+    PGL_SPATIAL_FILTER_DBOR,
+    PGL_SPATIAL_FILTER_DBOR_ACCUM,
+};

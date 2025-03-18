@@ -18,9 +18,11 @@ struct SampleStatistics
     Vector3 sampleVariance{0.0f};
     float numSamples{0};
     float numZeroValueSamples{0.0f};
-
+    
     BBox sampleBounds{openpgl::Vector3(std::numeric_limits<float>::max()), openpgl::Vector3(-std::numeric_limits<float>::max())};
 
+    float weightMean = 0, weightM2 = 0, weightCnt = 0;  // for DBOR
+    
     inline void clear()
     {
         mean = Point3(0.0f);
@@ -29,6 +31,7 @@ struct SampleStatistics
         numZeroValueSamples = 0.0f;
         sampleBounds.lower = openpgl::Vector3(std::numeric_limits<float>::max());
         sampleBounds.upper = openpgl::Vector3(-std::numeric_limits<float>::max());
+        weightMean = weightM2 = weightCnt = 0;
     }
 
     inline void addSample(const Point3 sample)
@@ -133,6 +136,9 @@ struct SampleStatistics
 
             numSamples *= decay;
             sampleVariance *= decay;
+            weightMean *= decay;
+            weightM2 *= decay;
+            weightCnt *= decay;
         }
     }
 
@@ -193,6 +199,8 @@ struct SampleStatistics
         ss << "variance: " << variance[0] << ",\t" << variance[1] << ",\t" << variance[2] << std::endl;
         ss << "sampleBounds: [" << sampleBounds.lower[0] << ",\t" << sampleBounds.lower[1] << ",\t" << sampleBounds.lower[2] << "] \t [" << sampleBounds.upper[0] << ",\t"
            << sampleBounds.upper[1] << ",\t" << sampleBounds.upper[2] << "] " << std::endl;
+        ss << "weightMean: " << weightMean << std::endl;
+        ss << "weightM2: " << weightM2 << std::endl;
         // ss << "maxComponents: " << maxComponents << std::endl;
         // ss << "maxComponents: " << maxComponents << std::endl;
         return ss.str();
@@ -205,6 +213,9 @@ struct SampleStatistics
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&sampleBounds), sizeof(BBox));
+        stream.write(reinterpret_cast<const char *>(&weightMean), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&weightM2), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&weightCnt), sizeof(float));
     }
 
     void deserialize(std::istream &stream)
@@ -214,6 +225,9 @@ struct SampleStatistics
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(float));
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(float));
         stream.read(reinterpret_cast<char *>(&sampleBounds), sizeof(BBox));
+        stream.read(reinterpret_cast<char *>(&weightMean), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&weightM2), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&weightCnt), sizeof(float));
     }
 
     bool operator==(const SampleStatistics &b) const
@@ -222,7 +236,8 @@ struct SampleStatistics
         if (mean.x != b.mean.x || mean.y != b.mean.y || mean.z != b.mean.z || sampleVariance.x != b.sampleVariance.x || sampleVariance.y != b.sampleVariance.y ||
             sampleVariance.z != b.sampleVariance.z || numSamples != b.numSamples || sampleBounds.lower.x != b.sampleBounds.lower.x ||
             sampleBounds.lower.y != b.sampleBounds.lower.y || sampleBounds.lower.z != b.sampleBounds.lower.z || sampleBounds.upper.x != b.sampleBounds.upper.x ||
-            sampleBounds.upper.y != b.sampleBounds.upper.y || sampleBounds.upper.z != b.sampleBounds.upper.z)
+            sampleBounds.upper.y != b.sampleBounds.upper.y || sampleBounds.upper.z != b.sampleBounds.upper.z ||
+            weightMean != b.weightMean || weightM2 != b.weightM2 || weightCnt != b.weightCnt)
         {
             equal = false;
             // std::cout << std::fixed;
