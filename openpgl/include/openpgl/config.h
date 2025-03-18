@@ -64,6 +64,7 @@ extern "C"
         bool multiplyCosine{false};
         bool reproject{false};
         bool nonRecursive{false};
+        bool singlePromotion{false};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
