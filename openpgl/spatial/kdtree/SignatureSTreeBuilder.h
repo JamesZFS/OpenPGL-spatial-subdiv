@@ -86,7 +86,8 @@ struct KDTreePartitionBuilder
         float DBORstdMultiplier {3.0f};  // remove outliers that are outside [0, mu + DBORstdMultiplier * std]
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
-        bool nonRecursive {false};  // if enabled, promote at most one level for each parent node and stop the subdivision there
+        bool nonRecursive {false};  // if enabled, stop the subdivision when the promotion finishes
+        bool singlePromotion {false}; // if enabled, promote at most one level for each parent node during the promotion handling
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};  // how to grow the defensive sample count threshold
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};  // how to perform outlier removal
@@ -104,7 +105,7 @@ struct KDTreePartitionBuilder
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && riskTolerance == b.riskTolerance &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier &&
-                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive &&
+                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion &&
                    contribType == b.contribType && defensiveType == b.defensiveType && filterType == b.filterType;
         }
 
@@ -128,6 +129,7 @@ struct KDTreePartitionBuilder
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
             nonRecursive = cfg.nonRecursive;
+            singlePromotion = cfg.singlePromotion;
             contribType = cfg.contribType;
             defensiveType = cfg.defensiveType;
             filterType = cfg.filterType;
@@ -153,6 +155,7 @@ struct KDTreePartitionBuilder
             cfg.multiplyCosine = multiplyCosine;
             cfg.reproject = reproject;
             cfg.nonRecursive = nonRecursive;
+            cfg.singlePromotion = singlePromotion;
             cfg.contribType = contribType;
             cfg.defensiveType = defensiveType;
             cfg.filterType = filterType;
@@ -371,73 +374,75 @@ struct KDTreePartitionBuilder
                 std::vector<std::pair<uint32_t, uint32_t>> newLeafs;
                 newLeafs.reserve(8);
 
-                if (settings.reproject)
-                    computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats, settings);
-                if (settings.nonRecursive) {
-                    // Promote at most one level
-                    if (!candidate.updated && updateCandidateRegionsOnePromotion(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {  // TODO
-                        OPENPGL_ASSERT(candidate.hasSplit());
-                        splitDim = candidate.dim, splitPos = candidate.pivot;
-                        triggersSplit = true;
+                if (!candidate.updated || !settings.nonRecursive) {  // Update signatures at this parent node
+                    if (settings.reproject)
+                        computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats, settings);
+                    if (settings.singlePromotion) {
+                        // Promote at most one level
+                        if (updateCandidateRegionsOnePromotion(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {
+                            OPENPGL_ASSERT(candidate.hasSplit());
+                            splitDim = candidate.dim, splitPos = candidate.pivot;
+                            triggersSplit = true;
 
-                        auto rDataItr = dataStorage.emplace_back(region, Range());
-                        RegionType *regionLR[2] = {&region, &rDataItr->first};
-                        uint32_t lChildIdx = candidate.lChildIdx;
+                            auto rDataItr = dataStorage.emplace_back(region, Range());
+                            RegionType *regionLR[2] = {&region, &rDataItr->first};
+                            uint32_t lChildIdx = candidate.lChildIdx;
 
-                        // Inheritance
-                        for (uint8_t c: {0, 1}) {
-                            regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
-                            regionLR[c]->candidate.energy = 0;
-                            OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
-                            clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
-                            regionLR[c]->ceStatistics.decay(settings.decayRatio);
-                            regionLR[c]->splitFlag += 1;
-                            // (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
-                            // regionBounds set later
-                            OPENPGL_ASSERT(regionLR[c]->candidate.depth > depth);
+                            // Inheritance
+                            for (uint8_t c: {0, 1}) {
+                                regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
+                                regionLR[c]->candidate.energy = 0;
+                                OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
+                                clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
+                                regionLR[c]->ceStatistics.decay(settings.decayRatio);
+                                regionLR[c]->splitFlag += 1;
+                                // (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
+                                // regionBounds set later
+                                OPENPGL_ASSERT(regionLR[c]->candidate.depth > depth);
+                            }
+
+                            // Extend KD tree
+                            uint32_t nodeIdLeft = kdTree.addChildrenPair();
+                            nodeLR[0] = &kdTree.getNode(nodeIdLeft);
+                            nodeLR[1] = &kdTree.getNode(nodeIdLeft + 1);
+                            node.setToInnerNode(splitDim, splitPos, nodeIdLeft);
+                            nodeLR[0]->setDataNodeIdx(dataIdx);
+                            nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
                         }
+                    } else {
+                        uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
+                        if (leftNodeId > 0) {  // has promotion
+                            OPENPGL_ASSERT(candidate.hasSplit());
+                            splitDim = candidate.dim, splitPos = candidate.pivot;
+                            triggersSplit = true;
+                            // Allocate data for the new leafs
+                            std::vector<uint32_t> dataInds(newLeafs.size());
+                            dataInds[0] = dataIdx;  // reuse
+                            auto firstdataItr = dataStorage.grow_by(newLeafs.size() - 1, {region, Range()});
+                            for (int i = 1; i < newLeafs.size(); ++i) {
+                                dataInds[i] = std::distance(dataStorage.begin(), firstdataItr) + i - 1;
+                            }
 
-                        // Extend KD tree
-                        uint32_t nodeIdLeft = kdTree.addChildrenPair();
-                        nodeLR[0] = &kdTree.getNode(nodeIdLeft);
-                        nodeLR[1] = &kdTree.getNode(nodeIdLeft + 1);
-                        node.setToInnerNode(splitDim, splitPos, nodeIdLeft);
-                        nodeLR[0]->setDataNodeIdx(dataIdx);
-                        nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
-                    }
-                } else {
-                    uint32_t leftNodeId = updateCandidateRegions(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings, newLeafs);
-                    if (leftNodeId > 0) {  // has promotion
-                        OPENPGL_ASSERT(candidate.hasSplit());
-                        splitDim = candidate.dim, splitPos = candidate.pivot;
-                        triggersSplit = true;
-                        // Allocate data for the new leafs
-                        std::vector<uint32_t> dataInds(newLeafs.size());
-                        dataInds[0] = dataIdx;  // reuse
-                        auto firstdataItr = dataStorage.grow_by(newLeafs.size() - 1, {region, Range()});
-                        for (int i = 1; i < newLeafs.size(); ++i) {
-                            dataInds[i] = std::distance(dataStorage.begin(), firstdataItr) + i - 1;
+                            // Inheritance
+                            for (int i = 0; i < newLeafs.size(); ++i) {
+                                uint32_t newNodeId = newLeafs[i].first, canDataIdx = newLeafs[i].second;
+                                KDNode &newNode = kdTree.getNode(newNodeId);
+                                newNode.setDataNodeIdx(dataInds[i]);
+                                RegionType &newRegion = dataStorage[dataInds[i]].first;
+                                newRegion.ceStatistics.decay(settings.decayRatio);
+                                newRegion.candidate = candidateDataStorage[canDataIdx];
+                                newRegion.candidate.energy = 0;
+                                clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
+                                // regionBounds set later
+                                OPENPGL_ASSERT(newRegion.candidate.depth > depth);
+                                newRegion.splitFlag += newRegion.candidate.depth - depth;
+                            }
+
+                            // Extend KD tree
+                            node.setToInnerNode(splitDim, splitPos, leftNodeId);
+                            nodeLR[0] = &kdTree.getNode(leftNodeId);
+                            nodeLR[1] = &kdTree.getNode(leftNodeId + 1);
                         }
-
-                        // Inheritance
-                        for (int i = 0; i < newLeafs.size(); ++i) {
-                            uint32_t newNodeId = newLeafs[i].first, canDataIdx = newLeafs[i].second;
-                            KDNode &newNode = kdTree.getNode(newNodeId);
-                            newNode.setDataNodeIdx(dataInds[i]);
-                            RegionType &newRegion = dataStorage[dataInds[i]].first;
-                            newRegion.ceStatistics.decay(settings.decayRatio);
-                            newRegion.candidate = candidateDataStorage[canDataIdx];
-                            newRegion.candidate.energy = 0;
-                            clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
-                            // regionBounds set later
-                            OPENPGL_ASSERT(newRegion.candidate.depth > depth);
-                            newRegion.splitFlag += newRegion.candidate.depth - depth;
-                        }
-
-                        // Extend KD tree
-                        node.setToInnerNode(splitDim, splitPos, leftNodeId);
-                        nodeLR[0] = &kdTree.getNode(leftNodeId);
-                        nodeLR[1] = &kdTree.getNode(leftNodeId + 1);
                     }
                 }
                 {
@@ -1533,6 +1538,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  nonRecursive: " << nonRecursive << std::endl;
+    ss << "  singlePromotion: " << singlePromotion << std::endl;
     ss << "  contribType: " << contribType << std::endl;
     ss << "  defensiveType: " << defensiveType << std::endl;
     ss << "  filterType: " << filterType << std::endl;
@@ -1563,6 +1569,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&nonRecursive), sizeof(nonRecursive));
+    stream.write(reinterpret_cast<const char*>(&singlePromotion), sizeof(singlePromotion));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
     stream.write(reinterpret_cast<const char*>(&defensiveType), sizeof(defensiveType));
     stream.write(reinterpret_cast<const char*>(&filterType), sizeof(filterType));
@@ -1591,6 +1598,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&nonRecursive), sizeof(nonRecursive));
+    stream.read(reinterpret_cast<char*>(&singlePromotion), sizeof(singlePromotion));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
     stream.read(reinterpret_cast<char*>(&defensiveType), sizeof(defensiveType));
     stream.read(reinterpret_cast<char*>(&filterType), sizeof(filterType));
