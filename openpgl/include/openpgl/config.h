@@ -56,7 +56,6 @@ extern "C"
         float stdMultiplier{1.0f};
         float signatureDecay{1.0f};
         float riskTolerance {100.0f};
-        bool DBOR{false};
         float inlierPercent {1.0};
         float DBORstdMultiplier {3.0f};
         float ceDecay{0.8f};
@@ -67,6 +66,7 @@ extern "C"
         bool nonRecursive{false};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
+        PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
     };
 
     struct PGLVMMFactoryArguments

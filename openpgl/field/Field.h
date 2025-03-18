@@ -445,6 +445,8 @@ public:
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
         // auto var = region.sampleStatistics.getVariance();
         // stats.sampleVariance = { var.x, var.y, var.z };
+        stats.dborMean = region.candidate.sampleStatistics.weightMean;
+        stats.dborStd = std::sqrt(region.candidate.sampleStatistics.weightM2 / region.candidate.sampleStatistics.weightCnt);
         return stats;
     }
 
