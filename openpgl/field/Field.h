@@ -446,7 +446,7 @@ public:
         // auto var = region.sampleStatistics.getVariance();
         // stats.sampleVariance = { var.x, var.y, var.z };
         stats.dborMean = region.candidate.sampleStatistics.weightMean;
-        stats.dborStd = std::sqrt(region.candidate.sampleStatistics.weightM2 / region.candidate.sampleStatistics.weightCnt);
+        stats.dborStd = region.candidate.sampleStatistics.getDBORStd();
         return stats;
     }
 

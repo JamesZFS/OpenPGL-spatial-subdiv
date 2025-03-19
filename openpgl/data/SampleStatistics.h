@@ -62,11 +62,20 @@ struct SampleStatistics
         return sampleVariance / float(numSamples);
     }
 
+    inline float getDBORStd() const
+    {
+        OPENPGL_ASSERT(weightCnt > 0);
+        return std::sqrt(weightM2 / weightCnt);
+    }
+
     inline void decay(const float &a)
     {
         numSamples *= a;
         sampleVariance *= a;
         numZeroValueSamples *= a;
+        weightMean *= a;
+        weightM2 *= a;
+        weightCnt *= a;
     }
 
     inline float getNumSamples() const
@@ -161,6 +170,15 @@ struct SampleStatistics
         sampleBounds.extend(b.sampleBounds);
 
         numZeroValueSamples += b.numZeroValueSamples;
+
+        // const float weightMeanA = weightMean, weightMeanB = b.weightMean;
+        // const float weightM2A = weightM2, weightM2B = b.weightM2;
+        // const float weightCntA = weightCnt, weightCntB = b.weightCnt;
+
+        // weightMean = weightMeanA * weightCntA + weightMeanB * weightCntB;
+        // weightCnt += weightCntB;
+        // weightMean /= weightCnt;
+        // weightM2 = (weightM2A + weightCntA * weightMeanA * weightMeanA + weightM2B + weightCntB * weightMeanB * weightMeanB) - weightCnt * weightMean * weightMean;
     }
 
     inline bool isValid() const
@@ -201,6 +219,7 @@ struct SampleStatistics
            << sampleBounds.upper[1] << ",\t" << sampleBounds.upper[2] << "] " << std::endl;
         ss << "weightMean: " << weightMean << std::endl;
         ss << "weightM2: " << weightM2 << std::endl;
+        ss << "weightCnt: " << weightCnt << std::endl;
         // ss << "maxComponents: " << maxComponents << std::endl;
         // ss << "maxComponents: " << maxComponents << std::endl;
         return ss.str();
