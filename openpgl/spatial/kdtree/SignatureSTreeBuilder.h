@@ -718,10 +718,10 @@ struct KDTreePartitionBuilder
             }
             case PGL_SPATIAL_FILTER_DBOR_ACCUM: {
                 // First compute the mean and std
-                if (!data.updated)
+                if (!data.updated || data.sampleStatistics.weightCnt == 0)
                     accumulateWeightMoments(begin, end, data.sampleStatistics.weightMean, data.sampleStatistics.weightM2, data.sampleStatistics.weightCnt);
                 // else: data.weightM2 must have been updated with the current samples
-                float sigma = std::sqrt(data.sampleStatistics.weightM2 / data.sampleStatistics.weightCnt);
+                float sigma = data.sampleStatistics.getDBORStd();
                 // Filter the samples at pivot mean + k * std
                 return std::partition(begin, end, [=](auto s) { return s.weight <= data.sampleStatistics.weightMean + settings.DBORstdMultiplier * sigma; });
             }
