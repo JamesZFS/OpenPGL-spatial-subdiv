@@ -19,6 +19,8 @@
 #endif
 #define USE_PRECOMPUTED_NN 0
 
+#define DUMP_DISTRIBUTION_UPDATE_DATA
+
 namespace openpgl
 {
 
@@ -28,6 +30,7 @@ public:
     using DirectionalDistributionFactory = TDirectionalDistributionFactory;
     using DirectionalDistributionFactorySettings = typename TDirectionalDistributionFactory::Configuration;
     using DirectionalDistribution = typename TDirectionalDistributionFactory::Distribution;
+    using DirectionalDistributionTrainingStatistics = typename TDirectionalDistributionFactory::Statistics;
 
     using SampleContainer = SampleDataStorage::SampleContainer;
     // using SampleContainerInternal = ContainerInternal<SampleData>;
@@ -47,6 +50,10 @@ public:
     struct DebugSettings
     {
         bool fitRegions{true};
+        bool dumpUpdateDistributionData{false};
+        bool dumpCacheCellData{false};
+        openpgl::Point3 dumpCacheCellPosition;
+        std::string dumpCacheCellLocation;
     };
 
     struct SpatialSettings
@@ -82,6 +89,11 @@ public:
         m_useISNNLookUp = settings.settings.useISNNLookUp;
         m_spatialSubdivBuilderSettings = settings.settings.spatialSubdivBuilderSettings;
 
+        m_dumpUpdateDistributionData = settings.debugSettings.dumpUpdateDistributionData;
+        m_dumpCacheCellData = settings.debugSettings.dumpCacheCellData;
+        m_dumpCacheCellPosition = settings.debugSettings.dumpCacheCellPosition;
+        m_dumpCacheCellLocation = settings.debugSettings.dumpCacheCellLocation;
+        std::cout << "m_dumpCacheCellData = " << m_dumpCacheCellData << "\t m_dumpCacheCellPosition = " << m_dumpCacheCellPosition << "\t m_dumpCacheCellLocation = " << m_dumpCacheCellLocation << std::endl;
         m_distributionFactorySettings = settings.distributionFactorySettings;
     }
 
@@ -215,11 +227,20 @@ public:
             fitRegions(samples_, zeroValueSamples_);
             m_timeLastUpdateDirectionalDistriubtionUpdate = updateStep.elapsed() * 1e-3f;
             m_timeLastUpdate = updateAll.elapsed() * 1e-3f;
+
+            // if(m_writeBackSortedSamples) {
+            if (true)
+            {
+                embree::parallel_for(size_t(0), samples.samples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
+                    for (size_t i = r.begin(); i < r.end(); i++)
+                        samples.samples[i] = samples_[i];
+                });
+            }
         }
         m_iteration++;
     }
 
-    void updateField(const SampleContainer &samples)
+    void updateField(SampleContainer &samples)
     {
         if (samples.samples.size() > 0)
         {
@@ -271,6 +292,16 @@ public:
             m_timeLastUpdateDirectionalDistriubtionUpdate = updateStep.elapsed() * 1e-3f;
             m_timeLastUpdate = updateAll.elapsed() * 1e-3f;
             std::cout << "updateField() took " << updateAll.elapsed() * 1e-3f << " ms" << std::endl;
+            // if(m_writeBackSortedSamples) {
+            if (true)
+            {
+                embree::parallel_for(size_t(0), samples.samples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
+                    for (size_t i = r.begin(); i < r.end(); i++)
+                    {
+                        samples.samples[i] = samples_[i];
+                    }
+                });
+            }
         }
         m_iteration++;
     }
@@ -515,6 +546,7 @@ public:
         os.write(reinterpret_cast<const char *>(&m_totalSPP), sizeof(m_totalSPP));
         os.write(reinterpret_cast<const char *>(&m_deterministic), sizeof(m_deterministic));
         os.write(reinterpret_cast<const char *>(&m_fitRegions), sizeof(m_fitRegions));
+        os.write(reinterpret_cast<const char *>(&m_dumpUpdateDistributionData), sizeof(m_dumpUpdateDistributionData));
         os.write(reinterpret_cast<const char *>(&m_isSceneBoundsSet), sizeof(m_isSceneBoundsSet));
         os.write(reinterpret_cast<const char *>(&m_sceneBounds), sizeof(m_sceneBounds));
         os.write(reinterpret_cast<const char *>(&m_initialized), sizeof(m_initialized));
@@ -553,6 +585,7 @@ public:
         is.read(reinterpret_cast<char *>(&m_totalSPP), sizeof(m_totalSPP));
         is.read(reinterpret_cast<char *>(&m_deterministic), sizeof(m_deterministic));
         is.read(reinterpret_cast<char *>(&m_fitRegions), sizeof(m_fitRegions));
+        is.read(reinterpret_cast<char *>(&m_dumpUpdateDistributionData), sizeof(m_dumpUpdateDistributionData));
         is.read(reinterpret_cast<char *>(&m_isSceneBoundsSet), sizeof(m_isSceneBoundsSet));
         is.read(reinterpret_cast<char *>(&m_sceneBounds), sizeof(m_sceneBounds));
         is.read(reinterpret_cast<char *>(&m_initialized), sizeof(m_initialized));
@@ -763,7 +796,7 @@ public:
                     regionStorage.first.initialized = false;
                     regionStorage.first.splitFlag = 0;
                 }
-                regionStorage.second.reset();
+                // regionStorage.second.reset();
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
@@ -774,6 +807,11 @@ public:
     void updateRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
         size_t nGuidingRegions = m_regionStorageContainer.size();
+        int dumpCacheCellIdx = 0;
+        if (m_dumpCacheCellData) {
+            dumpCacheCellIdx = m_spatialSubdiv.getDataIdxAtPos(m_dumpCacheCellPosition);
+        }
+
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "updateRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
 #endif
@@ -785,6 +823,7 @@ public:
             for (int n = r.begin(); n < r.end(); ++n)
 #endif
             {
+                const bool dumpCacheCellData = m_dumpCacheCellData && n == dumpCacheCellIdx;
                 RegionStorageType &regionStorage = m_regionStorageContainer[n];
                 while (regionStorage.first.splitFlag)
                 {
@@ -802,6 +841,18 @@ public:
 #ifdef OPENPGL_DEBUG_MODE
                     RegionType oldRegion = regionStorage.first;
 #endif
+                    int nSamples = regionStorage.second.m_end - regionStorage.second.m_begin;
+#ifdef DUMP_DISTRIBUTION_UPDATE_DATA
+                    DistributionUpdateDebugDump dump;
+                    if (dumpCacheCellData)
+                    {
+                        // if(m_dumpUpdateDistributionData){
+                        for (int i = 0; i < nSamples; i++)
+                        {
+                            dump.samples.addSample(samples[regionStorage.second.m_begin + i]);
+                        }
+                    }
+#endif
                     if (m_fitRegions)
                     {
                         // TODO: we should move applying the paralax comp to the Distribution to the factory
@@ -813,6 +864,21 @@ public:
                             OPENPGL_ASSERT(regionStorage.first.distribution.isValid());
                             OPENPGL_ASSERT(regionStorage.first.trainingStatistics.sufficientStatistics.isValid());
                         }
+#ifdef DUMP_DISTRIBUTION_UPDATE_DATA
+                        // if(m_dumpUpdateDistributionData){
+                        if (dumpCacheCellData)
+                        {
+                            for (int i = 0; i < nSamples; i++)
+                            {
+                                dump.samplesPrepared.addSample(samples[regionStorage.second.m_begin + i]);
+                            }
+                            dump.distribution = regionStorage.first.distribution;
+                            dump.trainingStatistics = regionStorage.first.trainingStatistics;
+                            dump.sampleStatistics = regionStorage.first.sampleStatistics;
+                            // dump.weightsStatistics = regionStorage.first.weightsStatistics;
+                            dump.factorySettings = m_distributionFactorySettings;
+                        }
+#endif
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
                         m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                              regionStorage.first.candidate.sampleStatistics, m_distributionFactorySettings);
@@ -847,6 +913,14 @@ public:
                         }
 #endif
                     }
+#ifdef DUMP_DISTRIBUTION_UPDATE_DATA
+                    // if(m_dumpUpdateDistributionData) {
+                    if (dumpCacheCellData)
+                    {
+                        std::cout << "DumpCacheCell: idx = " << dumpCacheCellIdx << "\t pos = " << m_dumpCacheCellPosition << std::endl;
+                        dump.Store(m_dumpCacheCellLocation + "/cacheCellData_itr_" + std::to_string(m_iteration) + ".dump");
+                    }
+#endif
                 }
                 else
                 {
@@ -857,7 +931,7 @@ public:
                         regionStorage.first.splitFlag--;
                     }
                 }
-                regionStorage.second.reset();
+                // regionStorage.second.reset();
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
@@ -997,6 +1071,61 @@ public:
         return stats;
     }
 
+    PGLRange getSampleRange(size_t id) const
+    {
+        // std::cout << m_distributionFactorySettings.toString()<<std::endl;
+        PGLRange range;
+        if (id < m_regionStorageContainer.size())
+        {
+            range.start = m_regionStorageContainer[id].second.m_begin;
+            range.end = m_regionStorageContainer[id].second.m_end;
+        }
+        return range;
+    }
+
+    void runUpdateDump(const std::string updateDumpFilename, const bool surface = true) const 
+    {
+        
+        std::cout << "runUpdateDump" << std::endl;
+        DistributionUpdateDebugDump updateDump;
+        updateDump.Load(updateDumpFilename);
+        std::vector<SampleData> samples;
+/*
+        if(std::fabs((updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean()) - 1.0f) > 1e-4f)
+            std::cout << "Distribution: samplesMean: "<< updateDump.trainingStatistics.getMeanSamplesWeights() << "\t weightsMean: " <<
+        updateDump.weightsStatistics.getWeightsMean()  << "\t diff: " << updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean() <<
+        std::endl; if(std::fabs((updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()) - 1.0f) > 1e-4f) std::cout << "Distribution:
+        numSamples: "<< updateDump.trainingStatistics.getNumSamples() << "\t numWeights: " << updateDump.weightsStatistics.getNumWeights() << "\t diff: " <<
+        updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()<< std::endl;
+*/
+
+        if(surface) {
+            for(int i= 0; i < updateDump.samples.sizeSurface(); i++)
+                samples.push_back(updateDump.samples.getSampleSurface(i));
+        } else {
+            for(int i= 0; i < updateDump.samples.sizeVolume(); i++)
+                samples.push_back(updateDump.samples.getSampleVolume(i));
+        }
+        //std::cout << "numSamples: " << updateDump.trainingStatistics.splittingStatistics.numSamples << std::endl;
+        //std::cout << "numSamples: " << updateDump.trainingStatistics.getNumSamples() << std::endl;
+        std::cout << "before: " << std::endl;
+        std::cout << updateDump.distribution.toString()<< std::endl;
+        typename DirectionalDistributionFactory::FittingStatistics fittingStats;
+        m_distributionFactory.prepareSamples(samples.data(), samples.size(), updateDump.sampleStatistics, /*updateDump.weightsStatistics,*/ updateDump.factorySettings); 
+        m_distributionFactory.update(updateDump.distribution, updateDump.trainingStatistics, samples.data(), samples.size(), updateDump.factorySettings, fittingStats);
+
+        std::cout << updateDump.distribution.toString() << std::endl;
+        /*
+        if(std::fabs((updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean()) - 1.0f) > 1e-4f)
+            std::cout << "Distribution: samplesMean: "<< updateDump.trainingStatistics.getMeanSamplesWeights() << "\t weightsMean: " <<
+        updateDump.weightsStatistics.getWeightsMean()  << "\t diff: " << updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean() <<
+        std::endl; if(std::fabs((updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()) - 1.0f) > 1e-4f) std::cout << "Distribution:
+        numSamples: "<< updateDump.trainingStatistics.getNumSamples() << "\t numWeights: " << updateDump.weightsStatistics.getNumWeights() << "\t diff: " <<
+        updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()<< std::endl; std::cout << "after: " << std::endl; std::cout <<
+        updateDump.distribution.toString()<< std::endl;
+        */
+    }
+
    private:
     bool m_isSurface{true};
 
@@ -1009,6 +1138,12 @@ public:
     bool m_fitRegions{true};
     // if the fitting process should be deterministic (i.e, samples are sorted before training)
     bool m_deterministic{false};
+
+    bool m_dumpUpdateDistributionData{false};
+
+    bool m_dumpCacheCellData{false};
+    Point3 m_dumpCacheCellPosition;
+    std::string m_dumpCacheCellLocation;
 
     bool m_isSceneBoundsSet{false};
     BBox m_sceneBounds;

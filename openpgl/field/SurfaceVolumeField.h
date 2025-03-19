@@ -68,6 +68,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         _surfaceSamplingDistribution->init(distribution, position);
         _surfaceSamplingDistribution->setId(id);
         _surfaceSamplingDistribution->setRegion(region);
+        //std::cout << region->trainingStatistics.toString() << std::endl; 
         return true;
     }
 
@@ -351,7 +352,25 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getDirectionalSignatures(pos, lookaheadDepth, splitDim, isRight);
     }
 
-private:
+    PGLRange getSurfaceSampleRange(size_t id) const override
+    {
+        return m_surfaceField.getSampleRange(id);
+    }
+
+    PGLRange getVolumeSampleRange(size_t id) const override
+    {
+        return m_volumeField.getSampleRange(id);
+    }
+
+    void runUpdateDump(const std::string updateDumpFilename, const bool surface = true) const override
+    {
+        if (surface)
+            m_surfaceField.runUpdateDump(updateDumpFilename, true);
+        else
+            m_volumeField.runUpdateDump(updateDumpFilename, false);
+    }
+
+   private:
     size_t m_iteration{0};
     size_t m_totalSPP{0};
     float m_timeUpdateField{0.0f};
