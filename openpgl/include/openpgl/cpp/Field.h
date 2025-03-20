@@ -51,9 +51,6 @@ struct Field
 
     Field(const Field &) = delete;
 
-    /// Clears the CE statistics of all regions of the Field.
-    void ClearCEStatistics();
-
     /// Clears the signatures of all regions of the Field.
     void ClearSignatures();
 
@@ -199,12 +196,6 @@ OPENPGL_INLINE Field::~Field()
     OPENPGL_ASSERT(m_fieldHandle);
     pglReleaseField(m_fieldHandle);
     m_fieldHandle = nullptr;
-}
-
-OPENPGL_INLINE void Field::ClearCEStatistics()
-{
-    OPENPGL_ASSERT(m_fieldHandle);
-    pglFieldClearCEStatistics(m_fieldHandle);
 }
 
 OPENPGL_INLINE void Field::ClearSignatures()

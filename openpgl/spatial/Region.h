@@ -4,7 +4,6 @@
 #pragma once
 
 #include "../data/SampleStatistics.h"
-#include "../data/CEStatistics.h"
 #include "../data/Signature.h"
 #include "../openpgl_common.h"
 #ifdef OPENPGL_RADIANCE_CACHES
@@ -78,7 +77,6 @@ struct Region : public IRegion {
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
 
     SubdivisionData candidate;  // TODO: maybe use shared ptr?
-    CEStatistics ceStatistics;
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif
@@ -146,7 +144,6 @@ struct Region : public IRegion {
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
         candidate.serialize(stream);
-        ceStatistics.serialize(stream);
     }
 
     void deserialize(std::istream &stream)
@@ -164,7 +161,6 @@ struct Region : public IRegion {
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
         candidate.deserialize(stream);
-        ceStatistics.deserialize(stream);
     }
 
     bool isValid() const

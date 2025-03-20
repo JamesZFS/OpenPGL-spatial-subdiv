@@ -19,7 +19,6 @@ struct PGLRegionStatistics
     uint32_t numZeroValueSamples = 0;
     uint32_t depth = 0;
     float fluence = 0;
-    float crossEntropy = 0;
     float energy = 0;
     float risk = 0;
     bool hasCandidateSplit = false;

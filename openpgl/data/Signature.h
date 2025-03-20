@@ -20,12 +20,11 @@ struct Signature  // Directional signature
     float sum[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of weights in that bin
     float m2[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins, or sum of sample weights
-    float numSamples2 = 0;  // sum of sample weights^2, only differs from numSamples after decay TODO
 
     Signature() = default;
 
     explicit Signature(const PGLDirectionalSignature &s) {
-        numSamples = numSamples2 = s.numSamples;
+        numSamples = s.numSamples;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
             sum[i] = s.signature[i] * numSamples;
             float varNSample = s.std[i] * s.std[i];
@@ -38,7 +37,6 @@ struct Signature  // Directional signature
         memset(sum, 0, sizeof(sum));
         memset(m2, 0, sizeof(m2));
         numSamples = 0;
-        numSamples2 = 0;
     }
 
     // Convert the direction into [0, 1] representation on the octahedral map
@@ -163,7 +161,6 @@ struct Signature  // Directional signature
                         m2[j] += w * w;
                     }
                     ++numSamples;
-                    ++numSamples2;
                 }
 #else
                 std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
@@ -193,7 +190,6 @@ struct Signature  // Directional signature
                         m2[j] += w * w;
                     }
                     ++numSamples;
-                    ++numSamples2;
                 }
 #else
                 std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
@@ -299,7 +295,6 @@ struct Signature  // Directional signature
                     m2[j] += w * w;
                 }
                 ++numSamples;
-                ++numSamples2;
             } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_SPLAT) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Splatting
@@ -346,7 +341,6 @@ struct Signature  // Directional signature
                     m2[j] += w * w;
                 }
                 ++numSamples;
-                ++numSamples2;
             } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_NN) {
                 uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 float w = it->weight;
@@ -359,7 +353,6 @@ struct Signature  // Directional signature
                 sum[idx] += w;
                 m2[idx] += w * w;
                 ++numSamples;
-                ++numSamples2;
             } else {
                 throw std::runtime_error("Unknown contribution type");
             }
@@ -525,7 +518,6 @@ struct Signature  // Directional signature
 
     void addZeroSamples(size_t numZeroSamples) {
         numSamples += (float) numZeroSamples;
-        numSamples2 += (float) numZeroSamples;
     }
 
     float getNumSamples() const {
@@ -539,8 +531,7 @@ struct Signature  // Directional signature
     float getStd(uint8_t idx) const {
         // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
         float varOneSample = m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
-        // float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
-        float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
+        float varNSample = varOneSample / numSamples;
         return std::sqrt(varNSample);
     }
 
@@ -559,7 +550,7 @@ struct Signature  // Directional signature
         }
         float avg = getTotalAvg();
         float varOneSample = tot / numSamples - avg * avg;
-        float varNSample = numSamples2 / (numSamples * numSamples) * varOneSample;
+        float varNSample = varOneSample / numSamples;
         return std::sqrt(varNSample);
     }
 
@@ -569,7 +560,6 @@ struct Signature  // Directional signature
             m2[i] *= alpha;
         }
         numSamples *= alpha;
-        numSamples2 *= alpha * alpha;
     }
 
     explicit operator PGLDirectionalSignature() const {
@@ -670,14 +660,12 @@ struct Signature  // Directional signature
         stream.write(reinterpret_cast<const char *>(sum), sizeof(sum));
         stream.write(reinterpret_cast<const char *>(m2), sizeof(m2));
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
-        stream.write(reinterpret_cast<const char *>(&numSamples2), sizeof(numSamples2));
     }
 
     void deserialize(std::istream &stream) {
         stream.read(reinterpret_cast<char *>(sum), sizeof(sum));
         stream.read(reinterpret_cast<char *>(m2), sizeof(m2));
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(numSamples));
-        stream.read(reinterpret_cast<char *>(&numSamples2), sizeof(numSamples2));
     }
 };
 

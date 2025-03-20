@@ -314,12 +314,6 @@ public:
         }
     }
 
-    void clearCEStats() {
-        for (auto &region : m_regionStorageContainer) {
-            region.first.ceStatistics.clear();
-        }
-    }
-
     void clearSignatures() {
         for (auto &[region, _] : m_regionStorageContainer) {
             region.candidate.signature.clear();
@@ -342,7 +336,7 @@ public:
         m_useISNNLookUp = cfg.isKnnLookup;
         m_decayOnSpatialSplit = cfg.vmmDecay;
         m_spatialSubdivBuilderSettings.updateFromConfig(cfg);
-        CEStatistics::clampValue = cfg.ceClampValue;
+        // CEStatistics::clampValue = cfg.ceClampValue;
     }
 
     void loadSubdivConfig(PGLKDTreeArguments &cfg) const
@@ -352,7 +346,7 @@ public:
         cfg.isKnnLookup = m_useISNNLookUp;
         cfg.vmmDecay = m_decayOnSpatialSplit;
         m_spatialSubdivBuilderSettings.loadToConfig(cfg);
-        cfg.ceClampValue = CEStatistics::clampValue;
+        // cfg.ceClampValue = CEStatistics::clampValue;
     }
 
     void resetField()
@@ -418,19 +412,14 @@ public:
 
     PGLRegionStatistics getRegionStats(uint32_t id) const
     {
-        PGLRegionStatistics stats{.id = id, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN(), .energy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics stats{.id = id, .fluence = 0, .energy = std::numeric_limits<float>::quiet_NaN()};
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
         stats.removed = false;
-        // stats.numSamples = region.ceStatistics.getNumSamples();
         stats.numSamples = region.candidate.sampleStatistics.numSamples;
         stats.numZeroValueSamples = region.candidate.sampleStatistics.numZeroValueSamples;
         stats.depth = region.candidate.depth;
-        if (stats.numSamples > 0) {
-            stats.fluence = region.ceStatistics.getFluence();
-            stats.crossEntropy = region.ceStatistics.getCE();
-        }
         stats.hasCandidateSplit = region.candidate.hasSplit();
         if (stats.hasCandidateSplit) {
             const SubdivisionData &candidate = region.candidate;
@@ -455,7 +444,7 @@ public:
     // ! Deprecated API
     std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStats(const openpgl::Point3 &pos) const
     {
-        PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0, .crossEntropy = std::numeric_limits<float>::quiet_NaN()};
+        PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0};
         PGLRegionStatistics fStats = cStats;
         uint32_t cId = getRegionId(pos);
         if (cId >= m_regionStorageContainer.size())

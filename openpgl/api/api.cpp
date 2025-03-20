@@ -185,13 +185,6 @@ extern "C" OPENPGL_DLLEXPORT void pglSetOctaveGamma(float gamma)
     g_opgl_octave_gamma = gamma;
 }
 
-extern "C" OPENPGL_DLLEXPORT void pglFieldClearCEStatistics(PGLField field) OPENPGL_CATCH_BEGIN
-{
-    auto *gField = (IGuidingField *)field;
-    gField->clearCEStatistics();
-}
-OPENPGL_CATCH_END_VOID
-
 extern "C" OPENPGL_DLLEXPORT void pglFieldClearSignatures(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;
@@ -1070,7 +1063,7 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
     gImageSpaceGuidingBuffer->reset();
 }
 
-float CEStatistics::clampValue = 1e5f;
+// float CEStatistics::clampValue = 1e5f;
 uint32_t g_opgl_octahedral_resolution = 64;
 uint8_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
 float g_opgl_splat_sigma = 1.0f;

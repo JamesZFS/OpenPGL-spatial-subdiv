@@ -332,13 +332,11 @@ struct KDTreePartitionBuilder
                         OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
                     } else {
                         regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
-                        regionLR[c]->candidate.signature.decay(settings.decayRatio);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
                     if (iteration >= settings.initializingIters) {
                         clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
                     }
-                    regionLR[c]->ceStatistics.decay(settings.decayRatio);
                     regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                 }
@@ -377,7 +375,6 @@ struct KDTreePartitionBuilder
                                 regionLR[c]->candidate.energy = 0;
                                 OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
                                 clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
-                                regionLR[c]->ceStatistics.decay(settings.decayRatio);
                                 regionLR[c]->splitFlag += 1;
                                 // (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                                 // regionBounds set later
@@ -412,7 +409,6 @@ struct KDTreePartitionBuilder
                                 KDNode &newNode = kdTree.getNode(newNodeId);
                                 newNode.setDataNodeIdx(dataInds[i]);
                                 RegionType &newRegion = dataStorage[dataInds[i]].first;
-                                newRegion.ceStatistics.decay(settings.decayRatio);
                                 newRegion.candidate = candidateDataStorage[canDataIdx];
                                 newRegion.candidate.energy = 0;
                                 clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
@@ -497,7 +493,6 @@ struct KDTreePartitionBuilder
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
             if (!region.updated) {
-                region.signature.decay(settings.signatureDecay);
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else {
@@ -582,7 +577,6 @@ struct KDTreePartitionBuilder
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
             if (!region.updated) {
-                region.signature.decay(settings.signatureDecay);
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else {
@@ -752,9 +746,6 @@ struct KDTreePartitionBuilder
     template<class TContainer, class FieldType>
     void evaluateRegionsNode(KDTree &kdTree, KDNode &node, uint8_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) const
     {
-        using T = typename TContainer::value_type;
-        constexpr bool isNonZeroSample = has_member_weight<T>::value;
-        constexpr bool isSurfaceDist = has_function_applyCosineProduct<TSamplingDistribution>::value;
         if (sampleRange.size() == 0)
         {
             return;
@@ -770,33 +761,6 @@ struct KDTreePartitionBuilder
         {
             dataIdx = node.getDataIdx();
             TRegion &region = dataStorage[dataIdx].first;
-
-            // Update CE for leaf regions without
-            if constexpr (isNonZeroSample) {
-                TSamplingDistribution guidingDist;
-                // region.ceStatistics.decay(buildSettings.ceDecay);  // assume first update with nonzero samples
-                // !! This can be slow
-                for (size_t i = sampleRange.m_begin; i < sampleRange.m_end; i++) {
-                    const T &sample = samples[i];
-                    float weight = sample.weight;
-                    // Evaluate pdf
-                    const auto dist = &region.distribution;
-                    Point3 position(sample.position.x, sample.position.y, sample.position.z);
-                    auto _dir = pgl_vec3f(sample.direction);
-                    Vector3 dir(_dir.x, _dir.y, _dir.z);
-                    guidingDist.init(dist, position); // Applied parallax shift
-                    if constexpr (isSurfaceDist) {
-                        auto _normal = pgl_vec3f(sample.normal);
-                        Vector3 normal(_normal.x, _normal.y, _normal.z);
-                        guidingDist.applyCosineProduct(normal);
-                    }
-                    float pdf = guidingDist.pdf(dir);
-                    // float pdf = sample.guidingPDF;
-                    region.ceStatistics.addSample(weight, pdf);
-                }
-            } else {
-                region.ceStatistics.addZeroWeightSamples(sampleRange.size());
-            }
             evaluateCandidateRegions<TContainer>(kdTree, region.candidate, region.candidate, samples.begin() + sampleRange.m_begin, samples.begin() + sampleRange.m_end, candidateDataStorage, buildSettings);
             return;
         }
@@ -838,7 +802,6 @@ struct KDTreePartitionBuilder
 
         // Update self
         if constexpr (isNonZeroSample) {
-            current.signature.decay(settings.signatureDecay);
             current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
