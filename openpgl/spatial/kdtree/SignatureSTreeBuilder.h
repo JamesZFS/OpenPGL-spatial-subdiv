@@ -57,8 +57,6 @@ struct KDTreePartitionBuilder
     using RegionType = TRegion;
     using Vector3d = embree::Vec3<double>;
     constexpr static double INF = std::numeric_limits<double>::infinity();
-    mutable std::mutex mutex;
-    mutable double signatureUpdateElapsed = 0;
 
 #ifdef USE_EMBREE_PARALLEL
     static const size_t PARALLEL_THRESHOLD = 4 * 1024;
@@ -88,6 +86,7 @@ struct KDTreePartitionBuilder
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         bool nonRecursive {false};  // if enabled, stop the subdivision when the promotion finishes
         bool singlePromotion {false}; // if enabled, promote at most one level for each parent node during the promotion handling
+        bool optimizeSignature {false};  // if true, optimize signature computation by partial evaluation (unrolling etc)
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};  // how to treat samples when contributing to the bins
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};  // how to grow the defensive sample count threshold
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};  // how to perform outlier removal
@@ -105,7 +104,7 @@ struct KDTreePartitionBuilder
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && signatureDecay == b.signatureDecay && riskTolerance == b.riskTolerance &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier &&
-                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion &&
+                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    contribType == b.contribType && defensiveType == b.defensiveType && filterType == b.filterType;
         }
 
@@ -130,6 +129,7 @@ struct KDTreePartitionBuilder
             reproject = cfg.reproject;
             nonRecursive = cfg.nonRecursive;
             singlePromotion = cfg.singlePromotion;
+            optimizeSignature = cfg.optimizeSignature;
             contribType = cfg.contribType;
             defensiveType = cfg.defensiveType;
             filterType = cfg.filterType;
@@ -156,6 +156,7 @@ struct KDTreePartitionBuilder
             cfg.reproject = reproject;
             cfg.nonRecursive = nonRecursive;
             cfg.singlePromotion = singlePromotion;
+            cfg.optimizeSignature = optimizeSignature;
             cfg.contribType = contribType;
             cfg.defensiveType = defensiveType;
             cfg.filterType = filterType;
@@ -177,8 +178,6 @@ struct KDTreePartitionBuilder
     void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples, tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, uint32_t iteration) const
     {
         Timer timer;
-        clock_t tic = clock();
-        signatureUpdateElapsed = 0;
         int numEstLeafs = dataStorage.size() + (samples.size()*2)/buildSettings.sampleCountThreshold+32;
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
@@ -221,11 +220,7 @@ struct KDTreePartitionBuilder
         }
         kdTree.finalize();
         double updateElapsed = timer.elapsed();
-        clock_t toc = clock();
-        double cpuTime = (double) (toc - tic) / CLOCKS_PER_SEC;
         std::cout << "KDTreePartitionBuilder::update() total update took " << updateElapsed * 1e-6 << " s, "
-            << "total cpu time " << cpuTime << ", "
-            << "percentage spent on signature update: " << signatureUpdateElapsed * 1e-6 / cpuTime * 100 << "%, "
             << "total valid regions: " << kdTree.getNumLeafs() << std::endl;
     }
 
@@ -445,10 +440,6 @@ struct KDTreePartitionBuilder
                         }
                     }
                 }
-                {
-                    std::lock_guard guard(mutex);
-                    signatureUpdateElapsed += timer.elapsed();
-                }
             }
             if (triggersSplit) {
                 // Recurse into newly created children
@@ -524,7 +515,7 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signature.getNumSamples() == 0);
             }
-            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signature.getRisk();
@@ -609,7 +600,7 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signature.getNumSamples() == 0);
             }
-            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signature.getRisk();
@@ -860,7 +851,7 @@ struct KDTreePartitionBuilder
         // Update self
         if constexpr (isNonZeroSample) {
             current.signature.decay(settings.signatureDecay);
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType);
+            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
@@ -1539,6 +1530,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  reproject: " << reproject << std::endl;
     ss << "  nonRecursive: " << nonRecursive << std::endl;
     ss << "  singlePromotion: " << singlePromotion << std::endl;
+    ss << "  optimizeSignature: " << optimizeSignature << std::endl;
     ss << "  contribType: " << contribType << std::endl;
     ss << "  defensiveType: " << defensiveType << std::endl;
     ss << "  filterType: " << filterType << std::endl;
@@ -1570,6 +1562,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&nonRecursive), sizeof(nonRecursive));
     stream.write(reinterpret_cast<const char*>(&singlePromotion), sizeof(singlePromotion));
+    stream.write(reinterpret_cast<const char*>(&optimizeSignature), sizeof(optimizeSignature));
     stream.write(reinterpret_cast<const char*>(&contribType), sizeof(contribType));
     stream.write(reinterpret_cast<const char*>(&defensiveType), sizeof(defensiveType));
     stream.write(reinterpret_cast<const char*>(&filterType), sizeof(filterType));
@@ -1599,6 +1592,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&nonRecursive), sizeof(nonRecursive));
     stream.read(reinterpret_cast<char*>(&singlePromotion), sizeof(singlePromotion));
+    stream.read(reinterpret_cast<char*>(&optimizeSignature), sizeof(optimizeSignature));
     stream.read(reinterpret_cast<char*>(&contribType), sizeof(contribType));
     stream.read(reinterpret_cast<char*>(&defensiveType), sizeof(defensiveType));
     stream.read(reinterpret_cast<char*>(&filterType), sizeof(filterType));
