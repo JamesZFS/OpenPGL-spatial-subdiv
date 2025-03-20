@@ -13,6 +13,7 @@
 #endif
 
 #include "common.h"
+#include "defines.h"
 
 /**
  * @brief
@@ -59,7 +60,6 @@ struct PGLSampleData
 #endif
 
     /// Used by SignatureSTreeBuilder
-    uint8_t binIndex;
     pgl_direction reprojectedDirection;
 
     // non-negative cosine term
@@ -76,6 +76,10 @@ struct PGLSampleData
     pgl_direction directionOut;
     /// the outgoing, reflected/scattered radiance (i.e., incident radiance time BSDF/phase divided by pdf)
     pgl_spectrum radianceOut;
+#endif
+
+#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
+    float basisFunction[PGL_SIGNATURE_MAX_SIZE];
 #endif
 };
 

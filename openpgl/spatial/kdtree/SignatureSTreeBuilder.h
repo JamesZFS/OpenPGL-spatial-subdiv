@@ -182,7 +182,8 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
-        if (iteration >= buildSettings.initializingIters) computeSampleBinIndex(samples, buildSettings);
+        if (iteration >= buildSettings.initializingIters && (!buildSettings.reproject && buildSettings.optimizeSignature))
+            Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.contribType);
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
@@ -227,7 +228,9 @@ struct KDTreePartitionBuilder
     template<class TContainer, class FieldType>
     void evaluateRegions(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) {
         constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
-        if constexpr(isNonZeroSample) computeSampleBinIndex(samples, buildSettings);
+        if constexpr(isNonZeroSample) {
+            if (buildSettings.optimizeSignature) Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.contribType);
+        }
 
         KDNode &root = kdTree.getRoot();
 
@@ -252,31 +255,14 @@ struct KDTreePartitionBuilder
         });
     }
 
-    void computeSampleBinIndex(TSamplesContainer &samples, const Settings &settings) const {
-        // Precompute bin index for samples
-        if (settings.reproject) {
-            // Pass. The binIndex is calculated before each updateCandidateRegions call
-        } else if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) {
-            embree::parallel_for(samples.size(), [&](embree::range<size_t> r) {
-                for (size_t i = r.begin(); i < r.end(); ++i) {
-                    samples[i].binIndex = pgl_get_signature_index(samples[i].direction);
-                    samples[i].reprojectedDirection = samples[i].direction;
-                }
-            });
-        }
-    }
-
-    void computeSampleBinIndexReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats, const Settings &settings) const {
+    void prepareSampleReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats, const Settings &settings) const {
         openpgl::Vector3 sampleVariance = stats.getVariance();
         float minDistance = length(sampleVariance);
         minDistance = 3.f * 3.f * sqrt(minDistance);
 
         for (auto it = samplesBegin; it != samplesEnd; ++it) {
             // Find the reprojected direction: nd = (pos + dist * dir - pivot).normalized()
-            if (std::isinf(it->distance) || !(it->distance > 0.0f)) {
-                if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) it->binIndex = pgl_get_signature_index(it->direction);
-                continue;
-            }
+            if (std::isinf(it->distance) || !(it->distance > 0.0f)) continue;
 
             const float distance = fmaxf(minDistance, it->distance);
             const openpgl::Point3 samplePosition(it->position.x, it->position.y, it->position.z);
@@ -289,8 +275,10 @@ struct KDTreePartitionBuilder
 
             pgl_vec3f reprojectedDirection = {newDirection[0], newDirection[1], newDirection[2]};
             it->reprojectedDirection = reprojectedDirection;
-            if (settings.contribType == PGL_SPATIAL_CONTRIB_NN) it->binIndex = pgl_get_signature_index(it->reprojectedDirection);
         }
+
+        if (settings.optimizeSignature)
+            Signature::computeSampleBasisFunctions(samplesBegin, samplesEnd, settings.contribType);
     }
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,
@@ -371,7 +359,7 @@ struct KDTreePartitionBuilder
 
                 if (!candidate.updated || !settings.nonRecursive) {  // Update signatures at this parent node
                     if (settings.reproject)
-                        computeSampleBinIndexReprojection(samplesBegin, samplesEnd, mergedStats, settings);
+                        prepareSampleReprojection(samplesBegin, samplesEnd, mergedStats, settings);
                     if (settings.singlePromotion) {
                         // Promote at most one level
                         if (updateCandidateRegionsOnePromotion(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {

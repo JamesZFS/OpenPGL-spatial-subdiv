@@ -4,6 +4,13 @@
 #pragma once
 
 #include "../openpgl_common.h"
+#ifdef USE_EMBREE_PARALLEL
+#define TASKING_TBB
+#include <embreeSrc/common/algorithms/parallel_for.h>
+#else
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_sort.h>
+#endif
 #include <map>
 
 namespace openpgl {
@@ -35,7 +42,7 @@ struct Signature  // Directional signature
     }
 
     // Convert the direction into [0, 1] representation on the octahedral map
-    inline pgl_vec2f dir_to_oct(const pgl_direction &dir) {
+    inline static pgl_vec2f dir_to_oct(const pgl_direction &dir) {
         auto uv = pgl_vec2f(dir);  // [-1, 1]
         return {uv.x * 0.5f + 0.5f, uv.y * 0.5f + 0.5f};
     }
@@ -145,55 +152,65 @@ struct Signature  // Directional signature
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, bool optimize) {
         // Forwarding to the appropriate function
-
-        //                      <multiplyCosine, contribType, log2BinCount, octaveMin, octaveMax>
-        const static std::map<std::tuple<bool, PGL_SPATIAL_CONTRIB_TYPE, uint8_t, uint8_t, uint8_t>, std::function<void(Signature*, SampleIterator, SampleIterator)>> table {
-#define FORWARD(...) {{__VA_ARGS__}, [](Signature *self, SampleIterator begin, SampleIterator end){ self->addSamplesBasisOpt<__VA_ARGS__>(begin, end); }}
-#define FORWARD_2(m, c, ...) FORWARD(m, c, 0, __VA_ARGS__), FORWARD(m, c, 1, __VA_ARGS__), FORWARD(m, c, 2, __VA_ARGS__), FORWARD(m, c, 3, __VA_ARGS__)
-#define FORWARD_1(m, ...) FORWARD_2(m, PGL_SPATIAL_CONTRIB_BASIS, __VA_ARGS__), FORWARD_2(m, PGL_SPATIAL_CONTRIB_BASIS_XI, __VA_ARGS__)
-#define FORWARD_0(...) FORWARD_1(true, __VA_ARGS__), FORWARD_1(false, __VA_ARGS__)
-            // FORWARD_0(2u, 2u), FORWARD_0(2u, 3u), FORWARD_0(2u, 4u), FORWARD_0(2u, 5u), FORWARD_0(2u, 6u), FORWARD_0(2u, 7u),
-            FORWARD_0(3u, 7u),
-        };
-#undef FORWARD FORWARD_0 FORWARD_1 FORWARD_2
-
-        if (optimize) {
-            // TODO: add a static functor here which always points to the delegate so that we don't need to perform lookup every time addSamples is called
-            uint8_t log2_bin_count = (uint8_t) std::log2(g_opgl_signature_size);
-            auto it = table.find({multiplyCosine, contribType, log2_bin_count, g_opgl_octave_min, g_opgl_octave_max});
-            if (it == table.end()) {
-                std::cerr << "No optimized function found for the given parameters" << std::endl;
-            } else {
-                // Delegate to the optimized function
-                return it->second(this, begin, end);
+        if (multiplyCosine) {
+            if (optimize) {
+#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
+                for (auto it = begin; it != end; ++it) {
+                    // Directly use the cached basis function
+                    for (uint8_t j = 0; j < g_opgl_signature_size; ++j) {
+                        float w = it->basisFunction[j] * it->weight * it->cosineTerm;
+                        sum[j] += w;
+                        m2[j] += w * w;
+                    }
+                    ++numSamples;
+                    ++numSamples2;
+                }
+#else
+                std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
+#endif
+                return;
+            }
+            switch (contribType) {
+                case PGL_SPATIAL_CONTRIB_NN:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_NN>(begin, end);
+                case PGL_SPATIAL_CONTRIB_SPLAT:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS_XI:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+                default:
+                    throw std::runtime_error("Unknown contribution type");
             }
         } else {
-            if (multiplyCosine) {
-                switch (contribType) {
-                    case PGL_SPATIAL_CONTRIB_NN:
-                        return addSamples<true, PGL_SPATIAL_CONTRIB_NN>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_SPLAT:
-                        return addSamples<true, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_BASIS:
-                        return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_BASIS_XI:
-                        return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
-                    default:
-                        throw std::runtime_error("Unknown contribution type");
+            if (optimize) {
+#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
+                for (auto it = begin; it != end; ++it) {
+                    // Directly use the cached basis function
+                    for (uint8_t j = 0; j < g_opgl_signature_size; ++j) {
+                        float w = it->basisFunction[j] * it->weight;
+                        sum[j] += w;
+                        m2[j] += w * w;
+                    }
+                    ++numSamples;
+                    ++numSamples2;
                 }
-            } else {
-                switch (contribType) {
-                    case PGL_SPATIAL_CONTRIB_NN:
-                        return addSamples<false, PGL_SPATIAL_CONTRIB_NN>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_SPLAT:
-                        return addSamples<false, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_BASIS:
-                        return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
-                    case PGL_SPATIAL_CONTRIB_BASIS_XI:
-                        return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
-                    default:
-                        throw std::runtime_error("Unknown contribution type");
-                }
+#else
+                std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
+#endif
+                return;
+            }
+            switch (contribType) {
+                case PGL_SPATIAL_CONTRIB_NN:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_NN>(begin, end);
+                case PGL_SPATIAL_CONTRIB_SPLAT:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
+                case PGL_SPATIAL_CONTRIB_BASIS_XI:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+                default:
+                    throw std::runtime_error("Unknown contribution type");
             }
         }
     }
@@ -310,7 +327,7 @@ struct Signature  // Directional signature
                     pgl_vec2f delta = {p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f), p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)};
                     float k = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
                     sumCoeff += k;
-                    
+
                     wrap_splat(qi.x, qi.y, g_opgl_octahedral_resolution);
                     uint8_t j = pgl_pcg2d(qi.x, qi.y).first % S;  // hash to bin
                     maskingFunctions[j] += k;
@@ -331,8 +348,7 @@ struct Signature  // Directional signature
                 ++numSamples;
                 ++numSamples2;
             } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_NN) {
-                // uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
-                uint8_t idx = it->binIndex;
+                uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 float w = it->weight;
                 if constexpr(multiplyCosine) {
                     w *= it->cosineTerm;
@@ -350,87 +366,161 @@ struct Signature  // Directional signature
         }
     }
 
-    template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, uint8_t log2BinCount, uint8_t octaveMin, uint8_t octaveMax, typename SampleIterator>
-    void addSamplesBasisOpt(SampleIterator begin, SampleIterator end) {
-        constexpr uint8_t S = 1 << log2BinCount;
-        if constexpr(contribType != PGL_SPATIAL_CONTRIB_BASIS_XI && contribType != PGL_SPATIAL_CONTRIB_BASIS) {
-            std::cerr << "This function only supports basis functions" << std::endl;
-            return;
+    template<typename SampleIterator>
+    static void computeSampleBasisFunctions(SampleIterator begin, SampleIterator end, PGL_SPATIAL_CONTRIB_TYPE contribType) {
+        // Forwarding to the appropriate function
+        switch (contribType) {
+            case PGL_SPATIAL_CONTRIB_NN:
+                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_NN>(begin, end);
+            case PGL_SPATIAL_CONTRIB_SPLAT:
+                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
+            case PGL_SPATIAL_CONTRIB_BASIS:
+                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
+            case PGL_SPATIAL_CONTRIB_BASIS_XI:
+                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+            default:
+                throw std::runtime_error("Unknown contribution type");
         }
-        if (contribType == PGL_SPATIAL_CONTRIB_BASIS_XI && S != g_opgl_signature_size) {
-            std::cerr << "Signature size must be a power of 2" << std::endl;
-            return;
-        }
-        if (g_opgl_octave_gamma != 0.5f) {
-            std::cerr << "Gamma must be 0.5 for this function" << std::endl;
-            return;
-        }
-        constexpr float normalizer = std::pow(2.0f, 1.0f - float(octaveMin)) - std::pow(0.5f, float(octaveMax));
+    }
 
-        for (auto it = begin; it != end; ++it) {
-            pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
-            // Disjoint Octave Noise basis function
-            float basisFunctions[S] = {};
+    template<PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
+    static void computeSampleBasisFunctions(SampleIterator begin, SampleIterator end) {
+#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
+        const uint8_t S = g_opgl_signature_size;
+        const uint8_t log2_bin_count = (uint8_t) std::log2(S);
+        if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+            if (S != (1 << log2_bin_count)) {
+                std::cerr << "Signature size must be a power of 2" << std::endl;
+                return;
+            }
+        }
+        const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
+        // const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
+        const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
+        const float gamma = g_opgl_octave_gamma;
+        const float kernel_lb = std::exp(alpha);
 
-            // * Evaluates all basis functions at the given coordinate
-            // Iterate over all octaves, automatic unrolling, hopefully
-            for (uint8_t k = 3; k <= 7; ++k) {
-                const uint32_t res = 1 << k;
-                const float weight = std::pow(0.5f, float(k)) / normalizer;  // constexpr
-                // Discretize uv at the appropriate resolution
-                pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
-                uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
-                // Generate offsets
-                uint32_t x01 = x00, y01 = y00 + 1;
-                uint32_t x10 = x00 + 1, y10 = y00;
-                uint32_t x11 = x00 + 1, y11 = y00 + 1;
-                // Apply wrapping to ensure continuity on the sphere domain
-                wrap(x00, y00, res);
-                wrap(x01, y01, res);
-                wrap(x10, y10, res);
-                wrap(x11, y11, res);
-                uint8_t h00;
-                uint8_t h01;
-                uint8_t h10;
-                uint8_t h11;
-                if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS) {
-                    h00 = pcg_3d(x00, y00, k) % S;
-                    h01 = pcg_3d(x01, y01, k) % S;
-                    h10 = pcg_3d(x10, y10, k) % S;
-                    h11 = pcg_3d(x11, y11, k) % S;
+        size_t N = std::distance(begin, end);
+        embree::parallel_for(N, [&](embree::range<size_t> r) {
+            for (size_t i = r.begin(); i < r.end(); ++i) {
+                auto it = begin + i;
+                if constexpr (contribType == PGL_SPATIAL_CONTRIB_BASIS || contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+                    pgl_vec2f p = dir_to_oct(it->reprojectedDirection); // [0, 1]^2
+                    // Disjoint Octave Noise basis function
+                    for (uint8_t j = 0; j < S; ++j)
+                        it->basisFunction[j] = 0.0;
+                    float normalizer = 0.0f;
+
+                    // * Evaluates all basis functions at the given coordinate
+                    // Iterate over all octaves
+                    for (uint8_t k = octave_min; k <= octave_max; ++k) {
+                        const uint32_t res = 1 << k;
+                        // const float weight = pow(0.5, float(k)) / basis_normalizer;
+                        const float weight = std::pow(gamma, float(k));
+                        normalizer += weight;
+                        // Discretize uv at the appropriate resolution
+                        pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
+                        uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
+                        // Generate offsets
+                        uint32_t x01 = x00, y01 = y00 + 1;
+                        uint32_t x10 = x00 + 1, y10 = y00;
+                        uint32_t x11 = x00 + 1, y11 = y00 + 1;
+                        // Apply wrapping to ensure continuity on the sphere domain
+                        wrap(x00, y00, res);
+                        wrap(x01, y01, res);
+                        wrap(x10, y10, res);
+                        wrap(x11, y11, res);
+                        uint8_t h00;
+                        uint8_t h01;
+                        uint8_t h10;
+                        uint8_t h11;
+                        if constexpr (contribType == PGL_SPATIAL_CONTRIB_BASIS) {
+                            h00 = pcg_3d(x00, y00, k) % S;
+                            h01 = pcg_3d(x01, y01, k) % S;
+                            h10 = pcg_3d(x10, y10, k) % S;
+                            h11 = pcg_3d(x11, y11, k) % S;
+                        } else {
+                            // using Xi-seq for lower discrepancy and less clumping
+                            h00 = get_bin(x00, y00, k, log2_bin_count);
+                            h01 = get_bin(x01, y01, k, log2_bin_count);
+                            h10 = get_bin(x10, y10, k, log2_bin_count);
+                            h11 = get_bin(x11, y11, k, log2_bin_count);
+                        }
+
+                        for (uint8_t j = 0; j < S; ++j) {
+                            // Determine whether this bin gets the sample
+                            float M00 = (h00 == j) ? 1.0 : 0.0;
+                            float M01 = (h01 == j) ? 1.0 : 0.0;
+                            float M10 = (h10 == j) ? 1.0 : 0.0;
+                            float M11 = (h11 == j) ? 1.0 : 0.0;
+                            // Perform bilinear interpolation
+                            float M0 = mix(M00, M01, fract(octave_uv.y));
+                            float M1 = mix(M10, M11, fract(octave_uv.y));
+                            float M = mix(M0, M1, fract(octave_uv.x));
+                            // Accumulate into the result
+                            it->basisFunction[j] += weight * M;
+                        }
+                    }
+
+                    // Normalize
+                    for (uint8_t j = 0; j < S; ++j) {
+                        it->basisFunction[j] /= normalizer;
+                    }
+                } else if constexpr (contribType == PGL_SPATIAL_CONTRIB_SPLAT) {
+                    pgl_vec2f p = dir_to_oct(it->reprojectedDirection); // [0, 1]^2
+                    // Splatting
+                    // 3x3 Gaussian kernel
+                    for (uint8_t j = 0; j < S; ++j)
+                        it->basisFunction[j] = 0.0;
+
+                    constexpr pgl_vec2i offsets[9] = {
+                        {-1, -1}, {0, -1}, {+1, -1},
+                        {-1, 0}, {0, 0}, {+1, 0},
+                        {-1, +1}, {0, +1}, {+1, +1}
+                    };
+
+                    pgl_vec2i pi{
+                        std::clamp((int) (p.x * g_opgl_octahedral_resolution), 0,
+                                   (int) g_opgl_octahedral_resolution - 1),
+                        std::clamp((int) (p.y * g_opgl_octahedral_resolution), 0,
+                                   (int) g_opgl_octahedral_resolution - 1)
+                    }; // {0, .., g_opgl_octahedral_resolution-1}
+
+                    // Dynamically compute kernel weights of each neighbor's center
+                    float sumCoeff = 0;
+                    for (int i = 0; i < 9; ++i) {
+                        pgl_vec2i qi = {pi.x + offsets[i].x, pi.y + offsets[i].y};
+                        // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
+                        pgl_vec2f delta = {
+                            p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f),
+                            p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)
+                        };
+                        float k = std::max(std::exp(alpha * (delta.x * delta.x + delta.y * delta.y)) - kernel_lb, 0.0f);
+                        sumCoeff += k;
+
+                        wrap_splat(qi.x, qi.y, g_opgl_octahedral_resolution);
+                        uint8_t j = pgl_pcg2d(qi.x, qi.y).first % S; // hash to bin
+                        it->basisFunction[j] += k;
+                    }
+
+                    // Normalize weights
+                    for (uint8_t j = 0; j < S; ++j) {
+                        it->basisFunction[j] /= sumCoeff;
+                    }
+                } else if constexpr (contribType == PGL_SPATIAL_CONTRIB_NN) {
+                    // One-hot
+                    uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
+                    for (uint8_t j = 0; j < S; ++j) {
+                        it->basisFunction[j] = (j == idx) ? 1.0 : 0.0;
+                    }
                 } else {
-                    // using Xi-seq for lower discrepancy and less clumping
-                    h00 = get_bin(x00, y00, k, log2BinCount);
-                    h01 = get_bin(x01, y01, k, log2BinCount);
-                    h10 = get_bin(x10, y10, k, log2BinCount);
-                    h11 = get_bin(x11, y11, k, log2BinCount);
-                }
-
-                for (uint8_t j = 0; j < S; ++j) {
-                    // Determine whether this bin gets the sample
-                    float M00 = (h00 == j) ? 1.0 : 0.0;
-                    float M01 = (h01 == j) ? 1.0 : 0.0;
-                    float M10 = (h10 == j) ? 1.0 : 0.0;
-                    float M11 = (h11 == j) ? 1.0 : 0.0;
-                    // Perform bilinear interpolation
-                    float M0 = mix(M00, M01, fract(octave_uv.y));
-                    float M1 = mix(M10, M11, fract(octave_uv.y));
-                    float M = mix(M0, M1, fract(octave_uv.x));
-                    // Accumulate into the result
-                    basisFunctions[j] += weight * M;
+                    throw std::runtime_error("Unknown contribution type");
                 }
             }
-
-            // Contribute to all bins, each one attenuated with its basis function
-            for (uint8_t j = 0; j < S; ++j) {
-                float w = basisFunctions[j] * it->weight;
-                if constexpr(multiplyCosine) w *= it->cosineTerm;
-                sum[j] += w;
-                m2[j] += w * w;
-            }
-            ++numSamples;
-            ++numSamples2;
-        }
+        });
+#else
+        std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
+#endif
     }
 
     void addZeroSamples(size_t numZeroSamples) {

@@ -321,15 +321,17 @@ public:
     }
 
     void clearSignatures() {
-        for (auto &region : m_regionStorageContainer) {
-            region.first.candidate.signature.clear();
-            region.first.candidate.energy = 0;
-            region.first.candidate.risk = 0;
+        for (auto &[region, _] : m_regionStorageContainer) {
+            region.candidate.signature.clear();
+            region.candidate.energy = 0;
+            region.candidate.risk = 0;
+            region.candidate.sampleStatistics.weightMean = region.candidate.sampleStatistics.weightM2 = region.candidate.sampleStatistics.weightCnt = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signature.clear();
             cr.energy = 0;
             cr.risk = 0;
+            cr.sampleStatistics.weightMean = cr.sampleStatistics.weightM2 = cr.sampleStatistics.weightCnt = 0;
         }
     }
 
