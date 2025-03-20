@@ -59,8 +59,6 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE uint8_t pglGetSignatureIndex(pgl_direction dir);
 
-    OPENPGL_CORE_INTERFACE void pglFieldClearCEStatistics(PGLField field);
-
     OPENPGL_CORE_INTERFACE void pglFieldClearSignatures(PGLField field);
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args);
