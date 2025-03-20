@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "defines.h"
 
 extern uint32_t g_opgl_octahedral_resolution;
 extern uint8_t g_opgl_signature_size;
@@ -8,7 +9,6 @@ extern uint8_t g_opgl_octave_min;
 extern uint8_t g_opgl_octave_max;
 extern float g_opgl_splat_sigma;
 extern float g_opgl_octave_gamma;    // a parameter to control the weights of the higher octaves in the basis functions
-#define PGL_SIGNATURE_MAX_SIZE 8u
 
 /// Helper struct to communicate between OpenPGL and the renderer/visualizer to output debug information.
 struct PGLRegionStatistics
