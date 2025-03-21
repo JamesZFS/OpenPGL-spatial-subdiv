@@ -54,7 +54,6 @@ extern "C"
         float signatureDistanceThreshold{1.0f};
         bool enablePromotion{true};
         float stdMultiplier{1.0f};
-        float signatureDecay{1.0f};
         float riskTolerance {100.0f};
         float inlierPercent {1.0};
         float DBORstdMultiplier {3.0f};
@@ -66,6 +65,7 @@ extern "C"
         bool nonRecursive{false};
         bool singlePromotion{false};
         bool optimizeSignature{false};
+        PGL_SPATIAL_CRITERION_TYPE splitCriterion {PGL_SPATIAL_CRITERION_REL_DIFF};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};

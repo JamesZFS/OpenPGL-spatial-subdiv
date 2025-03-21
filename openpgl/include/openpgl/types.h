@@ -45,3 +45,11 @@ enum PGL_SPATIAL_FILTER_TYPE
     PGL_SPATIAL_FILTER_DBOR,
     PGL_SPATIAL_FILTER_DBOR_ACCUM,
 };
+
+enum PGL_SPATIAL_CRITERION_TYPE
+{
+    PGL_SPATIAL_CRITERION_REL_DIFF = 0,  // relative difference metric
+    PGL_SPATIAL_CRITERION_ABS_DIFF,      // absolute difference metric
+    PGL_SPATIAL_CRITERION_ONE_SAMPLE_TTEST,  // alternative split criterion based on t-test
+    PGL_SPATIAL_CRITERION_WELCH_TTEST,
+};

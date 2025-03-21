@@ -524,15 +524,29 @@ struct Signature  // Directional signature
         return numSamples;
     }
 
-    float getEntry(uint8_t idx) const {
+    float getMean(uint8_t idx) const {
         return sum[idx] / numSamples;
     }
 
+    // N-sample std
     float getStd(uint8_t idx) const {
+        return std::sqrt(getOneSampleStd(idx) / numSamples);
+    }
+    
+    float getOneSampleStd(uint8_t idx) const {
         // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
         float varOneSample = m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
-        float varNSample = varOneSample / numSamples;
-        return std::sqrt(varNSample);
+        return std::sqrt(varOneSample);
+    }
+
+    // N-sample variance
+    float getVariance(uint8_t idx) const {
+        return getOneSampleVariance(idx) / numSamples;
+    }
+
+    float getOneSampleVariance(uint8_t idx) const {
+        // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
+        return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
     }
 
     float getTotalAvg() const {
@@ -565,7 +579,7 @@ struct Signature  // Directional signature
     explicit operator PGLDirectionalSignature() const {
         PGLDirectionalSignature signature;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            signature.signature[i] = getEntry(i);
+            signature.signature[i] = getMean(i);
             signature.std[i] = getStd(i);
         }
         signature.numSamples = numSamples;
@@ -576,7 +590,7 @@ struct Signature  // Directional signature
     static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             float diff = 0;
@@ -593,7 +607,7 @@ struct Signature  // Directional signature
     static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
@@ -609,7 +623,7 @@ struct Signature  // Directional signature
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
         float num = 0, denom = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
@@ -621,8 +635,33 @@ struct Signature  // Directional signature
         return denom == 0 ? 0 : 2.0f * num / denom;
     }
 
-    static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
-        return getDistanceSMAPE(a, b, stdMultiplier);
+    // Assuming b is parent
+    static float getOneSampleT(const Signature &a, const Signature &b) {
+        OPENPGL_ASSERT(g_opgl_signature_size == 1);
+        float num = a.getMean(0) - b.getMean(0);
+        // float denom = b.getStd(0);
+        float denom = a.getStd(0);
+        return denom == 0 ? 0 : num / denom;
+    }
+
+    static float getWelchT(const Signature &a, const Signature &b) {
+        OPENPGL_ASSERT(g_opgl_signature_size == 1);
+        float num = a.getMean(0) - b.getMean(0);
+        float denom = std::sqrt(a.getVariance(0) + b.getVariance(0));
+        return denom == 0 ? 0 : num / denom;
+    }
+
+    // In some cases, b is assumed to be the *parent* region
+    static float getDistance(const Signature &a, const Signature &b, PGL_SPATIAL_CRITERION_TYPE criterion, float stdMultiplier) {
+        switch (criterion) {
+            case PGL_SPATIAL_CRITERION_REL_DIFF: return getDistanceSMAPE(a, b, stdMultiplier);
+            case PGL_SPATIAL_CRITERION_ABS_DIFF: return getDistanceL1(a, b, stdMultiplier);
+            case PGL_SPATIAL_CRITERION_ONE_SAMPLE_TTEST: return getOneSampleT(a, b);
+            case PGL_SPATIAL_CRITERION_WELCH_TTEST: return getWelchT(a, b);
+            default:
+                std::cerr << "Unknown criterion" << std::endl;
+                return 0;
+        }
     }
 
     float getRisk() const {
@@ -630,7 +669,7 @@ struct Signature  // Directional signature
         // maximum value of std / mean per bin
         float maxRisk = 0;
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float mean = getEntry(i);
+            float mean = getMean(i);
             if (mean == 0) continue;
             float std = getStd(i);
             maxRisk = std::max(maxRisk, std / mean);
@@ -643,7 +682,7 @@ struct Signature  // Directional signature
 
     static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
         for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float ai = a.getEntry(i), bi = b.getEntry(i);
+            float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = a.getStd(i), b_std = b.getStd(i);
             // if interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap and SMAPE(ai, bi) > threshold => split!
             // if ((ai - a_std > bi + b_std || ai + a_std < bi - b_std) &&
