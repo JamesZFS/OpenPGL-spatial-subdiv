@@ -24,6 +24,7 @@ struct SubdivisionData {
 
     float energy = 0.0f;  // distance between self and the parent node
     float risk = 0.0f;  // maximum value of std / mean per bin
+    float tValue = 0.0f;
     uint8_t depth {0};
     bool updated = false;  // flag to indicate if this split has seen the latest samples
 
@@ -37,6 +38,7 @@ struct SubdivisionData {
         lChildIdx = 0;
         energy = 0.0f;
         risk = 0.0f;
+        tValue = 0.0f;
         depth = 0;
         updated = false;
     }
@@ -49,6 +51,7 @@ struct SubdivisionData {
         stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&risk), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&tValue), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(uint8_t));
         stream.write(reinterpret_cast<const char *>(&updated), sizeof(bool));
     }
@@ -61,6 +64,7 @@ struct SubdivisionData {
         stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
         stream.read(reinterpret_cast<char *>(&risk), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&tValue), sizeof(float));
         stream.read(reinterpret_cast<char *>(&depth), sizeof(uint8_t));
         stream.read(reinterpret_cast<char *>(&updated), sizeof(bool));
     }

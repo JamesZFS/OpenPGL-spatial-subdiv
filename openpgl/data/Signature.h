@@ -652,16 +652,8 @@ struct Signature  // Directional signature
     }
 
     // In some cases, b is assumed to be the *parent* region
-    static float getDistance(const Signature &a, const Signature &b, PGL_SPATIAL_CRITERION_TYPE criterion, float stdMultiplier) {
-        switch (criterion) {
-            case PGL_SPATIAL_CRITERION_REL_DIFF: return getDistanceSMAPE(a, b, stdMultiplier);
-            case PGL_SPATIAL_CRITERION_ABS_DIFF: return getDistanceL1(a, b, stdMultiplier);
-            case PGL_SPATIAL_CRITERION_ONE_SAMPLE_TTEST: return getOneSampleT(a, b);
-            case PGL_SPATIAL_CRITERION_WELCH_TTEST: return getWelchT(a, b);
-            default:
-                std::cerr << "Unknown criterion" << std::endl;
-                return 0;
-        }
+    static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
+        return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
     float getRisk() const {

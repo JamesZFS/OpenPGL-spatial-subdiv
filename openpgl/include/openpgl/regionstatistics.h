@@ -21,6 +21,7 @@ struct PGLRegionStatistics
     float fluence = 0;
     float energy = 0;
     float risk = 0;
+    float tValue = 0;
     bool hasCandidateSplit = false;
     uint8_t splitDim = 3;
     float splitPos = 0;

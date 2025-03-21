@@ -319,12 +319,14 @@ public:
             region.candidate.signature.clear();
             region.candidate.energy = 0;
             region.candidate.risk = 0;
+            region.candidate.tValue = 0;
             region.candidate.sampleStatistics.weightMean = region.candidate.sampleStatistics.weightM2 = region.candidate.sampleStatistics.weightCnt = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signature.clear();
             cr.energy = 0;
             cr.risk = 0;
+            cr.tValue = 0;
             cr.sampleStatistics.weightMean = cr.sampleStatistics.weightM2 = cr.sampleStatistics.weightCnt = 0;
         }
     }
@@ -428,6 +430,7 @@ public:
         }
         stats.energy = region.candidate.energy;
         stats.risk = region.candidate.risk;
+        stats.tValue = region.candidate.tValue;
         stats.fluence = 0.0f;
         for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
             stats.fluence += region.candidate.signature.getMean(i);
@@ -454,6 +457,7 @@ public:
         const SubdivisionData *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
         fStats.risk = cStats.risk;
+        fStats.tValue = cStats.tValue;
         fStats.depth = region.candidate.depth;
         fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
         // Traverse to the deepest level
@@ -469,9 +473,9 @@ public:
             }
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
-            if (std::abs(candidate->energy) > std::abs(fStats.energy))
-                fStats.energy = candidate->energy;
+            fStats.energy = std::max(fStats.energy, candidate->energy);
             fStats.risk = std::max(fStats.risk, candidate->risk);
+            if (std::abs(candidate->tValue) > std::abs(fStats.tValue)) fStats.tValue = candidate->tValue;
         }
         if (fStats.id != -1) {
             fStats.depth = candidate->depth;
