@@ -46,10 +46,10 @@ enum PGL_SPATIAL_FILTER_TYPE
     PGL_SPATIAL_FILTER_DBOR_ACCUM,
 };
 
-enum PGL_SPATIAL_CRITERION_TYPE
+enum PGL_SPATIAL_CONFIDENCE_TYPE
 {
-    PGL_SPATIAL_CRITERION_REL_DIFF = 0,  // relative difference metric
-    PGL_SPATIAL_CRITERION_ABS_DIFF,      // absolute difference metric
-    PGL_SPATIAL_CRITERION_ONE_SAMPLE_TTEST,  // alternative split criterion based on t-test
-    PGL_SPATIAL_CRITERION_WELCH_TTEST,
+    PGL_SPATIAL_CONFIDENCE_NONE = 0,  // always trust our metric
+    PGL_SPATIAL_CONFIDENCE_RISK,      // trust if risk is low
+    PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST,   // trust if t value is high: that two distributions are distinct
+    PGL_SPATIAL_CONFIDENCE_WELCH_TTEST,
 };

@@ -51,11 +51,12 @@ extern "C"
         uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // disabled by default
         uint32_t initializingIters {1};
         uint32_t lookaheadDepth {3};
-        float signatureDistanceThreshold{1.0f};
+        float signatureDistanceThreshold {0.05f};
         bool enablePromotion{true};
         float stdMultiplier{1.0f};
-        float riskTolerance {100.0f};
-        float inlierPercent {1.0};
+        float riskTolerance {0.1f};
+        float tValueThreshold {3.0f};
+        float inlierPercent {0.99f};
         float DBORstdMultiplier {3.0f};
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
@@ -65,7 +66,7 @@ extern "C"
         bool nonRecursive{false};
         bool singlePromotion{false};
         bool optimizeSignature{false};
-        PGL_SPATIAL_CRITERION_TYPE splitCriterion {PGL_SPATIAL_CRITERION_REL_DIFF};
+        PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};
         PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
