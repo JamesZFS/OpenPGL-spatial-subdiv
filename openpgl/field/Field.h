@@ -430,7 +430,7 @@ public:
         stats.risk = region.candidate.risk;
         stats.fluence = 0.0f;
         for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
-            stats.fluence += region.candidate.signature.getEntry(i);
+            stats.fluence += region.candidate.signature.getMean(i);
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
@@ -469,7 +469,8 @@ public:
             }
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
-            fStats.energy = std::max(fStats.energy, candidate->energy);
+            if (std::abs(candidate->energy) > std::abs(fStats.energy))
+                fStats.energy = candidate->energy;
             fStats.risk = std::max(fStats.risk, candidate->risk);
         }
         if (fStats.id != -1) {
@@ -477,7 +478,7 @@ public:
             fStats.numSamples = (uint32_t) candidate->signature.getNumSamples();
             fStats.fluence = 0.0f;
             for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
-                fStats.fluence += candidate->signature.getEntry(i);
+                fStats.fluence += candidate->signature.getMean(i);
             fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};
