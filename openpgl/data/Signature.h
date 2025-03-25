@@ -530,13 +530,11 @@ struct Signature  // Directional signature
 
     // N-sample std
     float getStd(uint8_t idx) const {
-        return std::sqrt(getOneSampleStd(idx) / numSamples);
+        return std::sqrt(getVariance(idx));
     }
     
     float getOneSampleStd(uint8_t idx) const {
-        // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
-        float varOneSample = m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
-        return std::sqrt(varOneSample);
+        return std::sqrt(getOneSampleVariance(idx));
     }
 
     // N-sample variance
@@ -654,6 +652,25 @@ struct Signature  // Directional signature
     // In some cases, b is assumed to be the *parent* region
     static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
         return getDistanceSMAPE(a, b, stdMultiplier);
+    }
+
+    static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
+        float num = 0, denom = 0;
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
+            float sigma = std::sqrt(a.getVariance(i) + b.getVariance(i));
+            float t = sigma == 0 ? 0 : (ai - bi) / sigma;
+            if (std::abs(t) > tvalueThreshold) {
+                // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+                if (ai - a_std > bi + b_std)
+                    num += ai - bi - a_std - b_std;
+                else if (ai + a_std < bi - b_std)
+                    num += bi - ai - a_std - b_std;
+            }
+            denom += ai + bi;
+        }
+        return denom == 0 ? 0 : 2.0f * num / denom;
     }
 
     float getRisk() const {
