@@ -50,6 +50,6 @@ enum PGL_SPATIAL_CONFIDENCE_TYPE
 {
     PGL_SPATIAL_CONFIDENCE_NONE = 0,  // always trust our metric
     PGL_SPATIAL_CONFIDENCE_RISK,      // trust if risk is low
-    PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST,   // trust if t value is high: that two distributions are distinct
-    PGL_SPATIAL_CONFIDENCE_WELCH_TTEST,
+    PGL_SPATIAL_CONFIDENCE_TTEST,
+    PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN,  // only sum up the bins that pass the t-test
 };

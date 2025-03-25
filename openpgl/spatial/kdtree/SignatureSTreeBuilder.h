@@ -503,12 +503,11 @@ struct KDTreePartitionBuilder
             }
             region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
+            region.energy = getDistance(region.signature, root.signature, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST: region.tValue = Signature::getOneSampleT(region.signature, root.signature); break;
-                case PGL_SPATIAL_CONFIDENCE_WELCH_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
                 default: break;
             }
         };
@@ -589,12 +588,11 @@ struct KDTreePartitionBuilder
             }
             region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.contribType, settings.optimizeSignature);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = Signature::getDistance(region.signature, root.signature, settings.stdMultiplier);  // the root could change, so we need to recompute the distance even if updated
+            region.energy = getDistance(region.signature, root.signature, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST: region.tValue = Signature::getOneSampleT(region.signature, root.signature); break;
-                case PGL_SPATIAL_CONFIDENCE_WELCH_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
                 default: break;
             }
         };
@@ -636,7 +634,7 @@ struct KDTreePartitionBuilder
             update(left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid);
             update(right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd);
 
-            // float energyLR = Signature::getDistance(left.signature, right.signature, settings.stdMultiplier);
+            // float energyLR = getDistance(left.signature, right.signature, settings.stdMultiplier);
 
             // Try promotion of the current split: either child should exceed the energy threshold
             bool promoteCurrentSplit = checkPromotion(root, left, right, settings);
@@ -675,10 +673,18 @@ struct KDTreePartitionBuilder
         return 0;
     }
 
+    static float getDistance(const Signature &a, const Signature &b, const Settings &settings) {
+        if (settings.confidenceType == PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN)
+            return Signature::getDistanceTTest(a, b, settings.stdMultiplier, settings.tValueThreshold);
+        else
+            return Signature::getDistance(a, b, settings.stdMultiplier);
+    }
+
     static bool checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
         if (!settings.enablePromotion) return false;
         switch (settings.confidenceType) {
             case PGL_SPATIAL_CONFIDENCE_NONE:
+            case PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN:
                 return left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (energyLR > settings.signatureDistanceThreshold) ||  // LR
@@ -693,8 +699,7 @@ struct KDTreePartitionBuilder
                            (left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||  // P and L
                            (right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold)   // P and R
                        );
-            case PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST:
-            case PGL_SPATIAL_CONFIDENCE_WELCH_TTEST:
+            case PGL_SPATIAL_CONFIDENCE_TTEST:
                 return left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
@@ -843,12 +848,11 @@ struct KDTreePartitionBuilder
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
-        current.energy = Signature::getDistance(current.signature, root.signature, settings.stdMultiplier);
+        current.energy = getDistance(current.signature, root.signature, settings);
         current.risk = current.signature.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
-            case PGL_SPATIAL_CONFIDENCE_ONE_SAMPLE_TTEST: current.tValue = Signature::getOneSampleT(current.signature, root.signature); break;
-            case PGL_SPATIAL_CONFIDENCE_WELCH_TTEST: current.tValue = Signature::getWelchT(current.signature, root.signature); break;
+            case PGL_SPATIAL_CONFIDENCE_TTEST: current.tValue = Signature::getWelchT(current.signature, root.signature); break;
             default: break;
         }
 
