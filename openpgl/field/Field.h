@@ -93,7 +93,8 @@ public:
         m_dumpCacheCellData = settings.debugSettings.dumpCacheCellData;
         m_dumpCacheCellPosition = settings.debugSettings.dumpCacheCellPosition;
         m_dumpCacheCellLocation = settings.debugSettings.dumpCacheCellLocation;
-        std::cout << "m_dumpCacheCellData = " << m_dumpCacheCellData << "\t m_dumpCacheCellPosition = " << m_dumpCacheCellPosition << "\t m_dumpCacheCellLocation = " << m_dumpCacheCellLocation << std::endl;
+        std::cout << "m_dumpCacheCellData = " << m_dumpCacheCellData << "\t m_dumpCacheCellPosition = " << m_dumpCacheCellPosition
+                  << "\t m_dumpCacheCellLocation = " << m_dumpCacheCellLocation << std::endl;
         m_distributionFactorySettings = settings.distributionFactorySettings;
     }
 
@@ -738,6 +739,11 @@ public:
     inline void fitRegions(SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)
     {
         size_t nGuidingRegions = m_regionStorageContainer.size();
+        int dumpCacheCellIdx = 0;
+        if (m_dumpCacheCellData)
+        {
+            dumpCacheCellIdx = m_spatialSubdiv.getDataIdxAtPos(m_dumpCacheCellPosition);
+        }
 #if defined(OPENPGL_SHOW_PRINT_OUTS)
         std::cout << "fitRegion: " << (m_isSurface ? "surface" : "volume") << "\tnGuidingRegions = " << nGuidingRegions << std::endl;
 #endif
@@ -750,10 +756,31 @@ public:
             for (int n = r.begin(); n < r.end(); ++n)
 #endif
             {
+                const bool dumpCacheCellData = m_dumpCacheCellData && n == dumpCacheCellIdx;
                 RegionStorageType &regionStorage = m_regionStorageContainer[n];
                 openpgl::Point3 sampleMean = regionStorage.first.candidate.sampleStatistics.getMean();
                 if (regionStorage.second.size() > 0)
                 {
+                    int nSamples = regionStorage.second.m_end - regionStorage.second.m_begin;
+#ifdef DUMP_DISTRIBUTION_UPDATE_DATA
+                    DistributionUpdateDebugDump dump;
+                    if (dumpCacheCellData)
+                    {
+                        dump.update = false;
+                        // if(m_dumpUpdateDistributionData){
+                        for (int i = 0; i < nSamples; i++)
+                        {
+                            dump.samples.addSample(samples[regionStorage.second.m_begin + i]);
+                            dump.samplesPrepared.addSample(samples[regionStorage.second.m_begin + i]);
+                        }
+                        dump.distribution = regionStorage.first.distribution;
+                        dump.trainingStatistics = regionStorage.first.trainingStatistics;
+                        dump.sampleStatistics = regionStorage.first.sampleStatistics;
+                        // dump.weightsStatistics = regionStorage.first.weightsStatistics;
+                        dump.factorySettings = m_distributionFactorySettings;
+                    }
+#endif
+
                     if (m_fitRegions)
                     {
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
@@ -796,7 +823,7 @@ public:
                     regionStorage.first.initialized = false;
                     regionStorage.first.splitFlag = 0;
                 }
-                // regionStorage.second.reset();
+                regionStorage.second.reset();
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
@@ -808,7 +835,8 @@ public:
     {
         size_t nGuidingRegions = m_regionStorageContainer.size();
         int dumpCacheCellIdx = 0;
-        if (m_dumpCacheCellData) {
+        if (m_dumpCacheCellData)
+        {
             dumpCacheCellIdx = m_spatialSubdiv.getDataIdxAtPos(m_dumpCacheCellPosition);
         }
 
@@ -931,7 +959,7 @@ public:
                         regionStorage.first.splitFlag--;
                     }
                 }
-                // regionStorage.second.reset();
+                regionStorage.second.reset();
                 OPENPGL_ASSERT(regionStorage.first.isValid());
             }
         });
@@ -1083,37 +1111,41 @@ public:
         return range;
     }
 
-    void runUpdateDump(const std::string updateDumpFilename, const bool surface = true) const 
+    void runUpdateDump(const std::string updateDumpFilename, const bool surface = true) const
     {
-        
         std::cout << "runUpdateDump" << std::endl;
         DistributionUpdateDebugDump updateDump;
         updateDump.Load(updateDumpFilename);
         std::vector<SampleData> samples;
-/*
-        if(std::fabs((updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean()) - 1.0f) > 1e-4f)
-            std::cout << "Distribution: samplesMean: "<< updateDump.trainingStatistics.getMeanSamplesWeights() << "\t weightsMean: " <<
-        updateDump.weightsStatistics.getWeightsMean()  << "\t diff: " << updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean() <<
-        std::endl; if(std::fabs((updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()) - 1.0f) > 1e-4f) std::cout << "Distribution:
-        numSamples: "<< updateDump.trainingStatistics.getNumSamples() << "\t numWeights: " << updateDump.weightsStatistics.getNumWeights() << "\t diff: " <<
-        updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()<< std::endl;
-*/
+        /*
+                if(std::fabs((updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean()) - 1.0f) > 1e-4f)
+                    std::cout << "Distribution: samplesMean: "<< updateDump.trainingStatistics.getMeanSamplesWeights() << "\t weightsMean: " <<
+                updateDump.weightsStatistics.getWeightsMean()  << "\t diff: " << updateDump.trainingStatistics.getMeanSamplesWeights() /
+           updateDump.weightsStatistics.getWeightsMean() << std::endl; if(std::fabs((updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights())
+           - 1.0f) > 1e-4f) std::cout << "Distribution: numSamples: "<< updateDump.trainingStatistics.getNumSamples() << "\t numWeights: " <<
+           updateDump.weightsStatistics.getNumWeights() << "\t diff: " << updateDump.trainingStatistics.getNumSamples() / updateDump.weightsStatistics.getNumWeights()<< std::endl;
+        */
 
-        if(surface) {
-            for(int i= 0; i < updateDump.samples.sizeSurface(); i++)
+        if (surface)
+        {
+            for (int i = 0; i < updateDump.samples.sizeSurface(); i++)
                 samples.push_back(updateDump.samples.getSampleSurface(i));
-        } else {
-            for(int i= 0; i < updateDump.samples.sizeVolume(); i++)
+        }
+        else
+        {
+            for (int i = 0; i < updateDump.samples.sizeVolume(); i++)
                 samples.push_back(updateDump.samples.getSampleVolume(i));
         }
-        //std::cout << "numSamples: " << updateDump.trainingStatistics.splittingStatistics.numSamples << std::endl;
-        //std::cout << "numSamples: " << updateDump.trainingStatistics.getNumSamples() << std::endl;
+        // std::cout << "numSamples: " << updateDump.trainingStatistics.splittingStatistics.numSamples << std::endl;
+        // std::cout << "numSamples: " << updateDump.trainingStatistics.getNumSamples() << std::endl;
         std::cout << "before: " << std::endl;
-        std::cout << updateDump.distribution.toString()<< std::endl;
+        std::cout << updateDump.distribution.toString() << std::endl;
         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
-        m_distributionFactory.prepareSamples(samples.data(), samples.size(), updateDump.sampleStatistics, /*updateDump.weightsStatistics,*/ updateDump.factorySettings); 
-        m_distributionFactory.update(updateDump.distribution, updateDump.trainingStatistics, samples.data(), samples.size(), updateDump.factorySettings, fittingStats);
-
+        m_distributionFactory.prepareSamples(samples.data(), samples.size(), updateDump.sampleStatistics, /*updateDump.weightsStatistics,*/ updateDump.factorySettings);
+        if (updateDump.update)
+            m_distributionFactory.update(updateDump.distribution, updateDump.trainingStatistics, samples.data(), samples.size(), updateDump.factorySettings, fittingStats);
+        else
+            m_distributionFactory.fit(updateDump.distribution, updateDump.trainingStatistics, samples.data(), samples.size(), updateDump.factorySettings, fittingStats);
         std::cout << updateDump.distribution.toString() << std::endl;
         /*
         if(std::fabs((updateDump.trainingStatistics.getMeanSamplesWeights() / updateDump.weightsStatistics.getWeightsMean()) - 1.0f) > 1e-4f)
