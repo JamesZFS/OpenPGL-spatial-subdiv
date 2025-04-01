@@ -44,6 +44,7 @@ extern "C"
         bool deterministic{true};
         bool knnLookup{true};
         bool isKnnLookup{false};
+        PGL_SPATIAL_SPLIT_TYPE splitType {PGL_SPATIAL_SPLIT_BASELINE};
         uint32_t maxDepth {32};
         uint32_t minSamplesCandidateSplit {1000};
         uint32_t minSamplesPromotion {1000};
