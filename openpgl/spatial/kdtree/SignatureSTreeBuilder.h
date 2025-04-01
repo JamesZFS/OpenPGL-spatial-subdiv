@@ -111,6 +111,7 @@ struct KDTreePartitionBuilder
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
         {
+            splitType = cfg.splitType;
             maxDepth = cfg.maxDepth;
             minSamplesCandidateSplit = cfg.minSamplesCandidateSplit;
             minSamplesPromotion = cfg.minSamplesPromotion;
@@ -139,6 +140,7 @@ struct KDTreePartitionBuilder
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
         {
+            cfg.splitType = splitType;
             cfg.maxDepth = maxDepth;
             cfg.minSamplesCandidateSplit = minSamplesCandidateSplit;
             cfg.minSamplesPromotion = minSamplesPromotion;
@@ -190,17 +192,18 @@ struct KDTreePartitionBuilder
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
-        if (buildSettings.splitType == PGL_SPATIAL_SPLIT_PPG) {
-            bounds = computeStats(samples.begin(), samples.end()).sampleBounds;  // here we don't use the kd tree bounds because it was 3x overestimated
-            // Enlarge the bounds to make it a cube, see https://github.com/Tom94/practical-path-guiding/blob/fcf01afb436184e8a74bf300aa89f69b03ab25a2/mitsuba/src/integrators/path/guided_path.cpp#L855
-            // This can avoid yielding of very long and thin reginos
-            float half_width = reduce_max(bounds.size()) / 2;
-            Vector3 center = bounds.center();
-            bounds.lower = center - Vector3(half_width);
-            bounds.upper = center + Vector3(half_width);
-        } else {
-            bounds = kdTree.getBounds();
-        }
+        // if (buildSettings.splitType == PGL_SPATIAL_SPLIT_PPG) {
+        //     bounds = computeStats(samples.begin(), samples.end()).sampleBounds;  // here we don't use the kd tree bounds because it was 3x overestimated
+        //     // Enlarge the bounds to make it a cube, see https://github.com/Tom94/practical-path-guiding/blob/fcf01afb436184e8a74bf300aa89f69b03ab25a2/mitsuba/src/integrators/path/guided_path.cpp#L855
+        //     // This can avoid yielding of very long and thin reginos
+        //     float half_width = reduce_max(bounds.size()) / 2;
+        //     Vector3 center = bounds.center();
+        //     bounds.lower = center - Vector3(half_width);
+        //     bounds.upper = center + Vector3(half_width);
+        // } else {
+        //     bounds = kdTree.getBounds();
+        // }
+        bounds = kdTree.getBounds();
         std::cout << "Total bounds " << bounds << std::endl;
 
         updateTreeNode(kdTree, root, 1, 2, bounds, samples, Range(0, samples.size()), zeroSamples, Range(0, zeroSamples.size()), dataStorage, candidateDataStorage, buildSettings, iteration);
@@ -321,7 +324,7 @@ struct KDTreePartitionBuilder
                 if (hasCandidateSplit) {
                     splitDim = candidate.dim;
                     splitPos = candidate.pivot;
-                } else splitBaseline(mergedStats, splitDim, splitPos);
+                } else proposeSplit(samplesBegin, samplesEnd, mergedStats, splitDim, splitPos, settings);
                 OPENPGL_ASSERT(splitDim < 3);
 
                 auto rDataItr = dataStorage.emplace_back(region, Range());
@@ -526,7 +529,7 @@ struct KDTreePartitionBuilder
             && depth + 1 <= settings.maxDepth && current.sampleStatistics.getNumSamples() >= settings.minSamplesCandidateSplit) {  // propose a new split
             float splitPos;
             uint8_t splitDim;
-            splitBaseline(current.sampleStatistics, splitDim, splitPos);
+            proposeSplit(samplesBegin, samplesEnd, current.sampleStatistics, splitDim, splitPos, settings);
             current.dim = splitDim, current.pivot = splitPos;
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
@@ -611,7 +614,7 @@ struct KDTreePartitionBuilder
             && depth + 1 <= settings.maxDepth && current.sampleStatistics.getNumSamples() >= settings.minSamplesCandidateSplit) {  // propose a new split
             float splitPos;
             uint8_t splitDim;
-            splitBaseline(current.sampleStatistics, splitDim, splitPos);
+            proposeSplit(samplesBegin, samplesEnd, current.sampleStatistics, splitDim, splitPos, settings);
             current.dim = splitDim, current.pivot = splitPos;
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
@@ -869,24 +872,42 @@ struct KDTreePartitionBuilder
         }
     }
 
-    // Compute the candidate split position, return the gain estimate that will guide when to split
     template<typename SampleIterator>
-    inline float proposeSplit(uint8_t prevSplitDim, const BBox &bounds, SampleIterator begin, SampleIterator end, const SampleStatistics &stats,
-                              uint8_t &splitDim, float &splitPos, const Settings &buildSettings) const {
+    inline float proposeSplit(SampleIterator begin, SampleIterator end, const SampleStatistics &stats, uint8_t &splitDim, float &splitPos, const Settings &buildSettings) const {
         size_t minSamplesPerSide = buildSettings.minSamplesCandidateSplit / 2;
+        if (std::distance(begin, end) <= buildSettings.minSamplesCandidateSplit) {
+            splitBaseline(stats, splitDim, splitPos);
+            return 0;
+        }
         switch (buildSettings.splitType) {
             case PGL_SPATIAL_SPLIT_BASELINE: splitBaseline(stats, splitDim, splitPos); return 0;
-            case PGL_SPATIAL_SPLIT_ROUNDROBIN: splitRoundRobin(prevSplitDim, stats, splitDim, splitPos); return 0;
-            case PGL_SPATIAL_SPLIT_PPG: splitPPG(prevSplitDim, bounds, stats, splitDim, splitPos); return 0;
 
-            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_COVS: return covarianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, 0, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, 1.0, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, 0.03, splitDim, splitPos);
 
             default: throw std::runtime_error("Unknown split type");
         }
     }
+
+    // Compute the candidate split position, return the gain estimate that will guide when to split
+    // template<typename SampleIterator>
+    // inline float proposeSplit(uint8_t prevSplitDim, const BBox &bounds, SampleIterator begin, SampleIterator end, const SampleStatistics &stats,
+    //                           uint8_t &splitDim, float &splitPos, const Settings &buildSettings) const {
+    //     size_t minSamplesPerSide = buildSettings.minSamplesCandidateSplit / 2;
+    //     switch (buildSettings.splitType) {
+    //         case PGL_SPATIAL_SPLIT_BASELINE: splitBaseline(stats, splitDim, splitPos); return 0;
+    //         case PGL_SPATIAL_SPLIT_ROUNDROBIN: splitRoundRobin(prevSplitDim, stats, splitDim, splitPos); return 0;
+    //         case PGL_SPATIAL_SPLIT_PPG: splitPPG(prevSplitDim, bounds, stats, splitDim, splitPos); return 0;
+    //
+    //         case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+    //         case PGL_SPATIAL_SPLIT_COVS: return covarianceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+    //         case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+    //         case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, buildSettings.defensiveness, splitDim, splitPos);
+    //
+    //         default: throw std::runtime_error("Unknown split type");
+    //     }
+    // }
 
     void splitBaseline(const SampleStatistics &stats, uint8_t &splitDim, float &splitPos) const
     {
@@ -1509,6 +1530,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
 {
     std::stringstream ss;
     ss << "KDTreePartitionBuilder::Settings:" << std::endl;
+    ss << "  splitType: " << splitType << std::endl;
     ss << "  maxDepth: " << maxDepth << std::endl;
     ss << "  minSamplesCandidateSplit: " << minSamplesCandidateSplit << std::endl;
     ss << "  minSamplesPromotion: " << minSamplesPromotion << std::endl;
