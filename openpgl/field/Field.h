@@ -437,8 +437,8 @@ public:
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
-        // auto var = region.sampleStatistics.getVariance();
-        // stats.sampleVariance = { var.x, var.y, var.z };
+        auto var = region.candidate.sampleStatistics.getVariance();
+        stats.sampleVariance = { var.x, var.y, var.z };
         stats.dborMean = region.candidate.sampleStatistics.weightMean;
         stats.dborStd = region.candidate.sampleStatistics.getDBORStd();
         return stats;
