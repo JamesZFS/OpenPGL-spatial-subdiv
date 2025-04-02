@@ -18,7 +18,7 @@
 #include <limits>
 #include <random>
 
-#define THRESHOLD_VAR_RATIO         1e-4
+// #define THRESHOLD_VAR_RATIO         1e-3
 #define PGL_SIGNATURE_MAX_SAMPLES   8e6
 
 
@@ -82,6 +82,8 @@ struct KDTreePartitionBuilder
         float tValueThreshold {3.0f}; // reject the signature subdivision if std / mean is above this threshold
         float inlierPercent {0.99f};  // filter outlier samples for signature computation
         float DBORstdMultiplier {3.0f};  // remove outliers that are outside [0, mu + DBORstdMultiplier * std]
+        float teps {0.0f};  // added to the t statistics denominator
+        float varianceThreshold {1e-4f};  // skip the axis whose variance / max variance is less than this threshold
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         bool nonRecursive {false};  // if enabled, stop the subdivision when the promotion finishes
@@ -104,7 +106,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
-                   inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier &&
+                   inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && teps == b.teps && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    confidenceType == b.confidenceType && contribType == b.contribType && defensiveType == b.defensiveType && filterType == b.filterType;
         }
@@ -127,6 +129,8 @@ struct KDTreePartitionBuilder
             DBORstdMultiplier = cfg.DBORstdMultiplier;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
+            teps = cfg.teps;
+            varianceThreshold = cfg.varianceThreshold;
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
             nonRecursive = cfg.nonRecursive;
@@ -154,6 +158,8 @@ struct KDTreePartitionBuilder
             cfg.tValueThreshold = tValueThreshold;
             cfg.inlierPercent = inlierPercent;
             cfg.DBORstdMultiplier = DBORstdMultiplier;
+            cfg.teps = teps;
+            cfg.varianceThreshold = varianceThreshold;
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
             cfg.multiplyCosine = multiplyCosine;
@@ -510,7 +516,7 @@ struct KDTreePartitionBuilder
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature, settings.teps); break;
                 default: break;
             }
         };
@@ -595,7 +601,7 @@ struct KDTreePartitionBuilder
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature, settings.teps); break;
                 default: break;
             }
         };
@@ -855,7 +861,7 @@ struct KDTreePartitionBuilder
         current.risk = current.signature.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
-            case PGL_SPATIAL_CONFIDENCE_TTEST: current.tValue = Signature::getWelchT(current.signature, root.signature); break;
+            case PGL_SPATIAL_CONFIDENCE_TTEST: current.tValue = Signature::getWelchT(current.signature, root.signature, settings.teps); break;
             default: break;
         }
 
@@ -882,9 +888,9 @@ struct KDTreePartitionBuilder
         switch (buildSettings.splitType) {
             case PGL_SPATIAL_SPLIT_BASELINE: splitBaseline(stats, splitDim, splitPos); return 0;
 
-            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, 0, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, 1.0, splitDim, splitPos);
-            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, 0.03, splitDim, splitPos);
+            case PGL_SPATIAL_SPLIT_VS: return varianceScan(begin, end, stats, minSamplesPerSide, 0, splitDim, splitPos, buildSettings);
+            case PGL_SPATIAL_SPLIT_IGS: return informationGainScan(begin, end, stats, minSamplesPerSide, 1.0, splitDim, splitPos, buildSettings);
+            case PGL_SPATIAL_SPLIT_FS: return fluenceScan(begin, end, stats, minSamplesPerSide, 0.03, splitDim, splitPos, buildSettings);
 
             default: throw std::runtime_error("Unknown split type");
         }
@@ -915,38 +921,30 @@ struct KDTreePartitionBuilder
         splitPos = stats.getMean()[splitDim];
     }
 
-    void splitRoundRobin(uint8_t prevSplitDim, const SampleStatistics &stats, uint8_t &splitDim, float &splitPos) const
+    void splitRoundRobin(uint8_t prevSplitDim, const SampleStatistics &stats, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         Vector3 var = stats.getVariance();
         float maxVar = reduce_max(var);
         splitDim = (prevSplitDim + 1) % 3;
-#ifdef THRESHOLD_VAR_RATIO
-        while (var[splitDim] < THRESHOLD_VAR_RATIO * maxVar) {
-#else
-            while (var[splitDim] < DEGENERATE_VAR_THRESHOLD) {
-#endif
+        while (var[splitDim] < settings.varianceThreshold * maxVar) {
             splitDim = (splitDim + 1) % 3;  // skip dimensions with low variance
         }
         splitPos = stats.getMean()[splitDim];
     }
 
-    void splitPPG(uint8_t prevSplitDim, const BBox &bounds, const SampleStatistics &stats, uint8_t &splitDim, float &splitPos) const
+    void splitPPG(uint8_t prevSplitDim, const BBox &bounds, const SampleStatistics &stats, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         Vector3 var = stats.getVariance();
         float maxVar = reduce_max(var);
         splitDim = (prevSplitDim + 1) % 3;
-#ifdef THRESHOLD_VAR_RATIO
-        while (var[splitDim] < THRESHOLD_VAR_RATIO * maxVar) {
-#else
-            while (var[splitDim] < DEGENERATE_VAR_THRESHOLD) {
-#endif
+        while (var[splitDim] < settings.varianceThreshold * maxVar) {
             splitDim = (splitDim + 1) % 3;  // skip dimensions with low variance
         }
         splitPos = bounds.center()[splitDim];
     }
 
     template <typename SampleIterator>
-    float varianceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos) const
+    float varianceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         const size_t N = std::distance(begin, end);
         const auto posVariances = sampleStats.getVariance();
@@ -967,7 +965,7 @@ struct KDTreePartitionBuilder
 
         // O(N log N)
         for (uint8_t dim = 0; dim < 3; ++dim) {
-            if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {
+            if (posVariances[dim] < settings.varianceThreshold * maxPosVariance) {
                 // std::cout << "Skipping dimension " << int(dim) << " due to low sample variance " << sampleVariances[dim] << std::endl;
                 continue;
             }
@@ -1047,7 +1045,7 @@ struct KDTreePartitionBuilder
     }
 
     template <typename SampleIterator>
-    float covarianceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos) const
+    float covarianceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         const size_t N = std::distance(begin, end);
         const auto posVariances = sampleStats.getVariance();
@@ -1077,7 +1075,7 @@ struct KDTreePartitionBuilder
 
         // O(N log N)
         for (uint8_t dim = 0; dim < 3; ++dim) {
-            if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) continue;  // skip dimensions with low variance
+            if (posVariances[dim] < settings.varianceThreshold * maxPosVariance) continue;  // skip dimensions with low variance
 
             // Sort samples along the current dimension
             std::sort(begin, end, [dim](typename TSamplesContainer::value_type a, typename TSamplesContainer::value_type b) {
@@ -1161,7 +1159,7 @@ struct KDTreePartitionBuilder
     }
 
     template <typename SampleIterator>
-    float informationGainScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos) const
+    float informationGainScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         const size_t N = std::distance(begin, end);
         const auto posVariances = sampleStats.getVariance();
@@ -1191,7 +1189,7 @@ struct KDTreePartitionBuilder
 
         // O(N log N)
         for (uint8_t dim = 0; dim < 3; ++dim) {
-            if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) continue;  // skip dimensions with low variance
+            if (posVariances[dim] < settings.varianceThreshold * maxPosVariance) continue;  // skip dimensions with low variance
 
             // Sort samples along the current dimension
             std::sort(begin, end, [dim](typename TSamplesContainer::value_type a, typename TSamplesContainer::value_type b) {
@@ -1271,11 +1269,19 @@ struct KDTreePartitionBuilder
             splitDim = maxVarDim;
         }
         splitPos = splits[splitDim];
+        // Pulling split slightly towards the center
+        const float delta = std::sqrt(maxPosVariance * settings.varianceThreshold);
+        const float meanPos = sampleStats.getMean()[splitDim];
+        if (splitPos + delta < meanPos) {
+            splitPos += delta;
+        } else if (splitPos - delta > meanPos) {
+            splitPos -= delta;
+        }
         return (float) gains[splitDim];  // use the absolute gain
     }
 
     template <typename SampleIterator>
-    float fluenceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos) const
+    float fluenceScan(const SampleIterator begin, const SampleIterator end, const SampleStatistics &sampleStats, const size_t minSamplesPerSide, const float defensiveness, uint8_t &splitDim, float &splitPos, const Settings &settings) const
     {
         const size_t N = std::distance(begin, end);
         const auto posVariances = sampleStats.getVariance();
@@ -1294,7 +1300,7 @@ struct KDTreePartitionBuilder
 
         // O(N log N)
         for (uint8_t dim = 0; dim < 3; ++dim) {
-            if (posVariances[dim] < THRESHOLD_VAR_RATIO * maxPosVariance) {
+            if (posVariances[dim] < settings.varianceThreshold * maxPosVariance) {
                 // std::cout << "Skipping dimension " << int(dim) << " due to low sample variance " << sampleVariances[dim] << std::endl;
                 continue;
             }
@@ -1546,6 +1552,8 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  tValueThreshold: " << tValueThreshold << std::endl;
     ss << "  inlierPercent: " << inlierPercent << std::endl;
     ss << "  DBORstdMultiplier: " << DBORstdMultiplier << std::endl;
+    ss << "  teps: " << teps << std::endl;
+    ss << "  varianceThreshold: " << varianceThreshold << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
     ss << "  reproject: " << reproject << std::endl;
@@ -1580,6 +1588,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.write(reinterpret_cast<const char*>(&inlierPercent), sizeof(inlierPercent));
     stream.write(reinterpret_cast<const char*>(&DBORstdMultiplier), sizeof(DBORstdMultiplier));
+    stream.write(reinterpret_cast<const char*>(&teps), sizeof(teps));
+    stream.write(reinterpret_cast<const char*>(&varianceThreshold), sizeof(varianceThreshold));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&nonRecursive), sizeof(nonRecursive));
@@ -1611,6 +1621,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.read(reinterpret_cast<char*>(&inlierPercent), sizeof(inlierPercent));
     stream.read(reinterpret_cast<char*>(&DBORstdMultiplier), sizeof(DBORstdMultiplier));
+    stream.read(reinterpret_cast<char*>(&teps), sizeof(teps));
+    stream.read(reinterpret_cast<char*>(&varianceThreshold), sizeof(varianceThreshold));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&nonRecursive), sizeof(nonRecursive));

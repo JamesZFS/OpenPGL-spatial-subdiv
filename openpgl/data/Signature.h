@@ -642,10 +642,10 @@ struct Signature  // Directional signature
         return denom == 0 ? 0 : num / denom;
     }
 
-    static float getWelchT(const Signature &a, const Signature &b) {
+    static float getWelchT(const Signature &a, const Signature &b, float eps) {
         OPENPGL_ASSERT(g_opgl_signature_size == 1);
         float num = a.getMean(0) - b.getMean(0);
-        float denom = std::sqrt(a.getVariance(0) + b.getVariance(0));
+        float denom = std::sqrt(a.getVariance(0) + b.getVariance(0)) + eps;
         return denom == 0 ? 0 : num / denom;
     }
 
