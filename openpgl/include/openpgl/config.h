@@ -62,7 +62,7 @@ extern "C"
         float ceDecay{0.8f};
         float vmmDecay{0.25f};
         float ceClampValue{1e5f};
-        float teps{0.0f};
+        float tEpsK{0.0f};
         float varianceThreshold{1e-4f};
         bool multiplyCosine{false};
         bool reproject{false};
