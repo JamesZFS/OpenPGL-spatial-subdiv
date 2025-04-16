@@ -82,7 +82,7 @@ struct KDTreePartitionBuilder
         float tValueThreshold {3.0f}; // reject the signature subdivision if std / mean is above this threshold
         float inlierPercent {0.99f};  // filter outlier samples for signature computation
         float DBORstdMultiplier {3.0f};  // remove outliers that are outside [0, mu + DBORstdMultiplier * std]
-        float teps {0.0f};  // added to the t statistics denominator
+        float tEpsK {0.0f};
         float varianceThreshold {1e-4f};  // skip the axis whose variance / max variance is less than this threshold
         bool multiplyCosine {false};  // whether to incorporate cosine terms into directional signatures
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
@@ -106,7 +106,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
                    stdMultiplier == b.stdMultiplier && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
-                   inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && teps == b.teps && varianceThreshold == b.varianceThreshold &&
+                   inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    confidenceType == b.confidenceType && contribType == b.contribType && defensiveType == b.defensiveType && filterType == b.filterType;
         }
@@ -129,7 +129,7 @@ struct KDTreePartitionBuilder
             DBORstdMultiplier = cfg.DBORstdMultiplier;
             enablePromotion = cfg.enablePromotion;
             decayRatio = cfg.ceDecay;
-            teps = cfg.teps;
+            tEpsK = cfg.tEpsK;
             varianceThreshold = cfg.varianceThreshold;
             multiplyCosine = cfg.multiplyCosine;
             reproject = cfg.reproject;
@@ -158,7 +158,7 @@ struct KDTreePartitionBuilder
             cfg.tValueThreshold = tValueThreshold;
             cfg.inlierPercent = inlierPercent;
             cfg.DBORstdMultiplier = DBORstdMultiplier;
-            cfg.teps = teps;
+            cfg.tEpsK = tEpsK;
             cfg.varianceThreshold = varianceThreshold;
             cfg.enablePromotion = enablePromotion;
             cfg.ceDecay = decayRatio;
@@ -516,7 +516,13 @@ struct KDTreePartitionBuilder
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature, settings.teps); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: {
+                    float mu = 0.5f * (region.signature.getMean(0) + root.signature.getMean(0));
+                    float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
+                    // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
+                    region.tValue = Signature::getWelchT(region.signature, root.signature, eps);
+                    break;
+                }
                 default: break;
             }
         };
@@ -601,7 +607,13 @@ struct KDTreePartitionBuilder
             region.risk = region.signature.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
-                case PGL_SPATIAL_CONFIDENCE_TTEST: region.tValue = Signature::getWelchT(region.signature, root.signature, settings.teps); break;
+                case PGL_SPATIAL_CONFIDENCE_TTEST: {
+                    float mu = 0.5f * (region.signature.getMean(0) + root.signature.getMean(0));
+                    float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
+                    // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
+                    region.tValue = Signature::getWelchT(region.signature, root.signature, eps);
+                    break;
+                }
                 default: break;
             }
         };
@@ -712,8 +724,8 @@ struct KDTreePartitionBuilder
                 return left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
-                           (std::abs(left.tValue) > settings.tValueThreshold && left.energy > settings.signatureDistanceThreshold) || // P and L
-                           (std::abs(right.tValue) > settings.tValueThreshold && right.energy > settings.signatureDistanceThreshold)  // P and R
+                           (std::abs(left.tValue) > settings.tValueThreshold /*&& left.energy > settings.signatureDistanceThreshold*/) || // P and L
+                           (std::abs(right.tValue) > settings.tValueThreshold /*&& right.energy > settings.signatureDistanceThreshold*/)  // P and R
                        );
             default:
                 std::cerr << "Unknown confidence type" << std::endl;
@@ -861,7 +873,13 @@ struct KDTreePartitionBuilder
         current.risk = current.signature.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
-            case PGL_SPATIAL_CONFIDENCE_TTEST: current.tValue = Signature::getWelchT(current.signature, root.signature, settings.teps); break;
+            case PGL_SPATIAL_CONFIDENCE_TTEST: {
+                float mu = 0.5f * (current.signature.getMean(0) + root.signature.getMean(0));
+                float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
+                // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
+                current.tValue = Signature::getWelchT(current.signature, root.signature, eps);
+                break;
+            }
             default: break;
         }
 
@@ -1552,7 +1570,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  tValueThreshold: " << tValueThreshold << std::endl;
     ss << "  inlierPercent: " << inlierPercent << std::endl;
     ss << "  DBORstdMultiplier: " << DBORstdMultiplier << std::endl;
-    ss << "  teps: " << teps << std::endl;
+    ss << "  tEpsK: " << tEpsK << std::endl;
     ss << "  varianceThreshold: " << varianceThreshold << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  multiplyCosine: " << multiplyCosine << std::endl;
@@ -1588,7 +1606,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.write(reinterpret_cast<const char*>(&inlierPercent), sizeof(inlierPercent));
     stream.write(reinterpret_cast<const char*>(&DBORstdMultiplier), sizeof(DBORstdMultiplier));
-    stream.write(reinterpret_cast<const char*>(&teps), sizeof(teps));
+    stream.write(reinterpret_cast<const char*>(&tEpsK), sizeof(tEpsK));
     stream.write(reinterpret_cast<const char*>(&varianceThreshold), sizeof(varianceThreshold));
     stream.write(reinterpret_cast<const char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
@@ -1621,7 +1639,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.read(reinterpret_cast<char*>(&inlierPercent), sizeof(inlierPercent));
     stream.read(reinterpret_cast<char*>(&DBORstdMultiplier), sizeof(DBORstdMultiplier));
-    stream.read(reinterpret_cast<char*>(&teps), sizeof(teps));
+    stream.read(reinterpret_cast<char*>(&tEpsK), sizeof(tEpsK));
     stream.read(reinterpret_cast<char*>(&varianceThreshold), sizeof(varianceThreshold));
     stream.read(reinterpret_cast<char*>(&multiplyCosine), sizeof(multiplyCosine));
     stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
