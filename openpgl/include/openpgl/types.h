@@ -29,6 +29,7 @@ enum PGL_SPATIAL_CONTRIB_TYPE
     PGL_SPATIAL_CONTRIB_SPLAT,   // splat contribution of each samples to 9 neighboring cells
     PGL_SPATIAL_CONTRIB_BASIS,   // contribute directional samples to all signature bins using basis functions
     PGL_SPATIAL_CONTRIB_BASIS_XI,   // basis functions enhanced with xi-sequence
+    PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE,  // using first 4 bins for latitude bases, and the last 4 for longitude bases
 };
 
 enum PGL_SPATIAL_DEFENSIVE_TYPE

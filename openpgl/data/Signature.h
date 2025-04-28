@@ -45,6 +45,14 @@ struct Signature  // Directional signature
         return {uv.x * 0.5f + 0.5f, uv.y * 0.5f + 0.5f};
     }
 
+    inline static pgl_vec2f dir_to_spherical(const pgl_direction &dir) {
+        auto cartesian = pgl_vec3f(dir);
+        float theta = std::acos(cartesian.z);
+        float phi = std::atan2(cartesian.y, cartesian.x);
+        if (phi < 0) phi += 2 * M_PI;
+        return {theta / M_PIf, phi / (2 * M_PIf)};  // TODO: optimize by returning the cosines and sines
+    }
+
     //A pseudorandom number generator with a seed consisting of 3 uints
     inline static uint32_t pcg_3d(uint32_t x, uint32_t y, uint32_t z) {
         x ^= 12312u;
@@ -176,6 +184,8 @@ struct Signature  // Directional signature
                     return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
                 case PGL_SPATIAL_CONTRIB_BASIS_XI:
                     return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+                case PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE:
+                    return addSamples<true, PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE>(begin, end);
                 default:
                     throw std::runtime_error("Unknown contribution type");
             }
@@ -205,6 +215,8 @@ struct Signature  // Directional signature
                     return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
                 case PGL_SPATIAL_CONTRIB_BASIS_XI:
                     return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+                case PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE:
+                    return addSamples<false, PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE>(begin, end);
                 default:
                     throw std::runtime_error("Unknown contribution type");
             }
@@ -214,6 +226,7 @@ struct Signature  // Directional signature
     template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         const uint8_t S = g_opgl_signature_size;
+        const uint8_t halfS = S >> 1;
         const uint8_t log2_bin_count = (uint8_t) std::log2(S);
         if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
             if (S != (1 << log2_bin_count)) {
@@ -290,6 +303,25 @@ struct Signature  // Directional signature
                 // Contribute to all bins, each one attenuated with its basis function
                 for (uint8_t j = 0; j < S; ++j) {
                     float w = basisFunctions[j] / normalizer * it->weight;
+                    if constexpr(multiplyCosine) w *= it->cosineTerm;
+                    sum[j] += w;
+                    m2[j] += w * w;
+                }
+                ++numSamples;
+            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE) {
+                pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
+
+                float u = fract(p.x * g_opgl_octahedral_resolution);  // latitude
+                float v = fract(p.y * 2 * g_opgl_octahedral_resolution);  // longitude
+
+                for (uint8_t j = 0; j < S; ++j) {
+                    float x = M_PI_2f * (float(halfS) * (j < halfS ? u : v) - float(j < halfS ? j : j - halfS));
+                    float b = 0.0;
+                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * halfS && x - M_PI_2f * halfS < M_PI_2f)) {
+                        b = std::cos(x);
+                        b *= b;
+                    }
+                    float w = b * it->weight;
                     if constexpr(multiplyCosine) w *= it->cosineTerm;
                     sum[j] += w;
                     m2[j] += w * w;
@@ -652,6 +684,26 @@ struct Signature  // Directional signature
     // In some cases, b is assumed to be the *parent* region
     static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
         return getDistanceSMAPE(a, b, stdMultiplier);
+    }
+
+    // Assuming it's a signature ensemble separated at S/2, then taking the maximum distance
+    static float getDistanceEnsemble(const Signature &a, const Signature &b, float stdMultiplier) {
+        float num[2] = {}, denom[2] = {};
+        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {  // TODO: number of samples are buggy
+            bool right = i > g_opgl_signature_size >> 1;
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            if (ai - a_std > bi + b_std)
+                num[right] += ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                num[right] += bi - ai - a_std - b_std;
+            denom[right] += ai + bi;
+        }
+        return std::max(
+            denom[0] == 0 ? 0 : 2.0f * num[0] / denom[0],
+            denom[1] == 0 ? 0 : 2.0f * num[1] / denom[1]
+        );
     }
 
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {

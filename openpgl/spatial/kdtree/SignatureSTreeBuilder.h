@@ -697,6 +697,8 @@ struct KDTreePartitionBuilder
     static float getDistance(const Signature &a, const Signature &b, const Settings &settings) {
         if (settings.confidenceType == PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN)
             return Signature::getDistanceTTest(a, b, settings.stdMultiplier, settings.tValueThreshold);
+        else if (settings.contribType == PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE)
+            return Signature::getDistanceEnsemble(a, b, settings.stdMultiplier);
         else
             return Signature::getDistance(a, b, settings.stdMultiplier);
     }
