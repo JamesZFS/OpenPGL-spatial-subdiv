@@ -6,12 +6,14 @@
 #ifdef __cplusplus
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 #else
 #include <stdint.h>
 #include <stdlib.h>
 #endif
 
 #include "common.h"
+#include "signaturearguments.h"
 #ifdef OPENPGL_BUILD
 #ifdef OPENPGL_DEVICE_TYPE_CPU_16
 #define OPENPGL_SUPPORT_DEVICE_TYPE_CPU_16
@@ -70,9 +72,9 @@ extern "C"
         bool singlePromotion{false};
         bool optimizeSignature{false};
         PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};
-        PGL_BASIS_FUNC_TYPE basisType {PGL_BASIS_FUNC_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
+        std::vector<SignatureArguments> signatureEnsembleConfig {1};  // at least one model
     };
 
     struct PGLVMMFactoryArguments

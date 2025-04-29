@@ -33,32 +33,6 @@ typedef ManagedObject Field;
 
     typedef Field *PGLField;
 
-    OPENPGL_CORE_INTERFACE uint32_t pglGetOctahedralResolution();
-
-    OPENPGL_CORE_INTERFACE void pglSetOctahedralResolution(uint32_t res);
-
-    OPENPGL_CORE_INTERFACE uint8_t pglGetSignatureSize();
-
-    OPENPGL_CORE_INTERFACE void pglSetSignatureSize(uint8_t size);
-
-    OPENPGL_CORE_INTERFACE float pglGetSplatSigma();
-
-    OPENPGL_CORE_INTERFACE void pglSetSplatSigma(float sigma);
-
-    OPENPGL_CORE_INTERFACE uint8_t pglGetOctaveMin();
-
-    OPENPGL_CORE_INTERFACE void pglSetOctaveMin(uint8_t min);
-
-    OPENPGL_CORE_INTERFACE uint8_t pglGetOctaveMax();
-
-    OPENPGL_CORE_INTERFACE void pglSetOctaveMax(uint8_t max);
-
-    OPENPGL_CORE_INTERFACE float pglGetOctaveGamma();
-
-    OPENPGL_CORE_INTERFACE void pglSetOctaveGamma(float gamma);
-
-    OPENPGL_CORE_INTERFACE uint8_t pglGetSignatureIndex(pgl_direction dir);
-
     OPENPGL_CORE_INTERFACE void pglFieldClearSignatures(PGLField field);
 
     OPENPGL_CORE_INTERFACE void pglFieldUpdateSubdivConfig(PGLField field, PGLKDTreeArguments args);
@@ -115,7 +89,7 @@ typedef ManagedObject Field;
     // Deprecated
     OPENPGL_CORE_INTERFACE std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position);
 
-    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight);
+    OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight);
 
 #ifdef __cplusplus
 }  // extern "C"

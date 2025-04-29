@@ -120,71 +120,6 @@ extern "C" OPENPGL_DLLEXPORT PGLField pglDeviceNewFieldFromFile(PGLDevice device
 }
 OPENPGL_CATCH_END(nullptr)
 
-extern "C" OPENPGL_DLLEXPORT uint32_t pglGetOctahedralResolution()
-{
-    return g_opgl_octahedral_resolution;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetOctahedralResolution(uint32_t res)
-{
-    g_opgl_octahedral_resolution = res;
-}
-
-extern "C" OPENPGL_DLLEXPORT uint8_t pglGetSignatureSize()
-{
-    return g_opgl_signature_size;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetSignatureSize(uint8_t size)
-{
-    g_opgl_signature_size = size;
-}
-
-extern "C" OPENPGL_DLLEXPORT uint8_t pglGetSignatureIndex(pgl_direction dir)
-{
-    return pgl_get_signature_index(dir);
-}
-
-extern "C" OPENPGL_DLLEXPORT float pglGetSplatSigma()
-{
-    return g_opgl_splat_sigma;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetSplatSigma(float sigma)
-{
-    g_opgl_splat_sigma = sigma;
-}
-
-extern "C" OPENPGL_DLLEXPORT uint8_t pglGetOctaveMin()
-{
-    return g_opgl_octave_min;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetOctaveMin(uint8_t min)
-{
-    g_opgl_octave_min = min;
-}
-
-extern "C" OPENPGL_DLLEXPORT uint8_t pglGetOctaveMax()
-{
-    return g_opgl_octave_max;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetOctaveMax(uint8_t max)
-{
-    g_opgl_octave_max = max;
-}
-
-extern "C" OPENPGL_DLLEXPORT float pglGetOctaveGamma()
-{
-    return g_opgl_octave_gamma;
-}
-
-extern "C" OPENPGL_DLLEXPORT void pglSetOctaveGamma(float gamma)
-{
-    g_opgl_octave_gamma = gamma;
-}
-
 extern "C" OPENPGL_DLLEXPORT void pglFieldClearSignatures(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;
@@ -384,11 +319,11 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics>
     return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
-extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight)
+extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight)
 {
     const auto *gField = (const IGuidingField *)field;
     const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getDirectionalSignatures(pos, lookaheadDepth, splitDim, isRight);
+    return gField->getDirectionalSignatures(pos, lookaheadDepth, modelIndex, splitDim, isRight);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1045,11 +980,5 @@ extern "C" OPENPGL_DLLEXPORT void pglImageSpaceGuidingBufferReset(PGLImageSpaceG
 }
 
 // float CEStatistics::clampValue = 1e5f;
-uint32_t g_opgl_octahedral_resolution = 64;
-uint8_t g_opgl_signature_size = PGL_SIGNATURE_MAX_SIZE;
-float g_opgl_splat_sigma = 1.0f;
-uint8_t g_opgl_octave_min = 3u;
-uint8_t g_opgl_octave_max = 7u;
-float g_opgl_octave_gamma = 0.5f;
 
 #endif

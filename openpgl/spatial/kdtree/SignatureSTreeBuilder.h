@@ -88,11 +88,11 @@ struct KDTreePartitionBuilder
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         bool nonRecursive {false};  // if enabled, stop the subdivision when the promotion finishes
         bool singlePromotion {false}; // if enabled, promote at most one level for each parent node during the promotion handling
-        bool optimizeSignature {false};  // if true, optimize signature computation by partial evaluation (unrolling etc)
+        bool optimizeSignature {false};  // if true, optimize signature computation by caching basis function values TODO: not compatible with signature ensemble
         PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};  // confidence metric to tell us whether we can trust our difference metric
-        PGL_BASIS_FUNC_TYPE basisType {PGL_BASIS_FUNC_NN};  // how to treat samples when contributing to the bins
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};  // how to grow the defensive sample count threshold
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};  // how to perform outlier removal
+        std::vector<SignatureArguments> signatureEnsembleConfig;
 
         void serialize(std::ostream& stream) const;
         void deserialize(std::istream& stream);
@@ -108,7 +108,7 @@ struct KDTreePartitionBuilder
                    stdMultiplier == b.stdMultiplier && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
-                   confidenceType == b.confidenceType && basisType == b.basisType && defensiveType == b.defensiveType && filterType == b.filterType;
+                   confidenceType == b.confidenceType && defensiveType == b.defensiveType && filterType == b.filterType && signatureEnsembleConfig == b.signatureEnsembleConfig;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -137,9 +137,9 @@ struct KDTreePartitionBuilder
             singlePromotion = cfg.singlePromotion;
             optimizeSignature = cfg.optimizeSignature;
             confidenceType = cfg.confidenceType;
-            basisType = cfg.basisType;
             defensiveType = cfg.defensiveType;
             filterType = cfg.filterType;
+            signatureEnsembleConfig = cfg.signatureEnsembleConfig;
         }
 
         void loadToConfig(PGLKDTreeArguments &cfg) const
@@ -168,9 +168,9 @@ struct KDTreePartitionBuilder
             cfg.singlePromotion = singlePromotion;
             cfg.optimizeSignature = optimizeSignature;
             cfg.confidenceType = confidenceType;
-            cfg.basisType = basisType;
             cfg.defensiveType = defensiveType;
             cfg.filterType = filterType;
+            cfg.signatureEnsembleConfig = signatureEnsembleConfig;
         }
     };
 
@@ -193,8 +193,8 @@ struct KDTreePartitionBuilder
         kdTree.m_nodes.reserve(4*numEstLeafs);
         dataStorage.reserve(2*numEstLeafs);
 
-        if (iteration >= buildSettings.initializingIters && (!buildSettings.reproject && buildSettings.optimizeSignature))
-            Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.basisType);
+        // if (iteration >= buildSettings.initializingIters && (!buildSettings.reproject && buildSettings.optimizeSignature))
+        //     Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.basisType);
 
         KDNode &root = kdTree.getRoot();
         BBox bounds;
@@ -219,15 +219,15 @@ struct KDTreePartitionBuilder
             embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
                 for (size_t i = r.begin(); i < r.end(); ++i) {
                     dataStorage[i].first.candidate.updated = false;
-                    if (dataStorage[i].first.candidate.signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                        dataStorage[i].first.candidate.signature.decay(0.5f);
+                    if (dataStorage[i].first.candidate.signatures.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                        dataStorage[i].first.candidate.signatures.decay(0.5f);
                 }
             });
             embree::parallel_for(candidateDataStorage.size(), [&](embree::range<size_t> r) {
                 for (size_t i = r.begin(); i < r.end(); ++i) {
                     candidateDataStorage[i].updated = false;
-                    if (candidateDataStorage[i].signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                        candidateDataStorage[i].signature.decay(0.5f);
+                    if (candidateDataStorage[i].signatures.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                        candidateDataStorage[i].signatures.decay(0.5f);
                 }
             });
         }
@@ -241,7 +241,7 @@ struct KDTreePartitionBuilder
     void evaluateRegions(KDTree &kdTree, TContainer &samples, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) {
         constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
         if constexpr(isNonZeroSample) {
-            if (buildSettings.optimizeSignature) Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.basisType);
+            // if (buildSettings.optimizeSignature) Signature::computeSampleBasisFunctions(samples.begin(), samples.end(), buildSettings.basisType);
         }
 
         KDNode &root = kdTree.getRoot();
@@ -255,14 +255,14 @@ struct KDTreePartitionBuilder
         // Postprocessing: decay signature when a region has way too many samples
         embree::parallel_for(dataStorage.size(), [&](embree::range<size_t> r) {
             for (size_t i = r.begin(); i < r.end(); ++i) {
-                if (dataStorage[i].first.candidate.signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                    dataStorage[i].first.candidate.signature.decay(0.5f);
+                if (dataStorage[i].first.candidate.signatures.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                    dataStorage[i].first.candidate.signatures.decay(0.5f);
             }
         });
         embree::parallel_for(candidateDataStorage.size(), [&](embree::range<size_t> r) {
             for (size_t i = r.begin(); i < r.end(); ++i) {
-                if (candidateDataStorage[i].signature.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
-                    candidateDataStorage[i].signature.decay(0.5f);
+                if (candidateDataStorage[i].signatures.getNumSamples() > PGL_SIGNATURE_MAX_SAMPLES)
+                    candidateDataStorage[i].signatures.decay(0.5f);
             }
         });
     }
@@ -289,8 +289,8 @@ struct KDTreePartitionBuilder
             it->reprojectedDirection = reprojectedDirection;
         }
 
-        if (settings.optimizeSignature)
-            Signature::computeSampleBasisFunctions(samplesBegin, samplesEnd, settings.basisType);
+        // if (settings.optimizeSignature)
+        //     Signature::computeSampleBasisFunctions(samplesBegin, samplesEnd, settings.basisType);
     }
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,
@@ -508,19 +508,19 @@ struct KDTreePartitionBuilder
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else {
-                OPENPGL_ASSERT(region.signature.getNumSamples() == 0);
+                OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.basisType, settings.optimizeSignature);
-            region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getDistance(region.signature, root.signature, settings);  // the root could change, so we need to recompute the distance even if updated
-            region.risk = region.signature.getRisk();
+            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
+            region.energy = getDistance(region.signatures, root.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
                 case PGL_SPATIAL_CONFIDENCE_TTEST: {
-                    float mu = 0.5f * (region.signature.getMean(0) + root.signature.getMean(0));
+                    float mu = 0.5f * (region.signatures[0].getMean(0) + root.signatures[0].getMean(0));
                     float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
                     // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
-                    region.tValue = Signature::getWelchT(region.signature, root.signature, eps);
+                    region.tValue = Signature::getWelchT(region.signatures[0], root.signatures[0], eps);
                     break;
                 }
                 default: break;
@@ -599,19 +599,19 @@ struct KDTreePartitionBuilder
                 region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else {
-                OPENPGL_ASSERT(region.signature.getNumSamples() == 0);
+                OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.basisType, settings.optimizeSignature);
-            region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getDistance(region.signature, root.signature, settings);  // the root could change, so we need to recompute the distance even if updated
-            region.risk = region.signature.getRisk();
+            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
+            region.energy = getDistance(region.signatures, root.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
                 case PGL_SPATIAL_CONFIDENCE_TTEST: {
-                    float mu = 0.5f * (region.signature.getMean(0) + root.signature.getMean(0));
+                    float mu = 0.5f * (region.signatures[0].getMean(0) + root.signatures[0].getMean(0));
                     float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
                     // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
-                    region.tValue = Signature::getWelchT(region.signature, root.signature, eps);
+                    region.tValue = Signature::getWelchT(region.signatures[0], root.signatures[0], eps);
                     break;
                 }
                 default: break;
@@ -694,11 +694,11 @@ struct KDTreePartitionBuilder
         return 0;
     }
 
-    static float getDistance(const Signature &a, const Signature &b, const Settings &settings) {
+    static float getDistance(const SignatureEnsemble &a, const SignatureEnsemble &b, const Settings &settings) {
         if (settings.confidenceType == PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN)
-            return Signature::getDistanceTTest(a, b, settings.stdMultiplier, settings.tValueThreshold);
+            return Signature::getDistanceTTest(a[0], b[0], settings.stdMultiplier, settings.tValueThreshold);
         else
-            return Signature::getDistance(a, b, settings.stdMultiplier);
+            return SignatureEnsemble::getDistance(a, b, settings.stdMultiplier);
     }
 
     static bool checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
@@ -706,7 +706,7 @@ struct KDTreePartitionBuilder
         switch (settings.confidenceType) {
             case PGL_SPATIAL_CONFIDENCE_NONE:
             case PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN:
-                return left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
+                return left.signatures.getNumSamples() > settings.minSamplesPromotion && right.signatures.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (energyLR > settings.signatureDistanceThreshold) ||  // LR
                            left.energy > settings.signatureDistanceThreshold || // P and L
@@ -714,14 +714,14 @@ struct KDTreePartitionBuilder
                        );
             case PGL_SPATIAL_CONFIDENCE_RISK:
                 return root.risk <= settings.riskTolerance &&
-                       left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
+                       left.signatures.getNumSamples() > settings.minSamplesPromotion && right.signatures.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
                            (left.risk <= settings.riskTolerance && left.energy > settings.signatureDistanceThreshold) ||  // P and L
                            (right.risk <= settings.riskTolerance && right.energy > settings.signatureDistanceThreshold)   // P and R
                        );
             case PGL_SPATIAL_CONFIDENCE_TTEST:
-                return left.signature.getNumSamples() > settings.minSamplesPromotion && right.signature.getNumSamples() > settings.minSamplesPromotion &&
+                return left.signatures.getNumSamples() > settings.minSamplesPromotion && right.signatures.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
                            (std::abs(left.tValue) > settings.tValueThreshold /*&& left.energy > settings.signatureDistanceThreshold*/) || // P and L
@@ -788,7 +788,7 @@ struct KDTreePartitionBuilder
 
     // Clear the signatures beneath current
     void clearCandidateSignatures(SubdivisionData &current, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage) const {
-        current.signature.clear();
+        current.signatures.clear();
         current.energy = current.risk = current.tValue = 0;
         if (current.hasSplit()) {
             SubdivisionData &left = candidateDataStorage[current.lChildIdx];
@@ -865,19 +865,19 @@ struct KDTreePartitionBuilder
 
         // Update self
         if constexpr (isNonZeroSample) {
-            current.signature.addSamples(samplesBegin, samplesEnd, settings.multiplyCosine, settings.basisType, settings.optimizeSignature);
+            current.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
         } else {
-            current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
+            current.signatures.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
-        current.energy = getDistance(current.signature, root.signature, settings);
-        current.risk = current.signature.getRisk();
+        current.energy = getDistance(current.signatures, root.signatures, settings);
+        current.risk = current.signatures.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
             case PGL_SPATIAL_CONFIDENCE_TTEST: {
-                float mu = 0.5f * (current.signature.getMean(0) + root.signature.getMean(0));
+                float mu = 0.5f * (current.signatures[0].getMean(0) + root.signatures[0].getMean(0));
                 float eps = (mu * settings.signatureDistanceThreshold) / (settings.tEpsK * settings.tValueThreshold);
                 // When k == 1, the converged T value (mu_1 - mu_2) / eps will equal to k * T when triggering the energy threshold
-                current.tValue = Signature::getWelchT(current.signature, root.signature, eps);
+                current.tValue = Signature::getWelchT(current.signatures[0], root.signatures[0], eps);
                 break;
             }
             default: break;
@@ -1579,9 +1579,28 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  singlePromotion: " << singlePromotion << std::endl;
     ss << "  optimizeSignature: " << optimizeSignature << std::endl;
     ss << "  confidenceType: " << confidenceType << std::endl;
-    ss << "  basisType: " << basisType << std::endl;
     ss << "  defensiveType: " << defensiveType << std::endl;
     ss << "  filterType: " << filterType << std::endl;
+    ss << "  # signatures: " << signatureEnsembleConfig.size() << std::endl;
+    for (size_t i = 0; i < signatureEnsembleConfig.size(); ++i) {
+        auto &cfg = signatureEnsembleConfig[i];
+        ss << "    " << i << ": " << cfg.numBins << " bins";
+        switch (cfg.basisType) {
+            case PGL_BASIS_FUNC_NN:
+            case PGL_BASIS_FUNC_LATITUDE:
+            case PGL_BASIS_FUNC_LONGITUDE:
+                ss << ", res = " << cfg.getResolution();
+                break;
+            case PGL_BASIS_FUNC_SPLAT:
+                ss << ", res = " << cfg.getResolution() << ", sigma = " << cfg.getSplatSigma();
+                break;
+            case PGL_BASIS_FUNC_DON_PCG:
+            case PGL_BASIS_FUNC_DON_XI:
+                ss << ", " << cfg.getOctaveMin() << ".." << cfg.getOctaveMax() << " octaves, gamma = " << cfg.getDONGamma();
+                break;
+        }
+        ss << std::endl;
+    }
 
     return ss.str();
 }
@@ -1614,9 +1633,13 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&singlePromotion), sizeof(singlePromotion));
     stream.write(reinterpret_cast<const char*>(&optimizeSignature), sizeof(optimizeSignature));
     stream.write(reinterpret_cast<const char*>(&confidenceType), sizeof(confidenceType));
-    stream.write(reinterpret_cast<const char*>(&basisType), sizeof(basisType));
     stream.write(reinterpret_cast<const char*>(&defensiveType), sizeof(defensiveType));
     stream.write(reinterpret_cast<const char*>(&filterType), sizeof(filterType));
+    uint32_t numSignatures = signatureEnsembleConfig.size();
+    stream.write(reinterpret_cast<const char*>(&numSignatures), sizeof(uint32_t));
+    for (const SignatureArguments &cfg: signatureEnsembleConfig) {
+        stream.write(reinterpret_cast<const char*>(&cfg), sizeof(SignatureArguments));
+    }
 }
 
 template<class TRegion, typename TSamplesContainer, typename TZeroValueSamplesContainer, typename TSamplingDistribution>
@@ -1647,9 +1670,14 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&singlePromotion), sizeof(singlePromotion));
     stream.read(reinterpret_cast<char*>(&optimizeSignature), sizeof(optimizeSignature));
     stream.read(reinterpret_cast<char*>(&confidenceType), sizeof(confidenceType));
-    stream.read(reinterpret_cast<char*>(&basisType), sizeof(basisType));
     stream.read(reinterpret_cast<char*>(&defensiveType), sizeof(defensiveType));
     stream.read(reinterpret_cast<char*>(&filterType), sizeof(filterType));
+    uint32_t numSignatures = 0;
+    stream.read(reinterpret_cast<char*>(&numSignatures), sizeof(uint32_t));
+    signatureEnsembleConfig.resize(numSignatures);
+    for (SignatureArguments &cfg: signatureEnsembleConfig) {
+        stream.read(reinterpret_cast<char*>(&cfg), sizeof(SignatureArguments));
+    }
 }
 
 }

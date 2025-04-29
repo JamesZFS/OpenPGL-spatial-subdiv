@@ -12,6 +12,7 @@
 #include <tbb/parallel_sort.h>
 #endif
 #include <map>
+#include "../include/openpgl/signaturearguments.h"
 
 namespace openpgl {
 
@@ -25,7 +26,7 @@ struct Signature  // Directional signature
 
     explicit Signature(const PGLDirectionalSignature &s) {
         numSamples = s.numSamples;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             sum[i] = s.signature[i] * numSamples;
             float varNSample = s.std[i] * s.std[i];
             float varOneSample = numSamples * varNSample;
@@ -155,257 +156,225 @@ struct Signature  // Directional signature
         }
     }
 
-    template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, PGL_BASIS_FUNC_TYPE basisType, bool optimize) {
-        // Forwarding to the appropriate function
-        if (multiplyCosine) {
-            if (optimize) {
-#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
-                for (auto it = begin; it != end; ++it) {
-                    // Directly use the cached basis function
-                    for (uint8_t j = 0; j < g_opgl_signature_size; ++j) {
-                        float w = it->basisFunction[j] * it->weight * it->cosineTerm;
-                        sum[j] += w;
-                        m2[j] += w * w;
-                    }
-                    ++numSamples;
-                }
-#else
-                std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
-#endif
-                return;
-            }
-            switch (basisType) {
-                case PGL_BASIS_FUNC_NN:
-                    return addSamples<true, PGL_BASIS_FUNC_NN>(begin, end);
-                case PGL_BASIS_FUNC_SPLAT:
-                    return addSamples<true, PGL_BASIS_FUNC_SPLAT>(begin, end);
-                case PGL_BASIS_FUNC_DON_PCG:
-                    return addSamples<true, PGL_BASIS_FUNC_DON_PCG>(begin, end);
-                case PGL_BASIS_FUNC_DON_XI:
-                    return addSamples<true, PGL_BASIS_FUNC_DON_XI>(begin, end);
-                case PGL_BASIS_FUNC_LATITUDE:
-                    return addSamples<true, PGL_BASIS_FUNC_LATITUDE>(begin, end);
-                case PGL_BASIS_FUNC_LONGITUDE:
-                    return addSamples<true, PGL_BASIS_FUNC_LONGITUDE>(begin, end);
-                default:
-                    throw std::runtime_error("Unknown contribution type");
-            }
-        } else {
-            if (optimize) {
-#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
-                for (auto it = begin; it != end; ++it) {
-                    // Directly use the cached basis function
-                    for (uint8_t j = 0; j < g_opgl_signature_size; ++j) {
-                        float w = it->basisFunction[j] * it->weight;
-                        sum[j] += w;
-                        m2[j] += w * w;
-                    }
-                    ++numSamples;
-                }
-#else
-                std::cerr << "Optimized path not available without OPENPGL_CACHE_BASIS_FUNCTIONS" << std::endl;
-#endif
-                return;
-            }
-            switch (basisType) {
-                case PGL_BASIS_FUNC_NN:
-                    return addSamples<false, PGL_BASIS_FUNC_NN>(begin, end);
-                case PGL_BASIS_FUNC_SPLAT:
-                    return addSamples<false, PGL_BASIS_FUNC_SPLAT>(begin, end);
-                case PGL_BASIS_FUNC_DON_PCG:
-                    return addSamples<false, PGL_BASIS_FUNC_DON_PCG>(begin, end);
-                case PGL_BASIS_FUNC_DON_XI:
-                    return addSamples<false, PGL_BASIS_FUNC_DON_XI>(begin, end);
-                case PGL_BASIS_FUNC_LATITUDE:
-                    return addSamples<false, PGL_BASIS_FUNC_LATITUDE>(begin, end);
-                case PGL_BASIS_FUNC_LONGITUDE:
-                    return addSamples<false, PGL_BASIS_FUNC_LONGITUDE>(begin, end);
-                default:
-                    throw std::runtime_error("Unknown contribution type");
-            }
-        }
+    inline uint8_t get_signature_index_nn(const pgl_direction &dir, uint32_t res, uint8_t S) {
+        // 1. Convert the sample.direction into [0, 1] representation
+        auto uv_ = pgl_vec2f(dir);  // [-1, 1]
+        float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
+        float y = uv_.y * 0.5f + 0.5f;
+
+        // 2. Find the histogram bin on the (conceptual) octahedral map
+        uint32_t ix = std::clamp((uint32_t)(x * res), 0u, res - 1);
+        uint32_t iy = std::clamp((uint32_t)(y * res), 0u, res - 1);
+
+        // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
+        // uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
+        uint32_t hash = pgl_pcg2d(ix, iy).first;
+        return hash % S;
     }
 
-    template<bool multiplyCosine, PGL_BASIS_FUNC_TYPE basisType, typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end) {
-        const uint8_t S = g_opgl_signature_size;
-        const uint8_t log2_bin_count = (uint8_t) std::log2(S);
-        if constexpr(basisType == PGL_BASIS_FUNC_DON_XI) {
-            if (S != (1 << log2_bin_count)) {
-                std::cerr << "Signature size must be a power of 2" << std::endl;
-                return;
-            }
-        }
-        const uint8_t octave_min = g_opgl_octave_min, octave_max = g_opgl_octave_max;
-        // const float basis_normalizer = pow(2.0, 1.0 - float(octave_min)) - pow(0.5, float(octave_max));
-        const float alpha = -0.5f / (g_opgl_splat_sigma*g_opgl_splat_sigma);
-        const float gamma = g_opgl_octave_gamma;
-        const float kernel_lb = std::exp(alpha);
-
-        for (auto it = begin; it != end; ++it) {
-            if constexpr(basisType == PGL_BASIS_FUNC_DON_PCG || basisType == PGL_BASIS_FUNC_DON_XI) {
-                pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
-                // Disjoint Octave Noise basis function
-                float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
-                for (uint8_t j = 0; j < S; ++j)
-                    basisFunctions[j] = 0.0;
-                float normalizer = 0.0f;
-                
-                // * Evaluates all basis functions at the given coordinate
-                // Iterate over all octaves
-                for (uint8_t k = octave_min; k <= octave_max; ++k) {
-                    const uint32_t res = 1 << k;
-                    // const float weight = pow(0.5, float(k)) / basis_normalizer;
-                    const float weight = std::pow(gamma, float(k));
-                    normalizer += weight;
-                    // Discretize uv at the appropriate resolution
-                    pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
-                    uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
-                    // Generate offsets
-                    uint32_t x01 = x00, y01 = y00 + 1;
-                    uint32_t x10 = x00 + 1, y10 = y00;
-                    uint32_t x11 = x00 + 1, y11 = y00 + 1;
-                    // Apply wrapping to ensure continuity on the sphere domain
-                    wrap(x00, y00, res);
-                    wrap(x01, y01, res);
-                    wrap(x10, y10, res);
-                    wrap(x11, y11, res);
-                    uint8_t h00;
-                    uint8_t h01;
-                    uint8_t h10;
-                    uint8_t h11;
-                    if constexpr(basisType == PGL_BASIS_FUNC_DON_PCG) {
-                        h00 = pcg_3d(x00, y00, k) % S;
-                        h01 = pcg_3d(x01, y01, k) % S;
-                        h10 = pcg_3d(x10, y10, k) % S;
-                        h11 = pcg_3d(x11, y11, k) % S;
-                    } else {
-                        // using Xi-seq for lower discrepancy and less clumping
-                        h00 = get_bin(x00, y00, k, log2_bin_count);
-                        h01 = get_bin(x01, y01, k, log2_bin_count);
-                        h10 = get_bin(x10, y10, k, log2_bin_count);
-                        h11 = get_bin(x11, y11, k, log2_bin_count);
+    template<typename SampleIterator>
+    void addSamples(SampleIterator begin, SampleIterator end, const SignatureArguments &config, bool multiplyCosine) {
+        const uint8_t S = config.numBins;
+        switch (config.basisType) {
+            case PGL_BASIS_FUNC_NN: {
+                const uint32_t res = config.getResolution();
+                for (auto it = begin; it != end; ++it) {
+                    uint8_t idx = get_signature_index_nn(it->reprojectedDirection, res, S);
+                    float w = it->weight;
+                    if (multiplyCosine) {
+                        w *= it->cosineTerm;
+                        // pgl_vec3f dir = it->reprojectedDirection;
+                        // pgl_vec3f normal = it->normal;
+                        // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
                     }
+                    sum[idx] += w;
+                    m2[idx] += w * w;
+                    ++numSamples;
+                }
+                break;
+            }
+            case PGL_BASIS_FUNC_SPLAT: {
+                const uint32_t res = config.getResolution();
+                const float sigma = config.getSplatSigma();
+                const float alpha = -0.5f / (sigma * sigma);
+                const float kernel_lb = std::exp(alpha);
+                for (auto it = begin; it != end; ++it) {
+                    pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
+                    // Splatting
+                    // 3x3 Gaussian kernel
+                    float bases[PGL_SIGNATURE_MAX_SIZE];
+                    for (uint8_t j = 0; j < S; ++j)
+                        bases[j] = 0.0;
+
+                    constexpr pgl_vec2i offsets[9] = {
+                        {-1, -1}, {0, -1}, {+1, -1},
+                        {-1,  0}, {0,  0}, {+1,  0},
+                        {-1, +1}, {0, +1}, {+1, +1}
+                    };
+
+                    pgl_vec2i pi{
+                        std::clamp((int)(p.x * res), 0, (int)res - 1),
+                        std::clamp((int)(p.y * res), 0, (int)res - 1)
+                    };  // {0, .., res-1}
+
+                    // Dynamically compute kernel weights of each neighbor's center
+                    float sumCoeff = 0;
+                    for (int i = 0; i < 9; ++i) {
+                        pgl_vec2i qi = {pi.x + offsets[i].x, pi.y + offsets[i].y};
+                        // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
+                        pgl_vec2f delta = {p.x * res - (qi.x + 0.5f), p.y * res - (qi.y + 0.5f)};
+                        float k = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
+                        sumCoeff += k;
+
+                        wrap_splat(qi.x, qi.y, res);
+                        uint8_t j = pgl_pcg2d(qi.x, qi.y).first % S;  // hash to bin
+                        bases[j] += k;
+                    }
+
+                    // Normalize weights
+                    for (uint8_t j = 0; j < S; ++j) {
+                        bases[j] /= sumCoeff;
+                    }
+
+                    // Splat the contribution to nearbying bins, each one with the statistical weight set as the kernelCoeff
+                    for (uint8_t j = 0; j < S; ++j) {
+                        float w = bases[j] * it->weight;
+                        if (multiplyCosine) w *= it->cosineTerm;
+                        sum[j] += w;
+                        m2[j] += w * w;
+                    }
+                    ++numSamples;
+                }
+                break;
+            }
+            case PGL_BASIS_FUNC_DON_PCG:
+            case PGL_BASIS_FUNC_DON_XI: {
+                const uint8_t log2_bin_count = (uint8_t) std::log2(S);
+                const uint8_t octave_min = config.getOctaveMin(), octave_max = config.getOctaveMax();
+                const float gamma = config.getDONGamma();
+                if (config.basisType == PGL_BASIS_FUNC_DON_XI) {
+                    if (S != (1 << log2_bin_count)) {
+                        std::cerr << "Signature size must be a power of 2" << std::endl;
+                        return;
+                    }
+                }
+                for (auto it = begin; it != end; ++it) {
+                    pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
+                    // Disjoint Octave Noise basis function
+                    float bases[PGL_SIGNATURE_MAX_SIZE];
+                    for (uint8_t j = 0; j < S; ++j)
+                        bases[j] = 0.0;
+                    float normalizer = 0.0f;
+
+                    // * Evaluates all basis functions at the given coordinate
+                    // Iterate over all octaves
+                    for (uint8_t k = octave_min; k <= octave_max; ++k) {
+                        const uint32_t res = 1 << k;
+                        // const float weight = pow(0.5, float(k)) / basis_normalizer;
+                        const float weight = std::pow(gamma, float(k));
+                        normalizer += weight;
+                        // Discretize uv at the appropriate resolution
+                        pgl_vec2f octave_uv = {p.x * float(res), p.y * float(res)};
+                        uint32_t x00 = uint32_t(octave_uv.x), y00 = uint32_t(octave_uv.y);
+                        // Generate offsets
+                        uint32_t x01 = x00, y01 = y00 + 1;
+                        uint32_t x10 = x00 + 1, y10 = y00;
+                        uint32_t x11 = x00 + 1, y11 = y00 + 1;
+                        // Apply wrapping to ensure continuity on the sphere domain
+                        wrap(x00, y00, res);
+                        wrap(x01, y01, res);
+                        wrap(x10, y10, res);
+                        wrap(x11, y11, res);
+                        uint8_t h00;
+                        uint8_t h01;
+                        uint8_t h10;
+                        uint8_t h11;
+                        if (config.basisType == PGL_BASIS_FUNC_DON_PCG) {
+                            h00 = pcg_3d(x00, y00, k) % S;
+                            h01 = pcg_3d(x01, y01, k) % S;
+                            h10 = pcg_3d(x10, y10, k) % S;
+                            h11 = pcg_3d(x11, y11, k) % S;
+                        } else {
+                            // using Xi-seq for lower discrepancy and less clumping
+                            h00 = get_bin(x00, y00, k, log2_bin_count);
+                            h01 = get_bin(x01, y01, k, log2_bin_count);
+                            h10 = get_bin(x10, y10, k, log2_bin_count);
+                            h11 = get_bin(x11, y11, k, log2_bin_count);
+                        }
+
+                        for (uint8_t j = 0; j < S; ++j) {
+                            // Determine whether this bin gets the sample
+                            float M00 = (h00 == j) ? 1.0 : 0.0;
+                            float M01 = (h01 == j) ? 1.0 : 0.0;
+                            float M10 = (h10 == j) ? 1.0 : 0.0;
+                            float M11 = (h11 == j) ? 1.0 : 0.0;
+                            // Perform bilinear interpolation
+                            float M0 = mix(M00, M01, fract(octave_uv.y));
+                            float M1 = mix(M10, M11, fract(octave_uv.y));
+                            float M = mix(M0, M1, fract(octave_uv.x));
+                            // Accumulate into the result
+                            bases[j] += weight * M;
+                        }
+                    }
+
+                    // Contribute to all bins, each one attenuated with its basis function
+                    for (uint8_t j = 0; j < S; ++j) {
+                        float w = bases[j] / normalizer * it->weight;
+                        if (multiplyCosine) w *= it->cosineTerm;
+                        sum[j] += w;
+                        m2[j] += w * w;
+                    }
+                    ++numSamples;
+                }
+
+                break;
+            }
+            case PGL_BASIS_FUNC_LATITUDE: {
+                const uint32_t res = config.getResolution();
+                for (auto it = begin; it != end; ++it) {
+                    pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
+                    float u = fract(p.x * float(res));  // latitude
 
                     for (uint8_t j = 0; j < S; ++j) {
-                        // Determine whether this bin gets the sample
-                        float M00 = (h00 == j) ? 1.0 : 0.0;
-                        float M01 = (h01 == j) ? 1.0 : 0.0;
-                        float M10 = (h10 == j) ? 1.0 : 0.0;
-                        float M11 = (h11 == j) ? 1.0 : 0.0;
-                        // Perform bilinear interpolation
-                        float M0 = mix(M00, M01, fract(octave_uv.y));
-                        float M1 = mix(M10, M11, fract(octave_uv.y));
-                        float M = mix(M0, M1, fract(octave_uv.x));
-                        // Accumulate into the result
-                        basisFunctions[j] += weight * M;
+                        float x = M_PI_2f * (float(S) * u - float(j));
+                        float b = 0.0;
+                        if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
+                            b = std::cos(x);
+                            b *= b;
+                        }
+                        float w = b * it->weight;
+                        if (multiplyCosine) w *= it->cosineTerm;
+                        sum[j] += w;
+                        m2[j] += w * w;
                     }
+                    ++numSamples;
                 }
-
-                // Contribute to all bins, each one attenuated with its basis function
-                for (uint8_t j = 0; j < S; ++j) {
-                    float w = basisFunctions[j] / normalizer * it->weight;
-                    if constexpr(multiplyCosine) w *= it->cosineTerm;
-                    sum[j] += w;
-                    m2[j] += w * w;
-                }
-                ++numSamples;
-            } else if constexpr(basisType == PGL_BASIS_FUNC_LATITUDE) {
-                pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
-                float u = fract(p.x * g_opgl_octahedral_resolution);  // latitude
-
-                for (uint8_t j = 0; j < S; ++j) {
-                    float x = M_PI_2f * (float(S) * u - float(j));
-                    float b = 0.0;
-                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
-                        b = std::cos(x);
-                        b *= b;
-                    }
-                    float w = b * it->weight;
-                    if constexpr(multiplyCosine) w *= it->cosineTerm;
-                    sum[j] += w;
-                    m2[j] += w * w;
-                }
-                ++numSamples;
-            } else if constexpr(basisType == PGL_BASIS_FUNC_LONGITUDE) {
-                pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
-                float v = fract(p.y * 2 * g_opgl_octahedral_resolution);  // longitude
-
-                for (uint8_t j = 0; j < S; ++j) {
-                    float x = M_PI_2f * (float(S) * v - float(j));
-                    float b = 0.0;
-                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
-                        b = std::cos(x);
-                        b *= b;
-                    }
-                    float w = b * it->weight;
-                    if constexpr(multiplyCosine) w *= it->cosineTerm;
-                    sum[j] += w;
-                    m2[j] += w * w;
-                }
-                ++numSamples;
-            } else if constexpr(basisType == PGL_BASIS_FUNC_SPLAT) {
-                pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
-                // Splatting
-                // 3x3 Gaussian kernel
-                float maskingFunctions[PGL_SIGNATURE_MAX_SIZE];
-                for (uint8_t j = 0; j < S; ++j)
-                    maskingFunctions[j] = 0.0;
-
-                constexpr pgl_vec2i offsets[9] = {
-                    {-1, -1}, {0, -1}, {+1, -1},
-                    {-1,  0}, {0,  0}, {+1,  0},
-                    {-1, +1}, {0, +1}, {+1, +1}
-                };
-
-                pgl_vec2i pi{
-                    std::clamp((int)(p.x * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1),
-                    std::clamp((int)(p.y * g_opgl_octahedral_resolution), 0, (int)g_opgl_octahedral_resolution - 1)
-                };  // {0, .., g_opgl_octahedral_resolution-1}
-
-                // Dynamically compute kernel weights of each neighbor's center
-                float sumCoeff = 0;
-                for (int i = 0; i < 9; ++i) {
-                    pgl_vec2i qi = {pi.x + offsets[i].x, pi.y + offsets[i].y};
-                    // pgl_vec2f delta = {(float)(pi.x - qi.x), (float)(pi.y - qi.y)}; // old approach: static weights
-                    pgl_vec2f delta = {p.x * g_opgl_octahedral_resolution - (qi.x + 0.5f), p.y * g_opgl_octahedral_resolution - (qi.y + 0.5f)};
-                    float k = std::max(std::exp(alpha * (delta.x*delta.x + delta.y*delta.y)) - kernel_lb, 0.0f);
-                    sumCoeff += k;
-
-                    wrap_splat(qi.x, qi.y, g_opgl_octahedral_resolution);
-                    uint8_t j = pgl_pcg2d(qi.x, qi.y).first % S;  // hash to bin
-                    maskingFunctions[j] += k;
-                }
-
-                // Normalize weights
-                for (uint8_t j = 0; j < S; ++j) {
-                    maskingFunctions[j] /= sumCoeff;
-                }
-
-                // Splat the contribution to nearbying bins, each one with the statistical weight set as the kernelCoeff
-                for (uint8_t j = 0; j < S; ++j) {
-                    float w = maskingFunctions[j] * it->weight;
-                    if constexpr(multiplyCosine) w *= it->cosineTerm;
-                    sum[j] += w;
-                    m2[j] += w * w;
-                }
-                ++numSamples;
-            } else if constexpr(basisType == PGL_BASIS_FUNC_NN) {
-                uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
-                float w = it->weight;
-                if constexpr(multiplyCosine) {
-                    w *= it->cosineTerm;
-                    // pgl_vec3f dir = it->reprojectedDirection;
-                    // pgl_vec3f normal = it->normal;
-                    // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
-                }
-                sum[idx] += w;
-                m2[idx] += w * w;
-                ++numSamples;
-            } else {
-                throw std::runtime_error("Unknown contribution type");
+                break;
             }
+            case PGL_BASIS_FUNC_LONGITUDE: {
+                const uint32_t res = config.getResolution();
+                for (auto it = begin; it != end; ++it) {
+                    pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
+                    float v = fract(p.y * float(res));  // longitude
+
+                    for (uint8_t j = 0; j < S; ++j) {
+                        float x = M_PI_2f * (float(S) * v - float(j));
+                        float b = 0.0;
+                        if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
+                            b = std::cos(x);
+                            b *= b;
+                        }
+                        float w = b * it->weight;
+                        if (multiplyCosine) w *= it->cosineTerm;
+                        sum[j] += w;
+                        m2[j] += w * w;
+                    }
+                    ++numSamples;
+                }
+                break;
+            }
+
+            default: throw std::runtime_error("Unknown basis type");
         }
     }
 
@@ -599,7 +568,7 @@ struct Signature  // Directional signature
 
     float getTotalAvg() const {
         float tot = 0.0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             tot += sum[i];
         }
         return tot / numSamples;
@@ -607,7 +576,7 @@ struct Signature  // Directional signature
 
     float getTotalStd() const {
         float tot = 0.0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             tot += m2[i];
         }
         float avg = getTotalAvg();
@@ -617,7 +586,7 @@ struct Signature  // Directional signature
     }
 
     void decay(float alpha) {
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             sum[i] *= alpha;
             m2[i] *= alpha;
         }
@@ -626,7 +595,7 @@ struct Signature  // Directional signature
 
     explicit operator PGLDirectionalSignature() const {
         PGLDirectionalSignature signature;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             signature.signature[i] = getMean(i);
             signature.std[i] = getStd(i);
         }
@@ -637,7 +606,7 @@ struct Signature  // Directional signature
     // L2 distance between two signatures
     static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -654,7 +623,7 @@ struct Signature  // Directional signature
     // L1 distance between two signatures
     static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -670,7 +639,7 @@ struct Signature  // Directional signature
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
         float num = 0, denom = 0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -685,7 +654,7 @@ struct Signature  // Directional signature
 
     // Assuming b is parent
     static float getOneSampleT(const Signature &a, const Signature &b) {
-        OPENPGL_ASSERT(g_opgl_signature_size == 1);
+        // OPENPGL_ASSERT(g_opgl_signature_size == 1);
         float num = a.getMean(0) - b.getMean(0);
         // float denom = b.getStd(0);
         float denom = a.getStd(0);
@@ -693,7 +662,7 @@ struct Signature  // Directional signature
     }
 
     static float getWelchT(const Signature &a, const Signature &b, float eps) {
-        OPENPGL_ASSERT(g_opgl_signature_size == 1);
+        // OPENPGL_ASSERT(g_opgl_signature_size == 1);
         float num = a.getMean(0) - b.getMean(0);
         float denom = std::sqrt(a.getVariance(0) + b.getVariance(0)) + eps;
         return denom == 0 ? 0 : num / denom;
@@ -706,7 +675,7 @@ struct Signature  // Directional signature
 
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
         float num = 0, denom = 0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             float sigma = std::sqrt(a.getVariance(i) + b.getVariance(i));
@@ -727,7 +696,7 @@ struct Signature  // Directional signature
 #if 1
         // maximum value of std / mean per bin
         float maxRisk = 0;
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
+        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
             float mean = getMean(i);
             if (mean == 0) continue;
             float std = getStd(i);
@@ -737,21 +706,6 @@ struct Signature  // Directional signature
 #else
         return getTotalStd() / getTotalAvg();
 #endif
-    }
-
-    static bool differsSignificantly(const Signature &a, const Signature &b, float threshold) {
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {
-            float ai = a.getMean(i), bi = b.getMean(i);
-            float a_std = a.getStd(i), b_std = b.getStd(i);
-            // if interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap and SMAPE(ai, bi) > threshold => split!
-            // if ((ai - a_std > bi + b_std || ai + a_std < bi - b_std) &&
-            //     2.0f * std::abs(ai - bi) / (ai + bi) > threshold)
-            //     return true;
-            if ((ai - a_std > bi + b_std && 2.0f * (ai - bi - a_std - b_std) / (ai + bi) > threshold) ||
-                (ai + a_std < bi - b_std && 2.0f * (bi - ai - a_std - b_std) / (ai + bi) > threshold))
-                return true;
-        }
-        return false;
     }
 
     void serialize(std::ostream &stream) const {
