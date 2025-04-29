@@ -3,13 +3,6 @@
 #include "common.h"
 #include "defines.h"
 
-extern uint32_t g_opgl_octahedral_resolution;
-extern uint8_t g_opgl_signature_size;
-extern uint8_t g_opgl_octave_min;
-extern uint8_t g_opgl_octave_max;
-extern float g_opgl_splat_sigma;
-extern float g_opgl_octave_gamma;    // a parameter to control the weights of the higher octaves in the basis functions
-
 /// Helper struct to communicate between OpenPGL and the renderer/visualizer to output debug information.
 struct PGLRegionStatistics
 {
@@ -58,36 +51,4 @@ inline std::pair<uint32_t, uint32_t> pgl_pcg2d(uint32_t x, uint32_t y) {
     y = y ^ (y>>16u);
 
     return {x, y};
-}
-
-inline uint8_t pgl_get_signature_index(const pgl_direction &dir) {
-    // 1. Convert the sample.direction into [0, 1] representation
-    auto uv_ = pgl_vec2f(dir);  // [-1, 1]
-    float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
-    float y = uv_.y * 0.5f + 0.5f;
-
-    // 2. Find the histogram bin on the (conceptual) octahedral map
-    uint32_t ix = std::clamp((uint32_t)(x * g_opgl_octahedral_resolution), 0u, g_opgl_octahedral_resolution - 1);
-    uint32_t iy = std::clamp((uint32_t)(y * g_opgl_octahedral_resolution), 0u, g_opgl_octahedral_resolution - 1);
-
-    // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
-    // uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
-    uint32_t hash = pgl_pcg2d(ix, iy).first;
-    return hash % g_opgl_signature_size;
-}
-
-inline uint8_t pgl_get_signature_index_jitter(const pgl_direction &dir, int dx, int dy) {
-    // 1. Convert the sample.direction into [0, 1] representation
-    auto uv_ = pgl_vec2f(dir);  // [-1, 1]
-    float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
-    float y = uv_.y * 0.5f + 0.5f;
-
-    // 2. Find the histogram bin on the (conceptual) octahedral map, jittered by (dx, dy)
-    int ix = std::clamp((int)(x * g_opgl_octahedral_resolution) + dx, 0, (int)g_opgl_octahedral_resolution - 1);
-    int iy = std::clamp((int)(y * g_opgl_octahedral_resolution) + dy, 0, (int)g_opgl_octahedral_resolution - 1);
-
-    // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
-    // uint32_t hash = (2654435761 * ix) ^ (805459861 * iy);  // Instant-NGP
-    uint32_t hash = pgl_pcg2d(ix, iy).first;
-    return hash % g_opgl_signature_size;
 }

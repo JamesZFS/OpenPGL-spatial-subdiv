@@ -14,8 +14,99 @@
 
 namespace openpgl
 {
+
+// A ensemble of signatures (mixture of experts), where all signatures consume the same MC samples with a distinct configuration of bases.
+// By this design, we are able to have different compressed representations of the (marginalized) radiance field at each region,
+//  hopefully each of which capturing different features.
+struct SignatureEnsemble {
+    std::vector<Signature> data {1};  // at least one
+
+    template<typename SampleIterator>
+    void addSamples(SampleIterator begin, SampleIterator end, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
+        OPENPGL_ASSERT(ensembleConfig.size() == data.size());
+        for (size_t i = 0; i < ensembleConfig.size(); ++i) {
+            data[i].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
+        }
+    }
+
+    void addZeroSamples(size_t numZeroSamples) {
+        for (auto &signature : data) {
+            signature.addZeroSamples(numZeroSamples);
+        }
+    }
+
+    void clear() {
+        for (auto &signature : data) {
+            signature.clear();
+        }
+    }
+
+    void decay(float alpha) {
+        for (auto &signature : data) {
+            signature.decay(alpha);
+        }
+    }
+
+    Signature &operator[](size_t i) {
+        OPENPGL_ASSERT(i < data.size());
+        return data[i];
+    }
+
+    const Signature &operator[](size_t i) const {
+        OPENPGL_ASSERT(i < data.size());
+        return data[i];
+    }
+
+    uint32_t getNumSignatures() const {
+        return data.size();
+    }
+
+    void setNumSignatures(uint32_t numSignatures) {
+        data.resize(numSignatures);
+    }
+
+    float getNumSamples() const {
+        return data[0].getNumSamples();
+    }
+
+    // The maximum distance across all signatures
+    static float getDistance(const SignatureEnsemble &a, const SignatureEnsemble &b, float stdMultiplier) {
+        float distance = 0.0f;
+        for (size_t i = 0; i < a.data.size(); ++i) {
+            distance = std::max(distance, Signature::getDistance(a.data[i], b.data[i], stdMultiplier));
+        }
+        return distance;
+    }
+
+    float getRisk() {
+        float risk = 0.0f;
+        for (const auto &signature : data) {
+            risk = std::max(risk, signature.getRisk());
+        }
+        return risk;
+    }
+
+    void serialize(std::ostream &stream) const {
+        uint32_t numSignatures = static_cast<uint32_t>(data.size());
+        stream.write(reinterpret_cast<const char *>(&numSignatures), sizeof(numSignatures));
+        for (const auto &signature : data) {
+            signature.serialize(stream);
+        }
+    }
+
+    void deserialize(std::istream &stream) {
+        uint32_t numSignatures;
+        stream.read(reinterpret_cast<char *>(&numSignatures), sizeof(numSignatures));
+        data.resize(numSignatures);
+        for (auto &signature : data) {
+            signature.deserialize(stream);
+        }
+    }
+
+};
+
 struct SubdivisionData {
-    Signature signature;
+    SignatureEnsemble signatures;
     SampleStatistics sampleStatistics;
 
     float pivot {0};
@@ -31,7 +122,7 @@ struct SubdivisionData {
     bool hasSplit() const { return dim < 3; }
 
     void reset() {
-        signature.clear();
+        signatures.clear();
         sampleStatistics.clear();
         pivot = 0;
         dim = 3;
@@ -45,7 +136,7 @@ struct SubdivisionData {
 
     void serialize(std::ostream &stream) const
     {
-        signature.serialize(stream);
+        signatures.serialize(stream);
         sampleStatistics.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&pivot), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
@@ -58,7 +149,7 @@ struct SubdivisionData {
 
     void deserialize(std::istream &stream)
     {
-        signature.deserialize(stream);
+        signatures.deserialize(stream);
         sampleStatistics.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&pivot), sizeof(float));
         stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx

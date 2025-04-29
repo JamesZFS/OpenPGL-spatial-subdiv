@@ -316,14 +316,14 @@ public:
 
     void clearSignatures() {
         for (auto &[region, _] : m_regionStorageContainer) {
-            region.candidate.signature.clear();
+            region.candidate.signatures.clear();
             region.candidate.energy = 0;
             region.candidate.risk = 0;
             region.candidate.tValue = 0;
             region.candidate.sampleStatistics.weightMean = region.candidate.sampleStatistics.weightM2 = region.candidate.sampleStatistics.weightCnt = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
-            cr.signature.clear();
+            cr.signatures.clear();
             cr.energy = 0;
             cr.risk = 0;
             cr.tValue = 0;
@@ -378,7 +378,7 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight) const {
         splitDim = 3;
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
@@ -398,14 +398,14 @@ public:
             if (index != -1) {
                 uint32_t lChildIdx = index - isRight;
                 return {
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signature),
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signature)
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signatures[modelIndex]),
+                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signatures[modelIndex])
                 };
             } else {
                 // At parent node
                 return {
-                    PGLDirectionalSignature(candidate->signature),
-                    PGLDirectionalSignature(candidate->signature)
+                    PGLDirectionalSignature(candidate->signatures[modelIndex]),
+                    PGLDirectionalSignature(candidate->signatures[modelIndex])
                 };
             }
         }
@@ -431,9 +431,7 @@ public:
         stats.energy = region.candidate.energy;
         stats.risk = region.candidate.risk;
         stats.tValue = region.candidate.tValue;
-        stats.fluence = 0.0f;
-        for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
-            stats.fluence += region.candidate.signature.getMean(i);
+        stats.fluence = region.candidate.signatures[0].getTotalAvg();
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
@@ -479,10 +477,8 @@ public:
         }
         if (fStats.id != -1) {
             fStats.depth = candidate->depth;
-            fStats.numSamples = (uint32_t) candidate->signature.getNumSamples();
-            fStats.fluence = 0.0f;
-            for (uint8_t i = 0; i < g_opgl_signature_size; ++i)
-                fStats.fluence += candidate->signature.getMean(i);
+            fStats.numSamples = (uint32_t) candidate->signatures.getNumSamples();
+            fStats.fluence = candidate->signatures[0].getTotalAvg();
             fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};
@@ -524,12 +520,6 @@ public:
         os.write(reinterpret_cast<const char *>(&m_useStochasticNNLookUp), sizeof(m_useStochasticNNLookUp));
         os.write(reinterpret_cast<const char *>(&m_useISNNLookUp), sizeof(m_useISNNLookUp));
         m_regionKNNSearchTree.serialize(os);
-        os.write(reinterpret_cast<const char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
-        os.write(reinterpret_cast<const char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
-        os.write(reinterpret_cast<const char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
-        os.write(reinterpret_cast<const char *>(&g_opgl_octave_min), sizeof(g_opgl_octave_min));
-        os.write(reinterpret_cast<const char *>(&g_opgl_octave_max), sizeof(g_opgl_octave_max));
-        os.write(reinterpret_cast<const char *>(&g_opgl_octave_gamma), sizeof(g_opgl_octave_gamma));
     }
 
     void deserialize(std::istream &is)
@@ -578,12 +568,6 @@ public:
         {
             m_regionKNNSearchTree.buildRegionNeighbours();
         }
-        is.read(reinterpret_cast<char *>(&g_opgl_octahedral_resolution), sizeof(g_opgl_octahedral_resolution));
-        is.read(reinterpret_cast<char *>(&g_opgl_signature_size), sizeof(g_opgl_signature_size));
-        is.read(reinterpret_cast<char *>(&g_opgl_splat_sigma), sizeof(g_opgl_splat_sigma));
-        is.read(reinterpret_cast<char *>(&g_opgl_octave_min), sizeof(g_opgl_octave_min));
-        is.read(reinterpret_cast<char *>(&g_opgl_octave_max), sizeof(g_opgl_octave_max));
-        is.read(reinterpret_cast<char *>(&g_opgl_octave_gamma), sizeof(g_opgl_octave_gamma));
     }
 
     bool isValid() const
