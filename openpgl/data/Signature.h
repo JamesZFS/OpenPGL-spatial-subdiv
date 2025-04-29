@@ -156,7 +156,7 @@ struct Signature  // Directional signature
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, bool optimize) {
+    void addSamples(SampleIterator begin, SampleIterator end, bool multiplyCosine, PGL_BASIS_FUNC_TYPE basisType, bool optimize) {
         // Forwarding to the appropriate function
         if (multiplyCosine) {
             if (optimize) {
@@ -175,17 +175,19 @@ struct Signature  // Directional signature
 #endif
                 return;
             }
-            switch (contribType) {
-                case PGL_SPATIAL_CONTRIB_NN:
-                    return addSamples<true, PGL_SPATIAL_CONTRIB_NN>(begin, end);
-                case PGL_SPATIAL_CONTRIB_SPLAT:
-                    return addSamples<true, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
-                case PGL_SPATIAL_CONTRIB_BASIS:
-                    return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
-                case PGL_SPATIAL_CONTRIB_BASIS_XI:
-                    return addSamples<true, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
-                case PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE:
-                    return addSamples<true, PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE>(begin, end);
+            switch (basisType) {
+                case PGL_BASIS_FUNC_NN:
+                    return addSamples<true, PGL_BASIS_FUNC_NN>(begin, end);
+                case PGL_BASIS_FUNC_SPLAT:
+                    return addSamples<true, PGL_BASIS_FUNC_SPLAT>(begin, end);
+                case PGL_BASIS_FUNC_DON_PCG:
+                    return addSamples<true, PGL_BASIS_FUNC_DON_PCG>(begin, end);
+                case PGL_BASIS_FUNC_DON_XI:
+                    return addSamples<true, PGL_BASIS_FUNC_DON_XI>(begin, end);
+                case PGL_BASIS_FUNC_LATITUDE:
+                    return addSamples<true, PGL_BASIS_FUNC_LATITUDE>(begin, end);
+                case PGL_BASIS_FUNC_LONGITUDE:
+                    return addSamples<true, PGL_BASIS_FUNC_LONGITUDE>(begin, end);
                 default:
                     throw std::runtime_error("Unknown contribution type");
             }
@@ -206,29 +208,30 @@ struct Signature  // Directional signature
 #endif
                 return;
             }
-            switch (contribType) {
-                case PGL_SPATIAL_CONTRIB_NN:
-                    return addSamples<false, PGL_SPATIAL_CONTRIB_NN>(begin, end);
-                case PGL_SPATIAL_CONTRIB_SPLAT:
-                    return addSamples<false, PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
-                case PGL_SPATIAL_CONTRIB_BASIS:
-                    return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
-                case PGL_SPATIAL_CONTRIB_BASIS_XI:
-                    return addSamples<false, PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
-                case PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE:
-                    return addSamples<false, PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE>(begin, end);
+            switch (basisType) {
+                case PGL_BASIS_FUNC_NN:
+                    return addSamples<false, PGL_BASIS_FUNC_NN>(begin, end);
+                case PGL_BASIS_FUNC_SPLAT:
+                    return addSamples<false, PGL_BASIS_FUNC_SPLAT>(begin, end);
+                case PGL_BASIS_FUNC_DON_PCG:
+                    return addSamples<false, PGL_BASIS_FUNC_DON_PCG>(begin, end);
+                case PGL_BASIS_FUNC_DON_XI:
+                    return addSamples<false, PGL_BASIS_FUNC_DON_XI>(begin, end);
+                case PGL_BASIS_FUNC_LATITUDE:
+                    return addSamples<false, PGL_BASIS_FUNC_LATITUDE>(begin, end);
+                case PGL_BASIS_FUNC_LONGITUDE:
+                    return addSamples<false, PGL_BASIS_FUNC_LONGITUDE>(begin, end);
                 default:
                     throw std::runtime_error("Unknown contribution type");
             }
         }
     }
 
-    template<bool multiplyCosine, PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
+    template<bool multiplyCosine, PGL_BASIS_FUNC_TYPE basisType, typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end) {
         const uint8_t S = g_opgl_signature_size;
-        const uint8_t halfS = S >> 1;
         const uint8_t log2_bin_count = (uint8_t) std::log2(S);
-        if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+        if constexpr(basisType == PGL_BASIS_FUNC_DON_XI) {
             if (S != (1 << log2_bin_count)) {
                 std::cerr << "Signature size must be a power of 2" << std::endl;
                 return;
@@ -241,7 +244,7 @@ struct Signature  // Directional signature
         const float kernel_lb = std::exp(alpha);
 
         for (auto it = begin; it != end; ++it) {
-            if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS || contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+            if constexpr(basisType == PGL_BASIS_FUNC_DON_PCG || basisType == PGL_BASIS_FUNC_DON_XI) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Disjoint Octave Noise basis function
                 float basisFunctions[PGL_SIGNATURE_MAX_SIZE];
@@ -272,7 +275,7 @@ struct Signature  // Directional signature
                     uint8_t h01;
                     uint8_t h10;
                     uint8_t h11;
-                    if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS) {
+                    if constexpr(basisType == PGL_BASIS_FUNC_DON_PCG) {
                         h00 = pcg_3d(x00, y00, k) % S;
                         h01 = pcg_3d(x01, y01, k) % S;
                         h10 = pcg_3d(x10, y10, k) % S;
@@ -308,16 +311,14 @@ struct Signature  // Directional signature
                     m2[j] += w * w;
                 }
                 ++numSamples;
-            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE) {
+            } else if constexpr(basisType == PGL_BASIS_FUNC_LATITUDE) {
                 pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
-
                 float u = fract(p.x * g_opgl_octahedral_resolution);  // latitude
-                float v = fract(p.y * 2 * g_opgl_octahedral_resolution);  // longitude
 
                 for (uint8_t j = 0; j < S; ++j) {
-                    float x = M_PI_2f * (float(halfS) * (j < halfS ? u : v) - float(j < halfS ? j : j - halfS));
+                    float x = M_PI_2f * (float(S) * u - float(j));
                     float b = 0.0;
-                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * halfS && x - M_PI_2f * halfS < M_PI_2f)) {
+                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
                         b = std::cos(x);
                         b *= b;
                     }
@@ -327,7 +328,24 @@ struct Signature  // Directional signature
                     m2[j] += w * w;
                 }
                 ++numSamples;
-            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_SPLAT) {
+            } else if constexpr(basisType == PGL_BASIS_FUNC_LONGITUDE) {
+                pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
+                float v = fract(p.y * 2 * g_opgl_octahedral_resolution);  // longitude
+
+                for (uint8_t j = 0; j < S; ++j) {
+                    float x = M_PI_2f * (float(S) * v - float(j));
+                    float b = 0.0;
+                    if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
+                        b = std::cos(x);
+                        b *= b;
+                    }
+                    float w = b * it->weight;
+                    if constexpr(multiplyCosine) w *= it->cosineTerm;
+                    sum[j] += w;
+                    m2[j] += w * w;
+                }
+                ++numSamples;
+            } else if constexpr(basisType == PGL_BASIS_FUNC_SPLAT) {
                 pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                 // Splatting
                 // 3x3 Gaussian kernel
@@ -373,7 +391,7 @@ struct Signature  // Directional signature
                     m2[j] += w * w;
                 }
                 ++numSamples;
-            } else if constexpr(contribType == PGL_SPATIAL_CONTRIB_NN) {
+            } else if constexpr(basisType == PGL_BASIS_FUNC_NN) {
                 uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                 float w = it->weight;
                 if constexpr(multiplyCosine) {
@@ -392,28 +410,28 @@ struct Signature  // Directional signature
     }
 
     template<typename SampleIterator>
-    static void computeSampleBasisFunctions(SampleIterator begin, SampleIterator end, PGL_SPATIAL_CONTRIB_TYPE contribType) {
+    static void computeSampleBasisFunctions(SampleIterator begin, SampleIterator end, PGL_BASIS_FUNC_TYPE basisType) {
         // Forwarding to the appropriate function
-        switch (contribType) {
-            case PGL_SPATIAL_CONTRIB_NN:
-                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_NN>(begin, end);
-            case PGL_SPATIAL_CONTRIB_SPLAT:
-                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_SPLAT>(begin, end);
-            case PGL_SPATIAL_CONTRIB_BASIS:
-                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_BASIS>(begin, end);
-            case PGL_SPATIAL_CONTRIB_BASIS_XI:
-                return computeSampleBasisFunctions<PGL_SPATIAL_CONTRIB_BASIS_XI>(begin, end);
+        switch (basisType) {
+            case PGL_BASIS_FUNC_NN:
+                return computeSampleBasisFunctions<PGL_BASIS_FUNC_NN>(begin, end);
+            case PGL_BASIS_FUNC_SPLAT:
+                return computeSampleBasisFunctions<PGL_BASIS_FUNC_SPLAT>(begin, end);
+            case PGL_BASIS_FUNC_DON_PCG:
+                return computeSampleBasisFunctions<PGL_BASIS_FUNC_DON_PCG>(begin, end);
+            case PGL_BASIS_FUNC_DON_XI:
+                return computeSampleBasisFunctions<PGL_BASIS_FUNC_DON_XI>(begin, end);
             default:
                 throw std::runtime_error("Unknown contribution type");
         }
     }
 
-    template<PGL_SPATIAL_CONTRIB_TYPE contribType, typename SampleIterator>
+    template<PGL_BASIS_FUNC_TYPE basisType, typename SampleIterator>
     static void computeSampleBasisFunctions(SampleIterator begin, SampleIterator end) {
 #ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
         const uint8_t S = g_opgl_signature_size;
         const uint8_t log2_bin_count = (uint8_t) std::log2(S);
-        if constexpr(contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+        if constexpr(basisType == PGL_BASIS_FUNC_DON_XI) {
             if (S != (1 << log2_bin_count)) {
                 std::cerr << "Signature size must be a power of 2" << std::endl;
                 return;
@@ -429,7 +447,7 @@ struct Signature  // Directional signature
         embree::parallel_for(N, [&](embree::range<size_t> r) {
             for (size_t i = r.begin(); i < r.end(); ++i) {
                 auto it = begin + i;
-                if constexpr (contribType == PGL_SPATIAL_CONTRIB_BASIS || contribType == PGL_SPATIAL_CONTRIB_BASIS_XI) {
+                if constexpr (basisType == PGL_BASIS_FUNC_DON_PCG || basisType == PGL_BASIS_FUNC_DON_XI) {
                     pgl_vec2f p = dir_to_oct(it->reprojectedDirection); // [0, 1]^2
                     // Disjoint Octave Noise basis function
                     for (uint8_t j = 0; j < S; ++j)
@@ -459,7 +477,7 @@ struct Signature  // Directional signature
                         uint8_t h01;
                         uint8_t h10;
                         uint8_t h11;
-                        if constexpr (contribType == PGL_SPATIAL_CONTRIB_BASIS) {
+                        if constexpr (basisType == PGL_BASIS_FUNC_DON_PCG) {
                             h00 = pcg_3d(x00, y00, k) % S;
                             h01 = pcg_3d(x01, y01, k) % S;
                             h10 = pcg_3d(x10, y10, k) % S;
@@ -491,7 +509,7 @@ struct Signature  // Directional signature
                     for (uint8_t j = 0; j < S; ++j) {
                         it->basisFunction[j] /= normalizer;
                     }
-                } else if constexpr (contribType == PGL_SPATIAL_CONTRIB_SPLAT) {
+                } else if constexpr (basisType == PGL_BASIS_FUNC_SPLAT) {
                     pgl_vec2f p = dir_to_oct(it->reprojectedDirection); // [0, 1]^2
                     // Splatting
                     // 3x3 Gaussian kernel
@@ -532,7 +550,7 @@ struct Signature  // Directional signature
                     for (uint8_t j = 0; j < S; ++j) {
                         it->basisFunction[j] /= sumCoeff;
                     }
-                } else if constexpr (contribType == PGL_SPATIAL_CONTRIB_NN) {
+                } else if constexpr (basisType == PGL_BASIS_FUNC_NN) {
                     // One-hot
                     uint8_t idx = pgl_get_signature_index(it->reprojectedDirection);
                     for (uint8_t j = 0; j < S; ++j) {
@@ -684,26 +702,6 @@ struct Signature  // Directional signature
     // In some cases, b is assumed to be the *parent* region
     static float getDistance(const Signature &a, const Signature &b, float stdMultiplier) {
         return getDistanceSMAPE(a, b, stdMultiplier);
-    }
-
-    // Assuming it's a signature ensemble separated at S/2, then taking the maximum distance
-    static float getDistanceEnsemble(const Signature &a, const Signature &b, float stdMultiplier) {
-        float num[2] = {}, denom[2] = {};
-        for (uint8_t i = 0; i < g_opgl_signature_size; i++) {  // TODO: number of samples are buggy
-            bool right = i > g_opgl_signature_size >> 1;
-            float ai = a.getMean(i), bi = b.getMean(i);
-            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
-            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
-            if (ai - a_std > bi + b_std)
-                num[right] += ai - bi - a_std - b_std;
-            else if (ai + a_std < bi - b_std)
-                num[right] += bi - ai - a_std - b_std;
-            denom[right] += ai + bi;
-        }
-        return std::max(
-            denom[0] == 0 ? 0 : 2.0f * num[0] / denom[0],
-            denom[1] == 0 ? 0 : 2.0f * num[1] / denom[1]
-        );
     }
 
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {

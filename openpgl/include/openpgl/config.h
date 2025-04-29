@@ -70,7 +70,7 @@ extern "C"
         bool singlePromotion{false};
         bool optimizeSignature{false};
         PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};
-        PGL_SPATIAL_CONTRIB_TYPE contribType {PGL_SPATIAL_CONTRIB_NN};
+        PGL_BASIS_FUNC_TYPE basisType {PGL_BASIS_FUNC_NN};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
     };
