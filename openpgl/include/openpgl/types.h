@@ -23,13 +23,14 @@ enum PGL_SPATIAL_SPLIT_TYPE  // for PGL_SPATIAL_STRUCTURE_GENERIC_STREE
     PGL_SPATIAL_SPLIT_FS,    // fluence-scanning
 };
 
-enum PGL_SPATIAL_CONTRIB_TYPE
+enum PGL_BASIS_FUNC_TYPE
 {
-    PGL_SPATIAL_CONTRIB_NN = 0,  // contribute directional samples to their nearest neighboring octahedral cell
-    PGL_SPATIAL_CONTRIB_SPLAT,   // splat contribution of each samples to 9 neighboring cells
-    PGL_SPATIAL_CONTRIB_BASIS,   // contribute directional samples to all signature bins using basis functions
-    PGL_SPATIAL_CONTRIB_BASIS_XI,   // basis functions enhanced with xi-sequence
-    PGL_SPATIAL_CONTRIB_LATITUDE_LONGITUDE,  // using first 4 bins for latitude bases, and the last 4 for longitude bases
+    PGL_BASIS_FUNC_NN = 0,  // contribute directional samples to their nearest neighboring octahedral cell
+    PGL_BASIS_FUNC_SPLAT,   // splat contribution of each samples to 9 neighboring cells
+    PGL_BASIS_FUNC_DON_PCG,     // disjoint octave noise with PCG core
+    PGL_BASIS_FUNC_DON_XI,      // disjoint octave noise with Xi-sequence core
+    PGL_BASIS_FUNC_LATITUDE,
+    PGL_BASIS_FUNC_LONGITUDE,
 };
 
 enum PGL_SPATIAL_DEFENSIVE_TYPE
