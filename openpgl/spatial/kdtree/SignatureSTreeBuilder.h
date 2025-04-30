@@ -1587,7 +1587,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  # signatures: " << signatureEnsembleConfig.size() << std::endl;
     for (size_t i = 0; i < signatureEnsembleConfig.size(); ++i) {
         auto &cfg = signatureEnsembleConfig[i];
-        ss << "    " << i << ": " << cfg.numBins << " bins";
+        ss << "    " << i << ": " << (int) cfg.numBins << " bins";
         switch (cfg.basisType) {
             case PGL_BASIS_FUNC_NN:
             case PGL_BASIS_FUNC_LATITUDE:
@@ -1599,7 +1599,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
                 break;
             case PGL_BASIS_FUNC_DON_PCG:
             case PGL_BASIS_FUNC_DON_XI:
-                ss << ", " << cfg.getOctaveMin() << ".." << cfg.getOctaveMax() << " octaves, gamma = " << cfg.getDONGamma();
+                ss << ", " << (int) cfg.getOctaveMin() << ".." << (int) cfg.getOctaveMax() << " octaves, gamma = " << cfg.getDONGamma();
                 break;
         }
         ss << std::endl;
