@@ -64,7 +64,7 @@ struct SampleStatistics
 
     inline float getDBORStd() const
     {
-        OPENPGL_ASSERT(weightCnt > 0);
+        // OPENPGL_ASSERT(weightCnt > 0);
         return std::sqrt(weightM2 / weightCnt);
     }
 

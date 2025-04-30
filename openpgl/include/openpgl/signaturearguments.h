@@ -14,6 +14,10 @@ struct SignatureArguments {
     uint32_t param0 : 24 {0};  // resolution, {octave_min, octave_max}, etc
     uint32_t param1 {0};   // gamma, splat_sigma
 
+    SignatureArguments() {
+        setType(PGL_BASIS_FUNC_NN);
+    }
+
     inline bool operator==(const SignatureArguments &b) const {
         return basisType == b.basisType && numBins == b.numBins &&
                param0 == b.param0 && param1 == b.param1;
@@ -37,6 +41,7 @@ struct SignatureArguments {
             case PGL_BASIS_FUNC_DON_XI:
                 setOctaveMin(3);
                 setOctaveMax(7);
+                setDONGamma(0.5f);
                 break;
             case PGL_BASIS_FUNC_LATITUDE:
                 setResolution(2);

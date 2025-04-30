@@ -182,6 +182,7 @@ struct KDTreePartitionBuilder
         dataStorage.resize(1);
         dataStorage[0].first.regionBounds = bounds;
         dataStorage[0].first.candidate.depth = 1;
+        dataStorage[0].first.candidate.signatures.setNumSignatures(buildSettings.signatureEnsembleConfig.size());
 
         update(kdTree, samples, zeroSamples, dataStorage, candidateDataStorage, buildSettings, iteration);
     }
@@ -546,6 +547,7 @@ struct KDTreePartitionBuilder
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
                 SubdivisionData &child = candidateDataStorage[current.lChildIdx + c];
+                child.signatures.setNumSignatures(settings.signatureEnsembleConfig.size());
                 child.sampleStatistics = current.sampleStatistics;
                 child.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                 child.depth = depth + 1;
@@ -637,6 +639,7 @@ struct KDTreePartitionBuilder
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
                 SubdivisionData &child = candidateDataStorage[current.lChildIdx + c];
+                child.signatures.setNumSignatures(settings.signatureEnsembleConfig.size());
                 child.sampleStatistics = current.sampleStatistics;
                 child.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                 child.depth = depth + 1;

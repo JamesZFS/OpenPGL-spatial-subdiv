@@ -62,6 +62,7 @@ struct SignatureEnsemble {
     }
 
     void setNumSignatures(uint32_t numSignatures) {
+        OPENPGL_ASSERT(numSignatures >= 1);
         data.resize(numSignatures);
     }
 
