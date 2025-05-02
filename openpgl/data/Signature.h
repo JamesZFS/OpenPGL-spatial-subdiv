@@ -336,9 +336,9 @@ struct Signature  // Directional signature
                     float u = fract(p.x * float(res));  // latitude
 
                     for (uint8_t j = 0; j < S; ++j) {
-                        float x = M_PI_2f * (float(S) * u - float(j));
+                        float x = M_PI_2 * (float(S) * u - float(j));
                         float b = 0.0;
-                        if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
+                        if ((-M_PI_2 <= x && x < M_PI_2) || (-M_PI_2 <= x - M_PI_2 * float(S) && x - M_PI_2 * float(S) < M_PI_2)) {
                             b = std::cos(x);
                             b *= b;
                         }
@@ -358,9 +358,9 @@ struct Signature  // Directional signature
                     float v = fract(p.y * float(res));  // longitude
 
                     for (uint8_t j = 0; j < S; ++j) {
-                        float x = M_PI_2f * (float(S) * v - float(j));
+                        float x = M_PI_2 * (float(S) * v - float(j));
                         float b = 0.0;
-                        if ((-M_PI_2f <= x && x < M_PI_2f) || (-M_PI_2f <= x - M_PI_2f * float(S) && x - M_PI_2f * float(S) < M_PI_2f)) {
+                        if ((-M_PI_2 <= x && x < M_PI_2) || (-M_PI_2 <= x - M_PI_2 * float(S) && x - M_PI_2 * float(S) < M_PI_2)) {
                             b = std::cos(x);
                             b *= b;
                         }
