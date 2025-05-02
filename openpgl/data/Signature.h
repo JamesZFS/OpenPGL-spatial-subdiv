@@ -51,7 +51,7 @@ struct Signature  // Directional signature
         float theta = std::acos(cartesian.z);
         float phi = std::atan2(cartesian.y, cartesian.x);
         if (phi < 0) phi += 2 * M_PI;
-        return {theta / M_PIf, phi / (2 * M_PIf)};  // TODO: optimize by returning the cosines and sines
+        return {theta / M_PI, phi / (2 * M_PI)};  // TODO: optimize by returning the cosines and sines
     }
 
     //A pseudorandom number generator with a seed consisting of 3 uints
