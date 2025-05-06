@@ -29,6 +29,8 @@
 #define PGL_VMM_MAX_COMPONENTS 32
 #define PGL_VMM_MAX_KAPPA 320000.f
 
+#define PGL_SIGNATURE_MAX_SIZE 64u
+
 struct pgl_vec3f
 {
     float x, y, z;
