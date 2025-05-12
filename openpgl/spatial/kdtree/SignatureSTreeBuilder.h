@@ -1592,6 +1592,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
             case PGL_BASIS_FUNC_NN:
             case PGL_BASIS_FUNC_LATITUDE:
             case PGL_BASIS_FUNC_LONGITUDE:
+            case PGL_BASIS_FUNC_CHECKERBOARD:
                 ss << ", res = " << cfg.getResolution();
                 break;
             case PGL_BASIS_FUNC_SPLAT:
