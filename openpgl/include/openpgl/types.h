@@ -31,6 +31,7 @@ enum PGL_BASIS_FUNC_TYPE
     PGL_BASIS_FUNC_DON_XI,      // disjoint octave noise with Xi-sequence core
     PGL_BASIS_FUNC_LATITUDE,
     PGL_BASIS_FUNC_LONGITUDE,
+    PGL_BASIS_FUNC_CHECKERBOARD,  // similar to NN, using modulo instead of hash to map to the bin
 };
 
 enum PGL_SPATIAL_DEFENSIVE_TYPE

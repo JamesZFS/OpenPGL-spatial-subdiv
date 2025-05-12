@@ -172,6 +172,21 @@ struct Signature  // Directional signature
         return hash % S;
     }
 
+    inline uint8_t get_signature_index_checkerboard(const pgl_direction &dir, uint32_t res, uint8_t S) {
+        // 1. Convert the sample.direction into [0, 1] representation
+        auto uv_ = pgl_vec2f(dir);  // [-1, 1]
+        float x = uv_.x * 0.5f + 0.5f;  // [0, 1]
+        float y = uv_.y * 0.5f + 0.5f;
+
+        // 2. Find the histogram bin on the (conceptual) octahedral map
+        uint32_t ix = std::clamp((uint32_t)(x * res), 0u, res - 1);
+        uint32_t iy = std::clamp((uint32_t)(y * res), 0u, res - 1);
+
+        // 3. Hash (ix, iy) to a single index between 0 and PGL_SIGNATURE_SIZE - 1
+        uint32_t index = ix + iy * res;
+        return index % S;
+    }
+
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, const SignatureArguments &config, bool multiplyCosine) {
         const uint8_t S = config.numBins;
@@ -369,6 +384,20 @@ struct Signature  // Directional signature
                         sum[j] += w;
                         m2[j] += w * w;
                     }
+                    ++numSamples;
+                }
+                break;
+            }
+            case PGL_BASIS_FUNC_CHECKERBOARD: {
+                const uint32_t res = config.getResolution();
+                for (auto it = begin; it != end; ++it) {
+                    uint8_t idx = get_signature_index_checkerboard(it->reprojectedDirection, res, S);
+                    float w = it->weight;
+                    if (multiplyCosine) {
+                        w *= it->cosineTerm;
+                    }
+                    sum[idx] += w;
+                    m2[idx] += w * w;
                     ++numSamples;
                 }
                 break;

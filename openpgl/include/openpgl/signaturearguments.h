@@ -49,16 +49,19 @@ struct SignatureArguments {
             case PGL_BASIS_FUNC_LONGITUDE:
                 setResolution(4);
                 break;
+            case PGL_BASIS_FUNC_CHECKERBOARD:
+                setResolution(64);
+                break;
         }
     }
 
     inline uint32_t getResolution() const {
-        assert(is(PGL_BASIS_FUNC_NN) || is(PGL_BASIS_FUNC_SPLAT) || is(PGL_BASIS_FUNC_LATITUDE) || is(PGL_BASIS_FUNC_LONGITUDE));
+        assert(is(PGL_BASIS_FUNC_NN) || is(PGL_BASIS_FUNC_SPLAT) || is(PGL_BASIS_FUNC_LATITUDE) || is(PGL_BASIS_FUNC_LONGITUDE) || is(PGL_BASIS_FUNC_CHECKERBOARD));
         return param0;
     }
 
     inline void setResolution(uint32_t resolution) {
-        assert(is(PGL_BASIS_FUNC_NN) || is(PGL_BASIS_FUNC_SPLAT) || is(PGL_BASIS_FUNC_LATITUDE) || is(PGL_BASIS_FUNC_LONGITUDE));
+        assert(is(PGL_BASIS_FUNC_NN) || is(PGL_BASIS_FUNC_SPLAT) || is(PGL_BASIS_FUNC_LATITUDE) || is(PGL_BASIS_FUNC_LONGITUDE) || is(PGL_BASIS_FUNC_CHECKERBOARD));
         param0 = resolution;
     }
 
