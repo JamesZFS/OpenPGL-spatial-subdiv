@@ -57,6 +57,7 @@ extern "C"
         float signatureDistanceThreshold {0.05f};
         bool enablePromotion{true};
         float stdMultiplier{1.0f};
+        float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
         float riskTolerance {0.1f};
         float tValueThreshold {3.0f};
         float inlierPercent {0.99f};
