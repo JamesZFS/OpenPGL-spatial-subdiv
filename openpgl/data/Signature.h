@@ -702,6 +702,29 @@ struct Signature  // Directional signature
         return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
+    static float getSufficientCriterionStatistics(const Signature &A, const Signature &B, float T) {
+        float ret = 0;
+        float D_numSamples = A.numSamples - B.numSamples;
+        for (uint8_t j = 0; j < PGL_SIGNATURE_MAX_SIZE; ++j) {
+            if (A.sum[j] == 0 && A.m2[j] == 0) break;
+            // D is A - B
+            float D_mean = (A.sum[j] - B.sum[j]) / D_numSamples;
+            float D_s2 = ((A.m2[j] - B.m2[j]) / D_numSamples - D_mean * D_mean) / D_numSamples;
+            float B_mean = B.getMean(j);
+            float B_s2 = B.getOneSampleVariance(j) / B.numSamples;
+
+            float wB_n = +(1-T) * B.numSamples - A.numSamples, wD_n = +(1-T) * D_numSamples;
+            float wB_p = -(1+T) * B.numSamples + A.numSamples, wD_p = -(1+T) * D_numSamples;
+
+            float criterion_n = (wB_n * B_mean + wD_n * D_mean) / std::sqrt(wB_n*wB_n * B_s2 + wD_n*wD_n * D_s2);
+            float criterion_p = (wB_p * B_mean + wD_p * D_mean) / std::sqrt(wB_p*wB_p * B_s2 + wD_p*wD_p * D_s2);
+            // ret = std::max( Phi(criterion_n) + Phi(criterion_p) );
+            ret = std::max({ret, Phi(criterion_n), Phi(criterion_p)});
+            // return std::max({ret, criterion_n, criterion_p});
+        }
+        return ret;
+    }
+
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
         float num = 0, denom = 0;
         for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
@@ -719,6 +742,10 @@ struct Signature  // Directional signature
             denom += ai + bi;
         }
         return denom == 0 ? 0 : 2.0f * num / denom;
+    }
+
+    static inline float Phi(float x) {
+        return 0.5f * (std::erf(x / std::sqrt(2)) + 1);
     }
 
     float getRisk() const {

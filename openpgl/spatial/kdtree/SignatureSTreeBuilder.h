@@ -78,6 +78,7 @@ struct KDTreePartitionBuilder
         float defensiveness {0.0f};  // the higher, the more likely to fall back to the baseline
         bool enablePromotion {true};
         float stdMultiplier {1.0f};
+        float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
         float riskTolerance {0.1f}; // reject the signature subdivision if std / mean is above this threshold
         float tValueThreshold {3.0f}; // reject the signature subdivision if std / mean is above this threshold
         float inlierPercent {0.99f};  // filter outlier samples for signature computation
@@ -105,7 +106,7 @@ struct KDTreePartitionBuilder
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
+                   stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    confidenceType == b.confidenceType && defensiveType == b.defensiveType && filterType == b.filterType && signatureEnsembleConfig == b.signatureEnsembleConfig;
@@ -123,6 +124,7 @@ struct KDTreePartitionBuilder
             lookaheadDepth = cfg.lookaheadDepth;
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             stdMultiplier = cfg.stdMultiplier;
+            sufficientCriterionThreshold = cfg.sufficientCriterionThreshold;
             riskTolerance = cfg.riskTolerance;
             tValueThreshold = cfg.tValueThreshold;
             inlierPercent = cfg.inlierPercent;
@@ -154,6 +156,7 @@ struct KDTreePartitionBuilder
             cfg.lookaheadDepth = lookaheadDepth;
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.stdMultiplier = stdMultiplier;
+            cfg.sufficientCriterionThreshold = sufficientCriterionThreshold;
             cfg.riskTolerance = riskTolerance;
             cfg.tValueThreshold = tValueThreshold;
             cfg.inlierPercent = inlierPercent;
@@ -513,7 +516,7 @@ struct KDTreePartitionBuilder
             }
             region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getDistance(region.signatures, root.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
@@ -605,7 +608,7 @@ struct KDTreePartitionBuilder
             }
             region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getDistance(region.signatures, root.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
@@ -697,11 +700,16 @@ struct KDTreePartitionBuilder
         return 0;
     }
 
-    static float getDistance(const SignatureEnsemble &a, const SignatureEnsemble &b, const Settings &settings) {
-        if (settings.confidenceType == PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN)
-            return Signature::getDistanceTTest(a[0], b[0], settings.stdMultiplier, settings.tValueThreshold);
-        else
-            return SignatureEnsemble::getDistance(a, b, settings.stdMultiplier);
+    // a: root, b: child
+    static float getEnergy(const SignatureEnsemble &a, const SignatureEnsemble &b, const Settings &settings) {
+        switch (settings.confidenceType) {
+            case PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN:
+                return Signature::getDistanceTTest(a[0], b[0], settings.stdMultiplier, settings.tValueThreshold);
+            case PGL_SPATIAL_CONFIDENCE_UMVU:
+                return SignatureEnsemble::getSufficientCriterionStatistics(a, b, settings.signatureDistanceThreshold);
+            default:
+                return SignatureEnsemble::getDistance(a, b, settings.stdMultiplier);
+        }
     }
 
     static bool checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
@@ -729,6 +737,12 @@ struct KDTreePartitionBuilder
                            // (left.risk <= settings.riskTolerance && right.risk <= settings.riskTolerance && energyLR > settings.signatureDistanceThreshold) || // LR
                            (std::abs(left.tValue) > settings.tValueThreshold /*&& left.energy > settings.signatureDistanceThreshold*/) || // P and L
                            (std::abs(right.tValue) > settings.tValueThreshold /*&& right.energy > settings.signatureDistanceThreshold*/)  // P and R
+                       );
+            case PGL_SPATIAL_CONFIDENCE_UMVU:
+                return left.signatures.getNumSamples() > settings.minSamplesPromotion && right.signatures.getNumSamples() > settings.minSamplesPromotion &&
+                       (
+                           left.energy > settings.sufficientCriterionThreshold || // P and L
+                           right.energy > settings.sufficientCriterionThreshold // P and R
                        );
             default:
                 std::cerr << "Unknown confidence type" << std::endl;
@@ -872,7 +886,7 @@ struct KDTreePartitionBuilder
         } else {
             current.signatures.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
-        current.energy = getDistance(current.signatures, root.signatures, settings);
+        current.energy = getEnergy(root.signatures, current.signatures, settings);
         current.risk = current.signatures.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
@@ -1569,6 +1583,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  decayRatio: " << decayRatio << std::endl;
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
+    ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
     ss << "  riskTolerance: " << riskTolerance << std::endl;
     ss << "  tValueThreshold: " << tValueThreshold << std::endl;
     ss << "  inlierPercent: " << inlierPercent << std::endl;
@@ -1625,6 +1640,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&defensiveness), sizeof(defensiveness));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
+    stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.write(reinterpret_cast<const char*>(&riskTolerance), sizeof(riskTolerance));
     stream.write(reinterpret_cast<const char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.write(reinterpret_cast<const char*>(&inlierPercent), sizeof(inlierPercent));
@@ -1662,6 +1678,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&defensiveness), sizeof(defensiveness));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
+    stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.read(reinterpret_cast<char*>(&riskTolerance), sizeof(riskTolerance));
     stream.read(reinterpret_cast<char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.read(reinterpret_cast<char*>(&inlierPercent), sizeof(inlierPercent));

@@ -79,6 +79,14 @@ struct SignatureEnsemble {
         return distance;
     }
 
+    static float getSufficientCriterionStatistics(const SignatureEnsemble &a, const SignatureEnsemble &b, float T) {
+        float stat = 0.0f;
+        for (size_t i = 0; i < a.data.size(); ++i) {
+            stat = std::max(stat, Signature::getSufficientCriterionStatistics(a.data[i], b.data[i], T));
+        }
+        return stat;
+    }
+
     float getRisk() {
         float risk = 0.0f;
         for (const auto &signature : data) {
@@ -114,7 +122,7 @@ struct SubdivisionData {
     uint8_t dim : 2 {3};
     uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
 
-    float energy = 0.0f;  // distance between self and the parent node
+    float energy = 0.0f;  // distance between self and the parent node, or the statistics of the sufficient criterion
     float risk = 0.0f;  // maximum value of std / mean per bin
     float tValue = 0.0f;
     uint8_t depth {0};
