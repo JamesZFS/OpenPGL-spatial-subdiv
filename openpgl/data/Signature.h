@@ -702,27 +702,23 @@ struct Signature  // Directional signature
         return getDistanceSMAPE(a, b, stdMultiplier);
     }
 
+    // Only works for one bin
     static float getSufficientCriterionStatistics(const Signature &A, const Signature &B, float T) {
-        float ret = 0;
+        // D is A - B
         float D_numSamples = A.numSamples - B.numSamples;
-        for (uint8_t j = 0; j < PGL_SIGNATURE_MAX_SIZE; ++j) {
-            if (A.sum[j] == 0 && A.m2[j] == 0) break;
-            // D is A - B
-            float D_mean = (A.sum[j] - B.sum[j]) / D_numSamples;
-            float D_s2 = ((A.m2[j] - B.m2[j]) / D_numSamples - D_mean * D_mean) / D_numSamples;
-            float B_mean = B.getMean(j);
-            float B_s2 = B.getOneSampleVariance(j) / B.numSamples;
+        float D_mean = (A.sum[0] - B.sum[0]) / D_numSamples;
+        float D_s2 = ((A.m2[0] - B.m2[0]) / D_numSamples - D_mean * D_mean) / D_numSamples;
+        float B_mean = B.getMean(0);
+        float B_s2 = B.getOneSampleVariance(0) / B.numSamples;
 
-            float wB_n = +(1-T) * B.numSamples - A.numSamples, wD_n = +(1-T) * D_numSamples;
-            float wB_p = -(1+T) * B.numSamples + A.numSamples, wD_p = -(1+T) * D_numSamples;
+        float wB_n = +(1-T) * B.numSamples - A.numSamples, wD_n = +(1-T) * D_numSamples;
+        float wB_p = -(1+T) * B.numSamples + A.numSamples, wD_p = -(1+T) * D_numSamples;
 
-            float criterion_n = (wB_n * B_mean + wD_n * D_mean) / std::sqrt(wB_n*wB_n * B_s2 + wD_n*wD_n * D_s2);
-            float criterion_p = (wB_p * B_mean + wD_p * D_mean) / std::sqrt(wB_p*wB_p * B_s2 + wD_p*wD_p * D_s2);
-            // ret = std::max( Phi(criterion_n) + Phi(criterion_p) );
-            ret = std::max({ret, Phi(criterion_n), Phi(criterion_p)});
-            // return std::max({ret, criterion_n, criterion_p});
-        }
-        return ret;
+        float criterion_n = (wB_n * B_mean + wD_n * D_mean) / std::sqrt(wB_n*wB_n * B_s2 + wD_n*wD_n * D_s2);
+        float criterion_p = (wB_p * B_mean + wD_p * D_mean) / std::sqrt(wB_p*wB_p * B_s2 + wD_p*wD_p * D_s2);
+        // return std::max( Phi(criterion_n) + Phi(criterion_p) );
+        return std::max(Phi(criterion_n), Phi(criterion_p));
+        // return std::max(criterion_n, criterion_p);
     }
 
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
