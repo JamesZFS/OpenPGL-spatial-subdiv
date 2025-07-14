@@ -19,86 +19,92 @@ namespace openpgl
 // By this design, we are able to have different compressed representations of the (marginalized) radiance field at each region,
 //  hopefully each of which capturing different features.
 struct SignatureEnsemble {
-    std::vector<Signature> data {1};  // at least one
+    Signature dataZero;  // use stack memory for non-MOE usages
+    std::vector<Signature> dataRest {0};
 
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
-        OPENPGL_ASSERT(ensembleConfig.size() == data.size());
-        for (size_t i = 0; i < ensembleConfig.size(); ++i) {
-            data[i].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
+        OPENPGL_ASSERT(ensembleConfig.size() == getNumSignatures());
+        dataZero.addSamples(begin, end, ensembleConfig[0], multiplyCosine);
+        for (size_t i = 1; i < ensembleConfig.size(); ++i) {
+            dataRest[i-1].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
         }
     }
 
     void addZeroSamples(size_t numZeroSamples) {
-        for (auto &signature : data) {
+        dataZero.addZeroSamples(numZeroSamples);
+        for (auto &signature : dataRest) {
             signature.addZeroSamples(numZeroSamples);
         }
     }
 
     void clear() {
-        for (auto &signature : data) {
+        dataZero.clear();
+        for (auto &signature : dataRest) {
             signature.clear();
         }
     }
 
     void decay(float alpha) {
-        for (auto &signature : data) {
+        dataZero.decay(alpha);
+        for (auto &signature : dataRest) {
             signature.decay(alpha);
         }
     }
 
     Signature &operator[](size_t i) {
-        OPENPGL_ASSERT(i < data.size());
-        return data[i];
+        OPENPGL_ASSERT(i < getNumSignatures());
+        return i == 0 ? dataZero : dataRest[i-1];
     }
 
     const Signature &operator[](size_t i) const {
-        OPENPGL_ASSERT(i < data.size());
-        return data[i];
+        OPENPGL_ASSERT(i < getNumSignatures());
+        return i == 0 ? dataZero : dataRest[i-1];
     }
 
     uint32_t getNumSignatures() const {
-        return data.size();
+        return 1 + dataRest.size();
     }
 
     void setNumSignatures(uint32_t numSignatures) {
         OPENPGL_ASSERT(numSignatures >= 1);
-        data.resize(numSignatures);
+        dataRest.resize(numSignatures - 1);
     }
 
     float getNumSamples() const {
-        return data[0].getNumSamples();
+        return dataZero.getNumSamples();
     }
 
     // The maximum distance across all signatures
     static float getDistance(const SignatureEnsemble &a, const SignatureEnsemble &b, float stdMultiplier) {
-        float distance = 0.0f;
-        for (size_t i = 0; i < a.data.size(); ++i) {
-            distance = std::max(distance, Signature::getDistance(a.data[i], b.data[i], stdMultiplier));
+        float distance = Signature::getDistance(a.dataZero, b.dataZero, stdMultiplier);
+        for (size_t i = 0; i < a.dataRest.size(); ++i) {
+            distance = std::max(distance, Signature::getDistance(a.dataRest[i], b.dataRest[i], stdMultiplier));
         }
         return distance;
     }
 
     static float getSufficientCriterionStatistics(const SignatureEnsemble &a, const SignatureEnsemble &b, float T) {
-        float stat = 0.0f;
-        for (size_t i = 0; i < a.data.size(); ++i) {
-            stat = std::max(stat, Signature::getSufficientCriterionStatistics(a.data[i], b.data[i], T));
+        float stat = Signature::getSufficientCriterionStatistics(a.dataZero, b.dataZero, T);
+        for (size_t i = 0; i < a.dataRest.size(); ++i) {
+            stat = std::max(stat, Signature::getSufficientCriterionStatistics(a.dataRest[i], b.dataRest[i], T));
         }
         return stat;
     }
 
     float getRisk() {
-        float risk = 0.0f;
-        for (const auto &signature : data) {
+        float risk = dataZero.getRisk();
+        for (const auto &signature : dataRest) {
             risk = std::max(risk, signature.getRisk());
         }
         return risk;
     }
 
     void serialize(std::ostream &stream) const {
-        uint32_t numSignatures = static_cast<uint32_t>(data.size());
+        uint32_t numSignatures = getNumSignatures();
         stream.write(reinterpret_cast<const char *>(&numSignatures), sizeof(numSignatures));
-        for (const auto &signature : data) {
+        dataZero.serialize(stream);
+        for (const auto &signature : dataRest) {
             signature.serialize(stream);
         }
     }
@@ -106,8 +112,9 @@ struct SignatureEnsemble {
     void deserialize(std::istream &stream) {
         uint32_t numSignatures;
         stream.read(reinterpret_cast<char *>(&numSignatures), sizeof(numSignatures));
-        data.resize(numSignatures);
-        for (auto &signature : data) {
+        dataZero.deserialize(stream);
+        dataRest.resize(numSignatures - 1);
+        for (auto &signature : dataRest) {
             signature.deserialize(stream);
         }
     }
