@@ -10,6 +10,7 @@
 #include "../spatial/kdtree/KDTree.h"
 #include "FieldStatistics.h"
 
+#include <tbb/scalable_allocator.h>
 #ifdef USE_EMBREE_PARALLEL
 #define TASKING_TBB
 #include <embreeSrc/common/algorithms/parallel_for.h>
@@ -34,14 +35,16 @@ public:
     // using ZeroValueSampleContainerInternal = ContainerInternal<ZeroValueSampleData>;
     using SampleContainerInternal = std::vector<SampleData>;
     using ZeroValueSampleContainerInternal = std::vector<ZeroValueSampleData>;
+    using SignatureAllocator = tbb::scalable_allocator<float>;
+    // using SignatureAllocator = std::allocator<float>;
 
-    typedef Region<DirectionalDistribution, typename TDirectionalDistributionFactory::Statistics> RegionType;
+    typedef Region<DirectionalDistribution, typename TDirectionalDistributionFactory::Statistics, SignatureAllocator> RegionType;
     typedef openpgl::Range RangeType;
     typedef std::pair<RegionType, RangeType> RegionStorageType;
     typedef tbb::concurrent_vector<RegionStorageType> RegionStorageContainerType;
-    typedef tbb::concurrent_vector<SubdivisionData> CandidateRegionStorageContainerType;
+    typedef tbb::concurrent_vector<SubdivisionData<SignatureAllocator>> CandidateRegionStorageContainerType;
 
-    using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;
+    using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;  
     using SpatialStructure = typename SpatialStructureBuilder::SpatialStructure;
     using SpatialBuilderSettings = typename SpatialStructureBuilder::Settings;
 
@@ -382,7 +385,7 @@ public:
         splitDim = 3;
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
-            const SubdivisionData *candidate = &m_regionStorageContainer[id].first.candidate;
+            const auto *candidate = &m_regionStorageContainer[id].first.candidate;
             uint32_t index = -1;
             while (candidate->hasSplit() && lookaheadDepth) {
                 --lookaheadDepth;
@@ -424,7 +427,7 @@ public:
         stats.depth = region.candidate.depth;
         stats.hasCandidateSplit = region.candidate.hasSplit();
         if (stats.hasCandidateSplit) {
-            const SubdivisionData &candidate = region.candidate;
+            const auto &candidate = region.candidate;
             stats.splitDim = candidate.dim;
             stats.splitPos = candidate.pivot;
         }
@@ -452,7 +455,7 @@ public:
             return {cStats, fStats};
         cStats = getRegionStats(cId);
         auto &region = m_regionStorageContainer[cId].first;
-        const SubdivisionData *candidate = &region.candidate;
+        const auto *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
         fStats.risk = cStats.risk;
         fStats.tValue = cStats.tValue;

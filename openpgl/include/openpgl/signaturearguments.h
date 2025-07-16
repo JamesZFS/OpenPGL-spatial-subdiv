@@ -10,6 +10,7 @@
 
 struct SignatureArguments {
     PGL_BASIS_FUNC_TYPE basisType : 3 {PGL_BASIS_FUNC_NN};
+    uint8_t stride {17};  // = 2 * numbins + 1, the size of Signature / size of float  TODO: maybe align
     uint8_t numBins : 7 {8};   // maximum 64
     uint32_t param0 : 22 {0};  // resolution, {octave_min, octave_max}, etc
     uint32_t param1 {0};   // gamma, splat_sigma
@@ -25,6 +26,11 @@ struct SignatureArguments {
 
     inline bool is(PGL_BASIS_FUNC_TYPE type) const {
         return basisType == type;
+    }
+
+    inline void setNumBins(uint8_t x) {
+        numBins = x;
+        stride = 2 * x + 1;
     }
 
     inline void setType(PGL_BASIS_FUNC_TYPE type) {
