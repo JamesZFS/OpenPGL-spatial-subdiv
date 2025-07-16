@@ -18,9 +18,19 @@ namespace openpgl
 // A ensemble of signatures (mixture of experts), where all signatures consume the same MC samples with a distinct configuration of bases.
 // By this design, we are able to have different compressed representations of the (marginalized) radiance field at each region,
 //  hopefully each of which capturing different features.
+template<typename Alloc>
 struct SignatureEnsemble {
-    Signature dataZero;  // use stack memory for non-MOE usages
-    std::vector<Signature> dataRest {0};
+    using SignatureType = Signature<Alloc>;
+    SignatureType dataZero;  // use stack memory for non-MOE usages
+    std::vector<SignatureType> dataRest;
+
+    void init(const std::vector<SignatureArguments> &ensembleConfig) {
+        dataZero.init(ensembleConfig[0]);
+        dataRest.resize(ensembleConfig.size() - 1);
+        for (size_t i = 1; i < ensembleConfig.size(); ++i) {
+            dataRest[i-1].init(ensembleConfig[i]);
+        }
+    }
 
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
@@ -52,12 +62,12 @@ struct SignatureEnsemble {
         }
     }
 
-    Signature &operator[](size_t i) {
+    SignatureType &operator[](size_t i) {
         OPENPGL_ASSERT(i < getNumSignatures());
         return i == 0 ? dataZero : dataRest[i-1];
     }
 
-    const Signature &operator[](size_t i) const {
+    const SignatureType &operator[](size_t i) const {
         OPENPGL_ASSERT(i < getNumSignatures());
         return i == 0 ? dataZero : dataRest[i-1];
     }
@@ -66,28 +76,23 @@ struct SignatureEnsemble {
         return 1 + dataRest.size();
     }
 
-    void setNumSignatures(uint32_t numSignatures) {
-        OPENPGL_ASSERT(numSignatures >= 1);
-        dataRest.resize(numSignatures - 1);
-    }
-
     float getNumSamples() const {
         return dataZero.getNumSamples();
     }
 
     // The maximum distance across all signatures
     static float getDistance(const SignatureEnsemble &a, const SignatureEnsemble &b, float stdMultiplier) {
-        float distance = Signature::getDistance(a.dataZero, b.dataZero, stdMultiplier);
+        float distance = SignatureType::getDistance(a.dataZero, b.dataZero, stdMultiplier);
         for (size_t i = 0; i < a.dataRest.size(); ++i) {
-            distance = std::max(distance, Signature::getDistance(a.dataRest[i], b.dataRest[i], stdMultiplier));
+            distance = std::max(distance, SignatureType::getDistance(a.dataRest[i], b.dataRest[i], stdMultiplier));
         }
         return distance;
     }
 
     static float getSufficientCriterionStatistics(const SignatureEnsemble &a, const SignatureEnsemble &b, float T) {
-        float stat = Signature::getSufficientCriterionStatistics(a.dataZero, b.dataZero, T);
+        float stat = SignatureType::getSufficientCriterionStatistics(a.dataZero, b.dataZero, T);
         for (size_t i = 0; i < a.dataRest.size(); ++i) {
-            stat = std::max(stat, Signature::getSufficientCriterionStatistics(a.dataRest[i], b.dataRest[i], T));
+            stat = std::max(stat, SignatureType::getSufficientCriterionStatistics(a.dataRest[i], b.dataRest[i], T));
         }
         return stat;
     }
@@ -121,8 +126,10 @@ struct SignatureEnsemble {
 
 };
 
+
+template<typename Alloc>
 struct SubdivisionData {
-    SignatureEnsemble signatures;
+    SignatureEnsemble<Alloc> signatures;
     SampleStatistics sampleStatistics;
 
     float pivot {0};
@@ -177,15 +184,16 @@ struct SubdivisionData {
     }
 };
 
-template <typename TDistribution, typename TTrainingStatistics>
+template <typename TDistribution, typename TTrainingStatistics, typename Alloc>
 struct Region : public IRegion {
+    using SignatureAllocator = Alloc;
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
 
-    SubdivisionData candidate;  // TODO: maybe use shared ptr?
+    SubdivisionData<Alloc> candidate;  // TODO: maybe use shared ptr?
 #ifdef OPENPGL_RADIANCE_CACHES
     OutgoingRadianceHistogram outRadianceHist;
 #endif

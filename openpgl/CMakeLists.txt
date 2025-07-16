@@ -183,7 +183,7 @@ target_include_directories(${PROJECT_NAME}
     ${TBB_INCLUDE_DIRS}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE TBB::${OPENPGL_TBB_COMPONENT})
+target_link_libraries(${PROJECT_NAME} PRIVATE TBB::${OPENPGL_TBB_COMPONENT} TBB::tbbmalloc)
 if (OPENPGL_EF_IMAGE_SPACE_GUIDING_BUFFER)
   target_include_directories(${PROJECT_NAME}
     PRIVATE

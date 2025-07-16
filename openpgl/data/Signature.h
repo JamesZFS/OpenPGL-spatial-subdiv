@@ -16,27 +16,36 @@
 
 namespace openpgl {
 
+template<typename Alloc>
 struct Signature  // Directional signature
 {
-    float sum[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of weights in that bin
-    float m2[PGL_SIGNATURE_MAX_SIZE] = {};  // sum of squared weights in that bin
+    std::vector<float, Alloc> sum;  // sum of weights in that bin
+    std::vector<float, Alloc> m2;  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins, or sum of sample weights
 
-    Signature() = default;
-
-    explicit Signature(const PGLDirectionalSignature &s) {
-        numSamples = s.numSamples;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
-            sum[i] = s.signature[i] * numSamples;
-            float varNSample = s.std[i] * s.std[i];
-            float varOneSample = numSamples * varNSample;
-            m2[i] = numSamples * (varOneSample + s.signature[i] * s.signature[i]);
-        }
+    void init(const SignatureArguments &config) {
+        sum.clear(); sum.resize(config.numBins, 0);
+        m2.clear(); m2.resize(config.numBins, 0);
+        numSamples = 0;
     }
 
+    // explicit Signature(const PGLDirectionalSignature &s) {
+    //     numSamples = s.numSamples;
+    //     sum.resize(s.signature.size());
+    //     m2.resize(s.signature.size());
+    //     for (uint8_t i = 0; i < num_bins(); i++) {
+    //         sum[i] = s.signature[i] * numSamples;
+    //         float varNSample = s.std[i] * s.std[i];
+    //         float varOneSample = numSamples * varNSample;
+    //         m2[i] = numSamples * (varOneSample + s.signature[i] * s.signature[i]);
+    //     }
+    // }
+
+    inline uint8_t num_bins() const { return (uint8_t)sum.size(); }
+
     void clear() {
-        memset(sum, 0, sizeof(sum));
-        memset(m2, 0, sizeof(m2));
+        std::fill(sum.begin(), sum.end(), 0.0f);
+        std::fill(m2.begin(), m2.end(), 0.0f);
         numSamples = 0;
     }
 
@@ -190,6 +199,7 @@ struct Signature  // Directional signature
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, const SignatureArguments &config, bool multiplyCosine) {
         const uint8_t S = config.numBins;
+        OPENPGL_ASSERT(S == num_bins());
         switch (config.basisType) {
             case PGL_BASIS_FUNC_NN: {
                 const uint32_t res = config.getResolution();
@@ -217,7 +227,7 @@ struct Signature  // Directional signature
                     pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                     // Splatting
                     // 3x3 Gaussian kernel
-                    float bases[PGL_SIGNATURE_MAX_SIZE];
+                    float bases[S];
                     for (uint8_t j = 0; j < S; ++j)
                         bases[j] = 0.0;
 
@@ -276,7 +286,7 @@ struct Signature  // Directional signature
                 for (auto it = begin; it != end; ++it) {
                     pgl_vec2f p = dir_to_oct(it->reprojectedDirection);  // [0, 1]^2
                     // Disjoint Octave Noise basis function
-                    float bases[PGL_SIGNATURE_MAX_SIZE];
+                    float bases[S];
                     for (uint8_t j = 0; j < S; ++j)
                         bases[j] = 0.0;
                     float normalizer = 0.0f;
@@ -597,7 +607,7 @@ struct Signature  // Directional signature
 
     float getTotalAvg() const {
         float tot = 0.0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             tot += sum[i];
         }
         return tot / numSamples;
@@ -605,7 +615,7 @@ struct Signature  // Directional signature
 
     float getTotalStd() const {
         float tot = 0.0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             tot += m2[i];
         }
         float avg = getTotalAvg();
@@ -615,7 +625,7 @@ struct Signature  // Directional signature
     }
 
     void decay(float alpha) {
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             sum[i] *= alpha;
             m2[i] *= alpha;
         }
@@ -624,7 +634,7 @@ struct Signature  // Directional signature
 
     explicit operator PGLDirectionalSignature() const {
         PGLDirectionalSignature signature;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             signature.signature[i] = getMean(i);
             signature.std[i] = getStd(i);
         }
@@ -635,7 +645,7 @@ struct Signature  // Directional signature
     // L2 distance between two signatures
     static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -652,7 +662,7 @@ struct Signature  // Directional signature
     // L1 distance between two signatures
     static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -668,7 +678,7 @@ struct Signature  // Directional signature
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
         float num = 0, denom = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < a.num_bins(); i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
@@ -723,7 +733,7 @@ struct Signature  // Directional signature
 
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
         float num = 0, denom = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < a.num_bins(); i++) {
             float ai = a.getMean(i), bi = b.getMean(i);
             float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             float sigma = std::sqrt(a.getVariance(i) + b.getVariance(i));
@@ -748,7 +758,7 @@ struct Signature  // Directional signature
 #if 1
         // maximum value of std / mean per bin
         float maxRisk = 0;
-        for (uint8_t i = 0; i < PGL_SIGNATURE_MAX_SIZE; i++) {
+        for (uint8_t i = 0; i < num_bins(); i++) {
             float mean = getMean(i);
             if (mean == 0) continue;
             float std = getStd(i);
@@ -761,14 +771,28 @@ struct Signature  // Directional signature
     }
 
     void serialize(std::ostream &stream) const {
-        stream.write(reinterpret_cast<const char *>(sum), sizeof(sum));
-        stream.write(reinterpret_cast<const char *>(m2), sizeof(m2));
+        int size = sum.size();
+        stream.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        for (int i = 0; i < size; ++i) {
+            stream.write(reinterpret_cast<const char *>(&sum[i]), sizeof(sum[i]));
+        }
+        for (int i = 0; i < size; ++i) {
+            stream.write(reinterpret_cast<const char *>(&m2[i]), sizeof(m2[i]));
+        }
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
     }
 
     void deserialize(std::istream &stream) {
-        stream.read(reinterpret_cast<char *>(sum), sizeof(sum));
-        stream.read(reinterpret_cast<char *>(m2), sizeof(m2));
+        int size;
+        stream.read(reinterpret_cast<char *>(&size), sizeof(size));
+        sum.resize(size);
+        m2.resize(size);
+        for (int i = 0; i < size; ++i) {
+            stream.read(reinterpret_cast<char *>(&sum[i]), sizeof(sum[i]));
+        }
+        for (int i = 0; i < size; ++i) {
+            stream.read(reinterpret_cast<char *>(&m2[i]), sizeof(m2[i]));
+        }
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(numSamples));
     }
 };
