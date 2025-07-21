@@ -434,7 +434,7 @@ public:
         stats.energy = region.candidate.energy;
         stats.risk = region.candidate.risk;
         stats.tValue = region.candidate.tValue;
-        stats.fluence = region.candidate.signatures[0].getTotalAvg();
+        stats.fluence = region.candidate.signatures[0].getFluence(true);
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
@@ -481,7 +481,7 @@ public:
         if (fStats.id != -1) {
             fStats.depth = candidate->depth;
             fStats.numSamples = (uint32_t) candidate->signatures.getNumSamples();
-            fStats.fluence = candidate->signatures[0].getTotalAvg();
+            fStats.fluence = candidate->signatures[0].getFluence(false);
             fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};

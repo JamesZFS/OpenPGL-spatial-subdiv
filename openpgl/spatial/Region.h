@@ -24,20 +24,20 @@ struct SignatureEnsemble {
     SignatureType dataZero;  // use stack memory for non-MOE usages
     std::vector<SignatureType> dataRest;
 
-    void init(const std::vector<SignatureArguments> &ensembleConfig) {
-        dataZero.init(ensembleConfig[0]);
+    void init(int level, const std::vector<SignatureArguments> &ensembleConfig) {
+        dataZero.init(level, ensembleConfig[0]);
         dataRest.resize(ensembleConfig.size() - 1);
         for (size_t i = 1; i < ensembleConfig.size(); ++i) {
-            dataRest[i-1].init(ensembleConfig[i]);
+            dataRest[i-1].init(level, ensembleConfig[i]);
         }
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
+    void addSamples(SampleIterator begin, SampleIterator end, int level, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
         OPENPGL_ASSERT(ensembleConfig.size() == getNumSignatures());
-        dataZero.addSamples(begin, end, ensembleConfig[0], multiplyCosine);
+        dataZero.addSamples(begin, end, level, ensembleConfig[0], multiplyCosine);
         for (size_t i = 1; i < ensembleConfig.size(); ++i) {
-            dataRest[i-1].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
+            dataRest[i-1].addSamples(begin, end, level, ensembleConfig[i], multiplyCosine);
         }
     }
 
