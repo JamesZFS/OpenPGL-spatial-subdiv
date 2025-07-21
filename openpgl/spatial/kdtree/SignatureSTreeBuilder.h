@@ -190,7 +190,7 @@ struct KDTreePartitionBuilder
         dataStorage.resize(1);
         dataStorage[0].first.regionBounds = bounds;
         dataStorage[0].first.candidate.depth = 1;
-        dataStorage[0].first.candidate.signatures.init(buildSettings.signatureEnsembleConfig);
+        dataStorage[0].first.candidate.signatures.init(0, buildSettings.signatureEnsembleConfig);
 
         update(kdTree, samples, zeroSamples, dataStorage, candidateDataStorage, buildSettings, iteration);
     }
@@ -364,9 +364,7 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                         regionLR[c]->candidate.depth = depth + 1;
                     }
-                    if (iteration >= settings.initializingIters) {
-                        clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
-                    }
+                    initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                     regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                 }
@@ -387,7 +385,7 @@ struct KDTreePartitionBuilder
                         prepareSampleReprojection(samplesBegin, samplesEnd, mergedStats, settings);
                     if (settings.singlePromotion) {
                         // Promote at most one level
-                        if (updateCandidateRegionsOnePromotion(depth, kdTree, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {
+                        if (updateCandidateRegionsOnePromotion(depth, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {
                             OPENPGL_ASSERT(candidate.hasSplit());
                             splitDim = candidate.dim, splitPos = candidate.pivot;
                             triggersSplit = true;
@@ -401,7 +399,7 @@ struct KDTreePartitionBuilder
                                 regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
                                 regionLR[c]->candidate.energy = 0;
                                 OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
-                                clearCandidateSignatures(regionLR[c]->candidate, candidateDataStorage);
+                                initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                                 regionLR[c]->splitFlag += 1;
                                 // (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                                 // regionBounds set later
@@ -440,7 +438,7 @@ struct KDTreePartitionBuilder
                                 RegionType &newRegion = dataStorage[dataInds[i]].first;
                                 newRegion.candidate = candidateDataStorage[canDataIdx];
                                 newRegion.candidate.energy = 0;
-                                clearCandidateSignatures(newRegion.candidate, candidateDataStorage);
+                                initCandidateSignatures(0, newRegion.candidate, candidateDataStorage, settings);
                                 // regionBounds set later
                                 OPENPGL_ASSERT(newRegion.candidate.depth > depth);
                                 newRegion.splitFlag += newRegion.candidate.depth - depth;
@@ -509,7 +507,7 @@ struct KDTreePartitionBuilder
         }
     }
 
-    bool updateCandidateRegionsOnePromotion(uint8_t depth, KDTree &kdTree, const SubdivisionDataType &root, SubdivisionDataType &current,
+    bool updateCandidateRegionsOnePromotion(uint8_t depth, const SubdivisionDataType &root, SubdivisionDataType &current,
         typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
         typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd,
         tbb::concurrent_vector<SubdivisionDataType> &candidateDataStorage, const Settings &settings) const {
@@ -527,9 +525,10 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addSamples(samplesBegin, samplesEnd, region.depth - root.depth, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            if (region.depth == root.depth) region.energy = 0;
+            else region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
@@ -563,7 +562,7 @@ struct KDTreePartitionBuilder
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
                 auto &child = candidateDataStorage[current.lChildIdx + c];
-                child.signatures.init(settings.signatureEnsembleConfig);
+                child.signatures.init(lookaheadLevel + 1, settings.signatureEnsembleConfig);
                 child.sampleStatistics = current.sampleStatistics;
                 child.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                 child.depth = depth + 1;
@@ -590,8 +589,8 @@ struct KDTreePartitionBuilder
 
             if (lookaheadLevel + 1 < settings.lookaheadDepth) {
                 // Update L/R recursively
-                return updateCandidateRegionsOnePromotion(depth + 1, kdTree, root, left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid, candidateDataStorage, settings) ||
-                       updateCandidateRegionsOnePromotion(depth + 1, kdTree, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings);
+                return updateCandidateRegionsOnePromotion(depth + 1, root, left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid, candidateDataStorage, settings) ||
+                       updateCandidateRegionsOnePromotion(depth + 1, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings);
             }
         }
 
@@ -620,9 +619,10 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addSamples(samplesBegin, samplesEnd, region.depth - root.depth, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
+            if (region.depth == root.depth) region.energy = 0;
+            else region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
                 // case PGL_SPATIAL_CONFIDENCE_RISK: region.risk = region.signature.getRisk(); break;
@@ -656,7 +656,7 @@ struct KDTreePartitionBuilder
             current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
             for (uint8_t c: {0, 1}) {
                 auto &child = candidateDataStorage[current.lChildIdx + c];
-                child.signatures.init(settings.signatureEnsembleConfig);
+                child.signatures.init(lookaheadLevel + 1, settings.signatureEnsembleConfig);
                 child.sampleStatistics = current.sampleStatistics;
                 child.sampleStatistics.split(splitDim, splitPos, settings.decayRatio, c);
                 child.depth = depth + 1;
@@ -818,14 +818,14 @@ struct KDTreePartitionBuilder
     }
 
     // Clear the signatures beneath current
-    void clearCandidateSignatures(SubdivisionDataType &current, tbb::concurrent_vector<SubdivisionDataType> &candidateDataStorage) const {
-        current.signatures.clear();
+    void initCandidateSignatures(int lookaheadLevel, SubdivisionDataType &current, tbb::concurrent_vector<SubdivisionDataType> &candidateDataStorage, const Settings &settings) const {
+        current.signatures.init(lookaheadLevel, settings.signatureEnsembleConfig);
         current.energy = current.risk = current.tValue = 0;
         if (current.hasSplit()) {
             auto &left = candidateDataStorage[current.lChildIdx];
             auto &right = candidateDataStorage[current.lChildIdx + 1];
-            clearCandidateSignatures(left, candidateDataStorage);
-            clearCandidateSignatures(right, candidateDataStorage);
+            initCandidateSignatures(lookaheadLevel + 1, left, candidateDataStorage, settings);
+            initCandidateSignatures(lookaheadLevel + 1, right, candidateDataStorage, settings);
         }
     }
 
@@ -893,10 +893,11 @@ struct KDTreePartitionBuilder
         typename TContainer::iterator samplesBegin, typename TContainer::iterator samplesEnd,
         tbb::concurrent_vector<SubdivisionDataType> &candidateDataStorage, const Settings &settings) const {
         constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
+        const uint8_t lookaheadLevel = current.depth - root.depth;
 
         // Update self
         if constexpr (isNonZeroSample) {
-            current.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            current.signatures.addSamples(samplesBegin, samplesEnd, lookaheadLevel, settings.signatureEnsembleConfig, settings.multiplyCosine);
         } else {
             current.signatures.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
