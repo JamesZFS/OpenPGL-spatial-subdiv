@@ -25,7 +25,9 @@ struct Signature  // Directional signature
 
     void init(int level, const SignatureArguments &config) {
         int size = 0;
-        if (level <= PGL_SIGNATURE_FULL_RES_LEVEL) {  // First k levels and parent: full resolution
+        if (level == 0) {  // parent: numbins + 1 (fluence)
+            size = config.numBins == 1 ? 1 : config.numBins + 1;
+        } else if (level <= PGL_SIGNATURE_FULL_RES_LEVEL) {  // First k levels: full resolution
             size = config.numBins;
         } else {  // Otherwise: one bin
             size = 1;
@@ -194,9 +196,8 @@ struct Signature  // Directional signature
 
     template<typename SampleIterator>
     void addSamples(SampleIterator begin, SampleIterator end, const SignatureArguments &config, bool multiplyCosine) {
-        const uint8_t S = sum.size();
         numSamples += std::distance(begin, end);
-        if (S == 1) {  // One bin
+        if (sum.size() == 1) {  // One bin
             for (auto it = begin; it != end; ++it) {
                 float w = it->weight;
                 if (multiplyCosine) w *= it->cosineTerm;
@@ -204,7 +205,16 @@ struct Signature  // Directional signature
                 m2[0] += w * w;
             }
             return;
+        } else if (sum.size() == config.numBins + 1) {  // parent
+            for (auto it = begin; it != end; ++it) {
+                float w = it->weight;
+                if (multiplyCosine) w *= it->cosineTerm;
+                sum[config.numBins] += w;
+                m2[config.numBins] += w * w;
+            }
+            // Fallthrough
         }
+        const uint8_t S = config.numBins;
         switch (config.basisType) {
             case PGL_BASIS_FUNC_NN: {
                 const uint32_t res = config.getResolution();
@@ -581,22 +591,12 @@ struct Signature  // Directional signature
         return numSamples;
     }
 
-    float getFluence() const {
-        float tot = 0;
-        for (int i = 0; i < sum.size(); ++i) {
-            tot += sum[i];
-        }
-        return numSamples == 0 ? 0 : tot / numSamples;
+    float getFluence() const {  // Called only by parent
+        return getMean(sum.size() - 1);
     }
 
-    float getFluenceStd() const {
-        float totM2 = 0;
-        for (int i = 0; i < sum.size(); ++i) {
-            totM2 += m2[i];
-        }
-        float fluence = getFluence();
-        float oneSampleVariance = totM2 / numSamples - fluence * fluence;
-        return std::sqrt(oneSampleVariance / numSamples);
+    float getFluenceStd() const {  // Called only by parent
+        return getStd(sum.size() - 1);
     }
 
     float getMean(uint8_t idx) const {
@@ -637,6 +637,7 @@ struct Signature  // Directional signature
             signature.std[i] = getStd(i);
         }
         signature.numSamples = numSamples;
+        signature.S = sum.size();
         return signature;
     }
 
