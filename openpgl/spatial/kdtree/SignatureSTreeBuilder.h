@@ -525,7 +525,7 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signatures.addSamples(samplesBegin, samplesEnd, region.depth - root.depth, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             if (region.depth == root.depth) region.energy = 0;
             else region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
@@ -619,7 +619,7 @@ struct KDTreePartitionBuilder
             } else {
                 OPENPGL_ASSERT(region.signatures.getNumSamples() == 0);
             }
-            region.signatures.addSamples(samplesBegin, samplesEnd, region.depth - root.depth, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            region.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
             region.signatures.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             if (region.depth == root.depth) region.energy = 0;
             else region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
@@ -897,7 +897,7 @@ struct KDTreePartitionBuilder
 
         // Update self
         if constexpr (isNonZeroSample) {
-            current.signatures.addSamples(samplesBegin, samplesEnd, lookaheadLevel, settings.signatureEnsembleConfig, settings.multiplyCosine);
+            current.signatures.addSamples(samplesBegin, samplesEnd, settings.signatureEnsembleConfig, settings.multiplyCosine);
         } else {
             current.signatures.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }

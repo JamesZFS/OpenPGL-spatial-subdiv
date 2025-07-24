@@ -30,6 +30,7 @@
 #define PGL_VMM_MAX_KAPPA 320000.f
 
 #define PGL_SIGNATURE_MAX_SIZE 64u
+#define PGL_SIGNATURE_FULL_RES_LEVEL 3
 
 struct pgl_vec3f
 {

@@ -23,16 +23,17 @@ struct Signature  // Directional signature
     std::vector<float, Alloc> m2;  // sum of squared weights in that bin
     float numSamples = 0;  // number of samples in all bins, or sum of sample weights
 
-     // TODO: no need to reset the signature if change from one bin to one bin again
     void init(int level, const SignatureArguments &config) {
+        int size = 0;
+        if (level <= PGL_SIGNATURE_FULL_RES_LEVEL) {  // First k levels and parent: full resolution
+            size = config.numBins;
+        } else {  // Otherwise: one bin
+            size = 1;
+        }
+        // No need to reset the signature if change from one bin to one bin again
+        // if (sum.size() == size) return;
         sum.clear();
         m2.clear();
-        int size = 0;
-        if (level == 0) {  // Parent node should store all resolutions
-            size = 2 * config.numBins - 1;
-        } else {
-            size = std::max(1, config.numBins >> (level - 1));
-        }
         sum.resize(size, 0);
         m2.resize(size, 0);
         numSamples = 0;
@@ -192,32 +193,15 @@ struct Signature  // Directional signature
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, int level, const SignatureArguments &config, bool multiplyCosine) {
-        if (level == 0) {  // parent
-            uint8_t numBins = 1;
-            uint8_t offset = 0;
-            while (numBins <= config.numBins) {
-                OPENPGL_ASSERT(offset + numBins <= sum.size());
-                addSamplesImpl(begin, end, numBins, offset, config, multiplyCosine);
-                offset += numBins;
-                numBins <<= 1;
-            }
-        } else {  // children
-            uint8_t numBins = std::max(1, config.numBins >> (level - 1));
-            uint8_t offset = 0;
-            addSamplesImpl(begin, end, numBins, offset, config, multiplyCosine);
-        }
+    void addSamples(SampleIterator begin, SampleIterator end, const SignatureArguments &config, bool multiplyCosine) {
+        const uint8_t S = sum.size();
         numSamples += std::distance(begin, end);
-    }
-
-    template<typename SampleIterator>
-    void addSamplesImpl(SampleIterator begin, SampleIterator end, uint8_t S, uint8_t offset, const SignatureArguments &config, bool multiplyCosine) {
         if (S == 1) {  // One bin
             for (auto it = begin; it != end; ++it) {
                 float w = it->weight;
                 if (multiplyCosine) w *= it->cosineTerm;
-                sum[offset] += w;
-                m2[offset] += w * w;
+                sum[0] += w;
+                m2[0] += w * w;
             }
             return;
         }
@@ -233,8 +217,8 @@ struct Signature  // Directional signature
                         // pgl_vec3f normal = it->normal;
                         // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
                     }
-                    sum[offset + idx] += w;
-                    m2[offset + idx] += w * w;
+                    sum[idx] += w;
+                    m2[idx] += w * w;
                 }
                 break;
             }
@@ -285,8 +269,8 @@ struct Signature  // Directional signature
                     for (uint8_t j = 0; j < S; ++j) {
                         float w = bases[j] * it->weight;
                         if (multiplyCosine) w *= it->cosineTerm;
-                        sum[offset + j] += w;
-                        m2[offset + j] += w * w;
+                        sum[j] += w;
+                        m2[j] += w * w;
                     }
                 }
                 break;
@@ -365,8 +349,8 @@ struct Signature  // Directional signature
                     for (uint8_t j = 0; j < S; ++j) {
                         float w = bases[j] / normalizer * it->weight;
                         if (multiplyCosine) w *= it->cosineTerm;
-                        sum[offset + j] += w;
-                        m2[offset + j] += w * w;
+                        sum[j] += w;
+                        m2[j] += w * w;
                     }
                 }
 
@@ -387,8 +371,8 @@ struct Signature  // Directional signature
                         }
                         float w = b * it->weight;
                         if (multiplyCosine) w *= it->cosineTerm;
-                        sum[offset + j] += w;
-                        m2[offset + j] += w * w;
+                        sum[j] += w;
+                        m2[j] += w * w;
                     }
                 }
                 break;
@@ -408,8 +392,8 @@ struct Signature  // Directional signature
                         }
                         float w = b * it->weight;
                         if (multiplyCosine) w *= it->cosineTerm;
-                        sum[offset + j] += w;
-                        m2[offset + j] += w * w;
+                        sum[j] += w;
+                        m2[j] += w * w;
                     }
                 }
                 break;
@@ -422,8 +406,8 @@ struct Signature  // Directional signature
                     if (multiplyCosine) {
                         w *= it->cosineTerm;
                     }
-                    sum[offset + idx] += w;
-                    m2[offset + idx] += w * w;
+                    sum[idx] += w;
+                    m2[idx] += w * w;
                 }
                 break;
             }
@@ -597,13 +581,22 @@ struct Signature  // Directional signature
         return numSamples;
     }
 
-    float getFluence(bool parent) const {
-        if (parent) return getMean(0);
+    float getFluence() const {
         float tot = 0;
         for (int i = 0; i < sum.size(); ++i) {
             tot += sum[i];
         }
         return numSamples == 0 ? 0 : tot / numSamples;
+    }
+
+    float getFluenceStd() const {
+        float totM2 = 0;
+        for (int i = 0; i < sum.size(); ++i) {
+            totM2 += m2[i];
+        }
+        float fluence = getFluence();
+        float oneSampleVariance = totM2 / numSamples - fluence * fluence;
+        return std::sqrt(oneSampleVariance / numSamples);
     }
 
     float getMean(uint8_t idx) const {
@@ -652,10 +645,19 @@ struct Signature  // Directional signature
     static float getDistanceL2(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         uint8_t S = b.sum.size();
-        uint8_t offset = S - 1;  // into parent bins
-        for (uint8_t i = 0; i < S; i++) {
-            float ai = a.getMean(offset + i), bi = b.getMean(i);
-            float a_std = stdMultiplier * a.getStd(offset + i), b_std = stdMultiplier * b.getStd(i);
+        if (S == 1) {
+            float ai = a.getFluence(), bi = b.getMean(0);
+            float a_std = stdMultiplier * a.getFluenceStd(), b_std = stdMultiplier * b.getStd(0);
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            float diff = 0;
+            if (ai - a_std > bi + b_std)
+                diff = ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                diff = bi - ai - a_std - b_std;
+            sum += diff * diff;
+        } else for (uint8_t i = 0; i < S; i++) {
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             float diff = 0;
             if (ai - a_std > bi + b_std)
@@ -671,10 +673,17 @@ struct Signature  // Directional signature
     static float getDistanceL1(const Signature &a, const Signature &b, float stdMultiplier) {
         float sum = 0;
         uint8_t S = b.sum.size();
-        uint8_t offset = S - 1;  // into parent bins
-        for (uint8_t i = 0; i < S; i++) {
-            float ai = a.getMean(offset + i), bi = b.getMean(i);
-            float a_std = stdMultiplier * a.getStd(offset + i), b_std = stdMultiplier * b.getStd(i);
+        if (S == 1) {
+            float ai = a.getFluence(), bi = b.getMean(0);
+            float a_std = stdMultiplier * a.getFluenceStd(), b_std = stdMultiplier * b.getStd(0);
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            if (ai - a_std > bi + b_std)
+                sum += ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                sum += bi - ai - a_std - b_std;
+        } else for (uint8_t i = 0; i < S; i++) {
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 sum += ai - bi - a_std - b_std;
@@ -687,17 +696,26 @@ struct Signature  // Directional signature
     // SMAPE: symmetric mean absolute percentage error, lookahead level can be inferred from b's size
     // Has a range of [0, 2]
     static float getDistanceSMAPE(const Signature &a, const Signature &b, float stdMultiplier) {
-        float num = 0, denom = a.getMean(0);  // a[0] is the fluence estimator
+        float num = 0, denom = 0;
         uint8_t S = b.sum.size();
-        uint8_t offset = S - 1;  // into parent bins
-        for (uint8_t i = 0; i < S; i++) {
-            float ai = a.getMean(offset + i), bi = b.getMean(i);
-            float a_std = stdMultiplier * a.getStd(offset + i), b_std = stdMultiplier * b.getStd(i);
+        if (S == 1) {
+            float ai = a.getFluence(), bi = b.getMean(0);
+            float a_std = stdMultiplier * a.getFluenceStd(), b_std = stdMultiplier * b.getStd(0);
             // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
             if (ai - a_std > bi + b_std)
                 num += ai - bi - a_std - b_std;
             else if (ai + a_std < bi - b_std)
                 num += bi - ai - a_std - b_std;
+            denom += ai;
+        } else for (uint8_t i = 0; i < S; i++) {
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
+            // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+            if (ai - a_std > bi + b_std)
+                num += ai - bi - a_std - b_std;
+            else if (ai + a_std < bi - b_std)
+                num += bi - ai - a_std - b_std;
+            denom += ai;
         }
         return a.numSamples == 0 ? 0 : num / denom;
     }
@@ -745,11 +763,23 @@ struct Signature  // Directional signature
     static float getDistanceTTest(const Signature &a, const Signature &b, float stdMultiplier, float tvalueThreshold) {
         float num = 0, denom = 0;
         uint8_t S = b.sum.size();
-        uint8_t offset = S - 1;  // into parent bins
-        for (uint8_t i = 0; i < S; i++) {
-            float ai = a.getMean(offset + i), bi = b.getMean(i);
-            float a_std = stdMultiplier * a.getStd(offset + i), b_std = stdMultiplier * b.getStd(i);
-            float sigma = std::sqrt(a.getVariance(offset + i) + b.getVariance(i));
+        if (S == 1) {
+            float ai = a.getFluence(), bi = b.getMean(0);
+            float a_std = stdMultiplier * a.getFluenceStd(), b_std = stdMultiplier * b.getStd(0);
+            float sigma = std::sqrt(a.getFluenceStd() * a.getFluenceStd() + b.getVariance(0));
+            float t = sigma == 0 ? 0 : (ai - bi) / sigma;
+            if (std::abs(t) > tvalueThreshold) {
+                // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap
+                if (ai - a_std > bi + b_std)
+                    num += ai - bi - a_std - b_std;
+                else if (ai + a_std < bi - b_std)
+                    num += bi - ai - a_std - b_std;
+            }
+            denom += ai + bi;
+        } else for (uint8_t i = 0; i < S; i++) {
+            float ai = a.getMean(i), bi = b.getMean(i);
+            float a_std = stdMultiplier * a.getStd(i), b_std = stdMultiplier * b.getStd(i);
+            float sigma = std::sqrt(a.getVariance(i) + b.getVariance(i));
             float t = sigma == 0 ? 0 : (ai - bi) / sigma;
             if (std::abs(t) > tvalueThreshold) {
                 // accumulate when interval [ai-a_std, ai+a_std] and [bi-b_std, bi+b_std] not overlap

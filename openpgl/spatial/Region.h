@@ -33,11 +33,11 @@ struct SignatureEnsemble {
     }
 
     template<typename SampleIterator>
-    void addSamples(SampleIterator begin, SampleIterator end, int level, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
+    void addSamples(SampleIterator begin, SampleIterator end, const std::vector<SignatureArguments> &ensembleConfig, bool multiplyCosine) {
         OPENPGL_ASSERT(ensembleConfig.size() == getNumSignatures());
-        dataZero.addSamples(begin, end, level, ensembleConfig[0], multiplyCosine);
+        dataZero.addSamples(begin, end, ensembleConfig[0], multiplyCosine);
         for (size_t i = 1; i < ensembleConfig.size(); ++i) {
-            dataRest[i-1].addSamples(begin, end, level, ensembleConfig[i], multiplyCosine);
+            dataRest[i-1].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
         }
     }
 
