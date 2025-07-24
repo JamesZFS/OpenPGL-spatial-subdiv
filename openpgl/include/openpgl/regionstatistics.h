@@ -31,6 +31,7 @@ struct PGLDirectionalSignature
     float signature[PGL_SIGNATURE_MAX_SIZE] = {};
     float std[PGL_SIGNATURE_MAX_SIZE] = {};
     float numSamples = 0;
+    uint8_t S = 0;
 };
 
 // From https://www.shadertoy.com/view/XlGcRh
