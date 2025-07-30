@@ -82,6 +82,7 @@ struct KDTreePartitionBuilder
         bool enablePromotion {true};
         float stdMultiplier {1.0f};
         float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
+        int numSimulationSamples {10000};
         float riskTolerance {0.1f}; // reject the signature subdivision if std / mean is above this threshold
         float tValueThreshold {3.0f}; // reject the signature subdivision if std / mean is above this threshold
         float inlierPercent {0.99f};  // filter outlier samples for signature computation
@@ -109,7 +110,7 @@ struct KDTreePartitionBuilder
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
+                   stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && numSimulationSamples == b.numSimulationSamples && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    confidenceType == b.confidenceType && defensiveType == b.defensiveType && filterType == b.filterType && signatureEnsembleConfig == b.signatureEnsembleConfig;
@@ -128,6 +129,7 @@ struct KDTreePartitionBuilder
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             stdMultiplier = cfg.stdMultiplier;
             sufficientCriterionThreshold = cfg.sufficientCriterionThreshold;
+            numSimulationSamples = cfg.numSimulationSamples;
             riskTolerance = cfg.riskTolerance;
             tValueThreshold = cfg.tValueThreshold;
             inlierPercent = cfg.inlierPercent;
@@ -160,6 +162,7 @@ struct KDTreePartitionBuilder
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.stdMultiplier = stdMultiplier;
             cfg.sufficientCriterionThreshold = sufficientCriterionThreshold;
+            cfg.numSimulationSamples = numSimulationSamples;
             cfg.riskTolerance = riskTolerance;
             cfg.tValueThreshold = tValueThreshold;
             cfg.inlierPercent = inlierPercent;
@@ -719,8 +722,8 @@ struct KDTreePartitionBuilder
         switch (settings.confidenceType) {
             case PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN:
                 return SignatureType::getDistanceTTest(a[0], b[0], settings.stdMultiplier, settings.tValueThreshold);
-            case PGL_SPATIAL_CONFIDENCE_UMVU:
-                return SignatureEnsemble<SignatureAllocator>::getSufficientCriterionStatistics(a, b, settings.signatureDistanceThreshold);
+            case PGL_SPATIAL_CONFIDENCE_SIMULATION:
+                return SignatureEnsemble<SignatureAllocator>::getSplitProbaMC(a, b, settings.numSimulationSamples, settings.signatureDistanceThreshold);
             default:
                 return SignatureEnsemble<SignatureAllocator>::getDistance(a, b, settings.stdMultiplier);
         }
@@ -752,7 +755,7 @@ struct KDTreePartitionBuilder
                            (std::abs(left.tValue) > settings.tValueThreshold /*&& left.energy > settings.signatureDistanceThreshold*/) || // P and L
                            (std::abs(right.tValue) > settings.tValueThreshold /*&& right.energy > settings.signatureDistanceThreshold*/)  // P and R
                        );
-            case PGL_SPATIAL_CONFIDENCE_UMVU:
+            case PGL_SPATIAL_CONFIDENCE_SIMULATION:
                 return left.signatures.getNumSamples() > settings.minSamplesPromotion && right.signatures.getNumSamples() > settings.minSamplesPromotion &&
                        (
                            left.energy > settings.sufficientCriterionThreshold || // P and L
@@ -1599,6 +1602,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  defensiveness: " << defensiveness << std::endl;
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
     ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
+    ss << "  numSimulationSamples: " << numSimulationSamples << std::endl;
     ss << "  riskTolerance: " << riskTolerance << std::endl;
     ss << "  tValueThreshold: " << tValueThreshold << std::endl;
     ss << "  inlierPercent: " << inlierPercent << std::endl;
@@ -1656,6 +1660,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
+    stream.write(reinterpret_cast<const char*>(&numSimulationSamples), sizeof(numSimulationSamples));
     stream.write(reinterpret_cast<const char*>(&riskTolerance), sizeof(riskTolerance));
     stream.write(reinterpret_cast<const char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.write(reinterpret_cast<const char*>(&inlierPercent), sizeof(inlierPercent));
@@ -1694,6 +1699,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
+    stream.read(reinterpret_cast<char*>(&numSimulationSamples), sizeof(numSimulationSamples));
     stream.read(reinterpret_cast<char*>(&riskTolerance), sizeof(riskTolerance));
     stream.read(reinterpret_cast<char*>(&tValueThreshold), sizeof(tValueThreshold));
     stream.read(reinterpret_cast<char*>(&inlierPercent), sizeof(inlierPercent));

@@ -89,10 +89,10 @@ struct SignatureEnsemble {
         return distance;
     }
 
-    static float getSufficientCriterionStatistics(const SignatureEnsemble &a, const SignatureEnsemble &b, float T) {
-        float stat = SignatureType::getSufficientCriterionStatistics(a.dataZero, b.dataZero, T);
+    static float getSplitProbaMC(const SignatureEnsemble &a, const SignatureEnsemble &b, int numSimSamples, float T) {
+        float stat = SignatureType::getSplitProbaMC(a.dataZero, b.dataZero, numSimSamples, T);
         for (size_t i = 0; i < a.dataRest.size(); ++i) {
-            stat = std::max(stat, SignatureType::getSufficientCriterionStatistics(a.dataRest[i], b.dataRest[i], T));
+            stat = std::max(stat, SignatureType::getSplitProbaMC(a.dataRest[i], b.dataRest[i], numSimSamples, T));
         }
         return stat;
     }
