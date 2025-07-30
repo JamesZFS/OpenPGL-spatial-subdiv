@@ -20,14 +20,12 @@ template<typename Alloc>
 struct Signature  // Directional signature
 {
     std::vector<float, Alloc> sum;  // sum of weights in that bin
-    std::vector<float, Alloc> m2;  // sum of squared weights in that bin
+    std::vector<float, Alloc> com;  // comomentum accumulator, storing only the upper triangle
     float numSamples = 0;  // number of samples in all bins, or sum of sample weights
 
     void init(int level, const SignatureArguments &config) {
         int size = 0;
-        if (level == 0) {  // parent: numbins + 1 (fluence)
-            size = config.numBins == 1 ? 1 : config.numBins + 1;
-        } else if (level <= PGL_SIGNATURE_FULL_RES_LEVEL) {  // First k levels: full resolution
+        if (level <= PGL_SIGNATURE_FULL_RES_LEVEL) {  // First k levels: full resolution
             size = config.numBins;
         } else {  // Otherwise: one bin
             size = 1;
@@ -35,16 +33,31 @@ struct Signature  // Directional signature
         // No need to reset the signature if change from one bin to one bin again
         // if (sum.size() == size) return;
         sum.clear();
-        m2.clear();
+        com.clear();
         sum.resize(size, 0);
-        m2.resize(size, 0);
+        com.resize((size * (size + 1)) >> 1, 0);
         numSamples = 0;
     }
 
     void clear() {
         std::fill(sum.begin(), sum.end(), 0.0f);
-        std::fill(m2.begin(), m2.end(), 0.0f);
+        std::fill(com.begin(), com.end(), 0.0f);
         numSamples = 0;
+    }
+
+    // Accessing comomentum accumulator
+    inline float &C(int i, int j) {
+        if (j < i) std::swap(i, j);
+        int index = (((2 * sum.size() - i + 1) * i) >> 1) + j - i;
+        OPENPGL_ASSERT(0 <= index && index < com.size());
+        return com[index];
+    }
+
+    inline float C(int i, int j) const {
+        if (j < i) std::swap(i, j);
+        int index = (((2 * sum.size() - i + 1) * i) >> 1) + j - i;
+        OPENPGL_ASSERT(0 <= index && index < com.size());
+        return com[index];
     }
 
     // Convert the direction into [0, 1] representation on the octahedral map
@@ -202,17 +215,9 @@ struct Signature  // Directional signature
                 float w = it->weight;
                 if (multiplyCosine) w *= it->cosineTerm;
                 sum[0] += w;
-                m2[0] += w * w;
+                com[0] += w * w;
             }
             return;
-        } else if (sum.size() == config.numBins + 1) {  // parent
-            for (auto it = begin; it != end; ++it) {
-                float w = it->weight;
-                if (multiplyCosine) w *= it->cosineTerm;
-                sum[config.numBins] += w;
-                m2[config.numBins] += w * w;
-            }
-            // Fallthrough
         }
         const uint8_t S = config.numBins;
         switch (config.basisType) {
@@ -228,7 +233,7 @@ struct Signature  // Directional signature
                         // w *= std::max(0.0f, dir.x * normal.x + dir.y * normal.y + dir.z * normal.z);
                     }
                     sum[idx] += w;
-                    m2[idx] += w * w;
+                    C(idx, idx) += w * w;
                 }
                 break;
             }
@@ -277,10 +282,10 @@ struct Signature  // Directional signature
 
                     // Splat the contribution to nearbying bins, each one with the statistical weight set as the kernelCoeff
                     for (uint8_t j = 0; j < S; ++j) {
-                        float w = bases[j] * it->weight;
-                        if (multiplyCosine) w *= it->cosineTerm;
-                        sum[j] += w;
-                        m2[j] += w * w;
+                        float w = (multiplyCosine ? it->cosineTerm : 1) * it->weight;
+                        sum[j] += bases[j] * w;
+                        for (uint8_t h = j; h < S; ++h)
+                            C(j, h) += bases[j] * bases[h] * w * w;
                     }
                 }
                 break;
@@ -357,10 +362,10 @@ struct Signature  // Directional signature
 
                     // Contribute to all bins, each one attenuated with its basis function
                     for (uint8_t j = 0; j < S; ++j) {
-                        float w = bases[j] / normalizer * it->weight;
-                        if (multiplyCosine) w *= it->cosineTerm;
-                        sum[j] += w;
-                        m2[j] += w * w;
+                        float w = (multiplyCosine ? it->cosineTerm : 1) * it->weight;
+                        sum[j] += bases[j] / normalizer * w;
+                        for (uint8_t h = j; h < S; ++h)
+                            C(j, h) += bases[j] / normalizer * bases[h] / normalizer * w * w;
                     }
                 }
 
@@ -372,6 +377,7 @@ struct Signature  // Directional signature
                     pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
                     float u = fract(p.x * float(res));  // latitude
 
+                    float bases[S];
                     for (uint8_t j = 0; j < S; ++j) {
                         float x = M_PI_2 * (float(S) * u - float(j));
                         float b = 0.0;
@@ -379,10 +385,14 @@ struct Signature  // Directional signature
                             b = std::cos(x);
                             b *= b;
                         }
-                        float w = b * it->weight;
-                        if (multiplyCosine) w *= it->cosineTerm;
-                        sum[j] += w;
-                        m2[j] += w * w;
+                        bases[j] = b;
+                    }
+
+                    for (uint8_t j = 0; j < S; ++j) {
+                        float w = (multiplyCosine ? it->cosineTerm : 1) * it->weight;
+                        sum[j] += bases[j] * w;
+                        for (uint8_t h = j; h < S; ++h)
+                            C(j, h) += bases[j] * bases[h] * w * w;
                     }
                 }
                 break;
@@ -393,6 +403,7 @@ struct Signature  // Directional signature
                     pgl_vec2f p = dir_to_spherical(it->reprojectedDirection);  // [0, 1]^2
                     float v = fract(p.y * float(res));  // longitude
 
+                    float bases[S];
                     for (uint8_t j = 0; j < S; ++j) {
                         float x = M_PI_2 * (float(S) * v - float(j));
                         float b = 0.0;
@@ -400,10 +411,14 @@ struct Signature  // Directional signature
                             b = std::cos(x);
                             b *= b;
                         }
-                        float w = b * it->weight;
-                        if (multiplyCosine) w *= it->cosineTerm;
-                        sum[j] += w;
-                        m2[j] += w * w;
+                        bases[j] = b;
+                    }
+
+                    for (uint8_t j = 0; j < S; ++j) {
+                        float w = (multiplyCosine ? it->cosineTerm : 1) * it->weight;
+                        sum[j] += bases[j] * w;
+                        for (uint8_t h = j; h < S; ++h)
+                            C(j, h) += bases[j] * bases[h] * w * w;
                     }
                 }
                 break;
@@ -417,7 +432,7 @@ struct Signature  // Directional signature
                         w *= it->cosineTerm;
                     }
                     sum[idx] += w;
-                    m2[idx] += w * w;
+                    C(idx, idx) += w * w;
                 }
                 break;
             }
@@ -591,12 +606,21 @@ struct Signature  // Directional signature
         return numSamples;
     }
 
-    float getFluence() const {  // Called only by parent
-        return getMean(sum.size() - 1);
+    float getFluence() const {
+        float tot = 0;
+        for (int i = 0; i < sum.size(); ++i)
+            tot += sum[i];
+        return tot / numSamples;
     }
 
-    float getFluenceStd() const {  // Called only by parent
-        return getStd(sum.size() - 1);
+    float getFluenceStd() const {
+        float mu = getFluence();
+        float m2 = 0;
+        for (int i = 0; i < sum.size(); ++i)
+            for (int j = 0; j < sum.size(); ++j)
+                m2 += C(i, j);  // the sum of all comomentum entries is the second momentum of fluence
+        float var = m2 / numSamples - mu * mu;
+        return std::sqrt(var / numSamples);
     }
 
     float getMean(uint8_t idx) const {
@@ -618,15 +642,14 @@ struct Signature  // Directional signature
     }
 
     float getOneSampleVariance(uint8_t idx) const {
-        // return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);   // one sample, biased
-        return m2[idx] / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
+        return C(idx, idx) / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
     }
 
     void decay(float alpha) {
-        for (uint8_t i = 0; i < sum.size(); i++) {
+        for (int i = 0; i < sum.size(); i++)
             sum[i] *= alpha;
-            m2[i] *= alpha;
-        }
+        for (int i = 0; i < com.size(); i++)
+            com[i] *= alpha;
         numSamples *= alpha;
     }
 
@@ -747,7 +770,7 @@ struct Signature  // Directional signature
         // D is A - B
         float D_numSamples = A.numSamples - B.numSamples;
         float D_mean = (A.sum[0] - B.sum[0]) / D_numSamples;
-        float D_s2 = ((A.m2[0] - B.m2[0]) / D_numSamples - D_mean * D_mean) / D_numSamples;
+        float D_s2 = ((A.com[0] - B.com[0]) / D_numSamples - D_mean * D_mean) / D_numSamples;
         float B_mean = B.getMean(0);
         float B_s2 = B.getOneSampleVariance(0) / B.numSamples;
 
@@ -816,8 +839,9 @@ struct Signature  // Directional signature
         for (int i = 0; i < size; ++i) {
             stream.write(reinterpret_cast<const char *>(&sum[i]), sizeof(sum[i]));
         }
+        size = ((size + 1) * size) >> 1;
         for (int i = 0; i < size; ++i) {
-            stream.write(reinterpret_cast<const char *>(&m2[i]), sizeof(m2[i]));
+            stream.write(reinterpret_cast<const char *>(&com[i]), sizeof(com[i]));
         }
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
     }
@@ -826,12 +850,13 @@ struct Signature  // Directional signature
         int size;
         stream.read(reinterpret_cast<char *>(&size), sizeof(size));
         sum.resize(size);
-        m2.resize(size);
         for (int i = 0; i < size; ++i) {
             stream.read(reinterpret_cast<char *>(&sum[i]), sizeof(sum[i]));
         }
+        size = ((size + 1) * size) >> 1;
+        com.resize(size);
         for (int i = 0; i < size; ++i) {
-            stream.read(reinterpret_cast<char *>(&m2[i]), sizeof(m2[i]));
+            stream.read(reinterpret_cast<char *>(&com[i]), sizeof(com[i]));
         }
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(numSamples));
     }
