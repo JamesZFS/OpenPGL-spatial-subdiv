@@ -11,7 +11,7 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #endif
-#include <map>
+#include "MultivariateNormalSampler.h"
 #include "../include/openpgl/signaturearguments.h"
 
 namespace openpgl {
@@ -43,6 +43,42 @@ struct Signature  // Directional signature
         std::fill(sum.begin(), sum.end(), 0.0f);
         std::fill(com.begin(), com.end(), 0.0f);
         numSamples = 0;
+    }
+
+    // Merge
+    Signature operator+(const Signature &other) const {
+        Signature result;
+        result.sum.resize(sum.size());
+        result.com.resize(com.size());
+        result.numSamples = numSamples + other.numSamples;
+
+        for (size_t i = 0; i < sum.size(); ++i) {
+            result.sum[i] = sum[i] + other.sum[i];
+        }
+
+        for (size_t i = 0; i < com.size(); ++i) {
+            result.com[i] = com[i] + other.com[i];
+        }
+
+        return result;
+    }
+
+    // Subtract
+    Signature operator-(const Signature &other) const {
+        Signature result;
+        result.sum.resize(sum.size());
+        result.com.resize(com.size());
+        result.numSamples = numSamples - other.numSamples;
+
+        for (size_t i = 0; i < sum.size(); ++i) {
+            result.sum[i] = sum[i] - other.sum[i];
+        }
+
+        for (size_t i = 0; i < com.size(); ++i) {
+            result.com[i] = com[i] - other.com[i];
+        }
+
+        return result;
     }
 
     // Accessing comomentum accumulator
@@ -645,6 +681,11 @@ struct Signature  // Directional signature
         return C(idx, idx) / numSamples - sum[idx] * sum[idx] / (numSamples * numSamples);  // assuming no covariance, biased
     }
 
+    float getCovariance(uint8_t i, uint8_t j) const {
+        float oneSampleCov = C(i, j) / numSamples - sum[i] * sum[j] / (numSamples * numSamples);
+        return oneSampleCov / numSamples;  // N-sample covariance
+    }
+
     void decay(float alpha) {
         for (int i = 0; i < sum.size(); i++)
             sum[i] *= alpha;
@@ -815,6 +856,52 @@ struct Signature  // Directional signature
             denom += ai + bi;
         }
         return denom == 0 ? 0 : 2.0f * num / denom;
+    }
+
+    // Estimates the split probability as through Monte-Carlo simulations, assuming bin values follow multivariate Gaussian distribution
+    static float getSplitProbaMC(const Signature &A, const Signature &B, int numSimSamples, float T) {
+        const int S = B.sum.size();
+        if (S == 1) return getSufficientCriterionStatistics(A, B, T);  // One bin case, we have a closed formula :)
+        // D = A \ B
+        Signature D = A - B;
+        const float fluence = A.getFluence();
+
+        // Mean vectors
+        float muB[S], muD[S];
+        for (int j = 0; j < S; ++j) {
+            muB[j] = B.getMean(j);
+            muD[j] = D.getMean(j);
+        }
+
+        // Covariance matrices
+        float covB[S][S], covD[S][S];
+        for (int i = 0; i < S; ++i)
+            for (int j = 0; j < S; ++j) {
+                covB[i][j] = B.getCovariance(i, j);
+                covD[i][j] = D.getCovariance(i, j);
+            }
+
+        size_t seed = A.numSamples;  // TODO: better ways?
+        MultivariateNormalSampler samplerB(S, muB, &covB[0][0], seed);
+        MultivariateNormalSampler samplerD(S, muD, &covD[0][0], seed * seed);
+
+        // Run Monte-Carlo simulation
+        int positiveCount = 0;
+        for (int i = 0; i < numSimSamples; ++i) {
+            float XB[S], XD[S];
+            samplerB.draw(XB);
+            samplerD.draw(XD);
+
+            float energy = 0;
+            for (int j = 0; j < S; ++j) {
+                energy += std::abs(XD[j] - XB[j]);
+            }
+            energy *= D.numSamples / A.numSamples / fluence;
+            
+            if (energy > T) ++positiveCount;
+        }
+
+        return (float) positiveCount / (float) numSimSamples;
     }
 
     static inline float Phi(float x) {

@@ -20,6 +20,7 @@ set(OPENPGL_SRC
     directional/ISurfaceSamplingDistribution.cpp
     directional/IVolumeSamplingDistribution.cpp
     directional/vmm/VMMPhaseFunctions.cpp
+    data/MultivariateNormalSampler.cpp
     ../third-party/embreeSrc/common/simd/sse.cpp
     ../third-party/embreeSrc/common/sys/alloc.cpp
     ../third-party/embreeSrc/common/sys/barrier.cpp
