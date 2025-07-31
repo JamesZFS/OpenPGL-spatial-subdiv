@@ -642,21 +642,34 @@ struct Signature  // Directional signature
         return numSamples;
     }
 
-    float getFluence() const {
+    float getFluenceSum() const {
         float tot = 0;
         for (int i = 0; i < sum.size(); ++i)
             tot += sum[i];
-        return tot / numSamples;
+        return tot;
     }
 
-    float getFluenceStd() const {
-        float mu = getFluence();
+    float getFluenceM2() const {
         float m2 = 0;
         for (int i = 0; i < sum.size(); ++i)
             for (int j = 0; j < sum.size(); ++j)
                 m2 += C(i, j);  // the sum of all comomentum entries is the second momentum of fluence
+        return m2;
+    }
+
+    float getFluence() const {
+        return getFluenceSum() / numSamples;
+    }
+
+    float getFluenceVar() const {
+        float mu = getFluence();
+        float m2 = getFluenceM2();
         float var = m2 / numSamples - mu * mu;
-        return std::sqrt(var / numSamples);
+        return var / numSamples;
+    }
+
+    float getFluenceStd() const {
+        return std::sqrt(getFluenceVar());
     }
 
     float getMean(uint8_t idx) const {
@@ -810,10 +823,10 @@ struct Signature  // Directional signature
     static float getSufficientCriterionStatistics(const Signature &A, const Signature &B, float T) {
         // D is A - B
         float D_numSamples = A.numSamples - B.numSamples;
-        float D_mean = (A.sum[0] - B.sum[0]) / D_numSamples;
-        float D_s2 = ((A.com[0] - B.com[0]) / D_numSamples - D_mean * D_mean) / D_numSamples;
-        float B_mean = B.getMean(0);
-        float B_s2 = B.getOneSampleVariance(0) / B.numSamples;
+        float D_mean = (A.getFluenceSum() - B.getFluenceSum()) / D_numSamples;
+        float D_s2 = ((A.getFluenceM2() - B.getFluenceM2()) / D_numSamples - D_mean * D_mean) / D_numSamples;
+        float B_mean = B.getFluence();
+        float B_s2 = B.getFluenceVar();
 
         float wB_n = +(1-T) * B.numSamples - A.numSamples, wD_n = +(1-T) * D_numSamples;
         float wB_p = -(1+T) * B.numSamples + A.numSamples, wD_p = -(1+T) * D_numSamples;
@@ -821,7 +834,7 @@ struct Signature  // Directional signature
         float criterion_n = (wB_n * B_mean + wD_n * D_mean) / std::sqrt(wB_n*wB_n * B_s2 + wD_n*wD_n * D_s2);
         float criterion_p = (wB_p * B_mean + wD_p * D_mean) / std::sqrt(wB_p*wB_p * B_s2 + wD_p*wD_p * D_s2);
         // return std::max( Phi(criterion_n) + Phi(criterion_p) );
-        return std::max(Phi(criterion_n), Phi(criterion_p));
+        return Phi(criterion_n) + Phi(criterion_p);
         // return std::max(criterion_n, criterion_p);
     }
 
