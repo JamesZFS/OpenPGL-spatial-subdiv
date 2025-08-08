@@ -15,6 +15,112 @@
 namespace openpgl
 {
 
+struct DirectionalStatistics {
+    float sum[3] = {};
+    float com[6] = {};
+    float totalWeight = 0;
+    float totalWeight2 = 0;
+
+    static constexpr int idx_table[3][3] = {  // index into com
+        {0, 1, 2},
+        {1, 3, 4},
+        {2, 4, 5}
+    };
+
+    void clear() {
+        std::fill(sum, sum + 3, 0.0f);
+        std::fill(com, com + 6, 0.0f);
+        totalWeight = 0;
+        totalWeight2 = 0;
+    }
+
+    void decay(float decayFactor) {
+        for (int i = 0; i < 3; ++i) sum[i] *= decayFactor;
+        for (int i = 0; i < 6; ++i) com[i] *= decayFactor;
+        totalWeight *= decayFactor;
+        totalWeight2 *= decayFactor;
+    }
+
+    DirectionalStatistics operator+(const DirectionalStatistics &other) const {
+        DirectionalStatistics result;
+        for (int i = 0; i < 3; ++i) result.sum[i] = sum[i] + other.sum[i];
+        for (int i = 0; i < 6; ++i) result.com[i] = com[i] + other.com[i];
+        result.totalWeight = totalWeight + other.totalWeight;
+        result.totalWeight2 = totalWeight2 + other.totalWeight2;
+        return result;
+    }
+
+    DirectionalStatistics operator-(const DirectionalStatistics &other) const {
+        DirectionalStatistics result;
+        for (int i = 0; i < 3; ++i) result.sum[i] = sum[i] - other.sum[i];
+        for (int i = 0; i < 6; ++i) result.com[i] = com[i] - other.com[i];
+        result.totalWeight = totalWeight - other.totalWeight;
+        result.totalWeight2 = totalWeight2 - other.totalWeight2;
+        return result;
+    }
+
+    // Accessing comomentum accumulator
+    inline float &C(int i, int j) {
+        return com[idx_table[i][j]];
+    }
+
+    inline float C(int i, int j) const {
+        return com[idx_table[i][j]];
+    }
+
+    template<typename SampleIterator>
+    void addSamples(SampleIterator begin, SampleIterator end) {
+        for (auto it = begin; it != end; ++it) {
+            auto dir = pgl_vec3f(it->reprojectedDirection);
+            float w = it->weight;
+            sum[0] += w * dir[0], sum[1] += w * dir[1], sum[2] += w * dir[2];
+            C(0, 0) += w * dir[0] * dir[0], C(0, 1) += w * dir[0] * dir[1], C(0, 2) += w * dir[0] * dir[2];
+            C(1, 1) += w * dir[1] * dir[1], C(1, 2) += w * dir[1] * dir[2], C(2, 2) += w * dir[2] * dir[2];
+            totalWeight += w;
+            totalWeight2 += w * w;
+        }
+    }
+
+    // Normalized mean direction
+    pgl_vec3f getMean() const {
+        float norm = std::sqrt(sum[0]*sum[0] + sum[1]*sum[1] + sum[2]*sum[2]);
+        return norm == 0 ? pgl_vec3f{0, 0, 0} : pgl_vec3f{sum[0] / norm, sum[1] / norm, sum[2] / norm};
+    }
+
+    pgl_vec3f get_d_bar() const {
+        return totalWeight == 0 ? pgl_vec3f{0, 0, 0} : pgl_vec3f{sum[0] / totalWeight, sum[1] / totalWeight, sum[2] / totalWeight};
+    }
+
+    float get_R_bar() const {
+        return std::sqrt(get_R_bar2());
+    }
+
+    float get_R_bar2() const {
+        auto d_bar = get_d_bar();
+        return d_bar[0]*d_bar[0] + d_bar[1]*d_bar[1] + d_bar[2]*d_bar[2];
+    }
+
+    float getKappa() const {
+        float R2 = get_R_bar2();
+        R2 = std::min(R2, 1.0f - 1e-6f); // prevent div by 0
+        float R = std::sqrt(R2);
+        return R * (3 - R2) / (1 - R2);  // approximation
+    }
+
+    // Standard error of the mean direction estimate
+    float getStd() const {
+        if (totalWeight == 0) return 0;
+        auto d_bar = get_d_bar();  // mean direction, unnormalized
+        float R2 = d_bar[0]*d_bar[0] + d_bar[1]*d_bar[1] + d_bar[2]*d_bar[2];
+        auto mu = d_bar / std::sqrt(R2);
+        float avg_muT_Com_mu =
+            C(0, 0) / totalWeight * mu[0] * mu[0] + 2 * C(0, 1) / totalWeight * mu[0] * mu[1] + 2 * C(0, 2) / totalWeight * mu[0] * mu[2] +
+            C(1, 1) / totalWeight * mu[1] * mu[1] + 2 * C(1, 2) / totalWeight * mu[1] * mu[2] + C(2, 2) / totalWeight * mu[2] * mu[2];
+        float V = 1.0f - avg_muT_Com_mu;
+        return std::sqrt((V * totalWeight2) / (totalWeight * totalWeight * R2));
+    }
+};
+
 // A ensemble of signatures (mixture of experts), where all signatures consume the same MC samples with a distinct configuration of bases.
 // By this design, we are able to have different compressed representations of the (marginalized) radiance field at each region,
 //  hopefully each of which capturing different features.
@@ -23,6 +129,7 @@ struct SignatureEnsemble {
     using SignatureType = Signature<Alloc>;
     SignatureType dataZero;  // use stack memory for non-MOE usages
     std::vector<SignatureType> dataRest;
+    DirectionalStatistics dir; // mean direction statistics
 
     void init(int level, const std::vector<SignatureArguments> &ensembleConfig) {
         dataZero.init(level, ensembleConfig[0]);
@@ -30,6 +137,7 @@ struct SignatureEnsemble {
         for (size_t i = 1; i < ensembleConfig.size(); ++i) {
             dataRest[i-1].init(level, ensembleConfig[i]);
         }
+        dir.clear();
     }
 
     template<typename SampleIterator>
@@ -39,6 +147,7 @@ struct SignatureEnsemble {
         for (size_t i = 1; i < ensembleConfig.size(); ++i) {
             dataRest[i-1].addSamples(begin, end, ensembleConfig[i], multiplyCosine);
         }
+        dir.addSamples(begin, end);
     }
 
     void addZeroSamples(size_t numZeroSamples) {
@@ -53,6 +162,7 @@ struct SignatureEnsemble {
         for (auto &signature : dataRest) {
             signature.clear();
         }
+        dir.clear();
     }
 
     void decay(float alpha) {
@@ -60,6 +170,7 @@ struct SignatureEnsemble {
         for (auto &signature : dataRest) {
             signature.decay(alpha);
         }
+        dir.decay(alpha);
     }
 
     SignatureType &operator[](size_t i) {
@@ -105,6 +216,12 @@ struct SignatureEnsemble {
         return risk;
     }
 
+    void fillDirectionalStats(PGLDirectionalSignature &out) const {
+        out.meanDir = dir.getMean();
+        out.kappa = dir.getKappa();
+        out.sigmaDir = dir.getStd();
+    }
+
     void serialize(std::ostream &stream) const {
         uint32_t numSignatures = getNumSignatures();
         stream.write(reinterpret_cast<const char *>(&numSignatures), sizeof(numSignatures));
@@ -112,6 +229,7 @@ struct SignatureEnsemble {
         for (const auto &signature : dataRest) {
             signature.serialize(stream);
         }
+        stream.write(reinterpret_cast<const char *>(&dir), sizeof(dir));
     }
 
     void deserialize(std::istream &stream) {
@@ -122,6 +240,7 @@ struct SignatureEnsemble {
         for (auto &signature : dataRest) {
             signature.deserialize(stream);
         }
+        stream.read(reinterpret_cast<char *>(&dir), sizeof(dir));
     }
 
 };

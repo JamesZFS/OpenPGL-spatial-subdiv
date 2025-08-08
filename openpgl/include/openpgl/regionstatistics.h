@@ -30,8 +30,12 @@ struct PGLDirectionalSignature
 {
     float signature[PGL_SIGNATURE_MAX_SIZE] = {};
     float std[PGL_SIGNATURE_MAX_SIZE] = {};
-    float numSamples = 0;
     uint8_t S = 0;
+    float numSamples = 0;
+    // Mean direction estimate
+    pgl_vec3f meanDir{0, 0, 0};
+    float kappa = 0;  // of the VMF
+    float sigmaDir = 0;
 };
 
 // From https://www.shadertoy.com/view/XlGcRh
