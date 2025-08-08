@@ -400,16 +400,16 @@ public:
             }
             if (index != -1) {
                 uint32_t lChildIdx = index - isRight;
-                return {
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signatures[modelIndex]),
-                    PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signatures[modelIndex])
-                };
+                auto left = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signatures[modelIndex]);
+                auto right = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signatures[modelIndex]);
+                m_candidateRegionStorageContainer[lChildIdx].signatures.fillDirectionalStats(left);
+                m_candidateRegionStorageContainer[lChildIdx + 1].signatures.fillDirectionalStats(right);
+                return {left, right};
             } else {
                 // At parent node
-                return {
-                    PGLDirectionalSignature(candidate->signatures[modelIndex]),
-                    PGLDirectionalSignature(candidate->signatures[modelIndex])
-                };
+                auto parent = PGLDirectionalSignature(candidate->signatures[modelIndex]);
+                candidate->signatures.fillDirectionalStats(parent);
+                return {parent, parent};
             }
         }
         return {};
