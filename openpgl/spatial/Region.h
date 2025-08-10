@@ -119,6 +119,19 @@ struct DirectionalStatistics {
         float V = 1.0f - avg_muT_Com_mu;
         return std::sqrt((V * totalWeight2) / (totalWeight * totalWeight * R2));
     }
+
+    // The half angle of the 100(1-alpha)% confidence interval cone centered at mean
+    float getConfidenceInterval(float alpha) const {
+        float sigma = getStd();
+        return std::asin(std::sqrt(-std::log(alpha)) * sigma);
+    }
+
+    // Angle between the mean directions minus the two confidence cones' half angles
+    static float getEffectiveAngle(const DirectionalStatistics &a, const DirectionalStatistics &b, float alpha = 0.001) {
+        auto muA = a.getMean(), muB = b.getMean();
+        float dot = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
+        return std::max(0.0f, std::acos(dot) - a.getConfidenceInterval(alpha) - b.getConfidenceInterval(alpha));
+    }
 };
 
 // A ensemble of signatures (mixture of experts), where all signatures consume the same MC samples with a distinct configuration of bases.
@@ -256,6 +269,7 @@ struct SubdivisionData {
     uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
 
     float energy = 0.0f;  // distance between self and the parent node, or the statistics of the sufficient criterion
+    float angularDistance = 0.0f;
     float risk = 0.0f;  // maximum value of std / mean per bin
     float tValue = 0.0f;
     uint8_t depth {0};
@@ -270,6 +284,7 @@ struct SubdivisionData {
         dim = 3;
         lChildIdx = 0;
         energy = 0.0f;
+        angularDistance = 0.0f;
         risk = 0.0f;
         tValue = 0.0f;
         depth = 0;
@@ -283,6 +298,7 @@ struct SubdivisionData {
         stream.write(reinterpret_cast<const char *>(&pivot), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
+        stream.write(reinterpret_cast<const char *>(&angularDistance), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&risk), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&tValue), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&depth), sizeof(uint8_t));
@@ -296,6 +312,7 @@ struct SubdivisionData {
         stream.read(reinterpret_cast<char *>(&pivot), sizeof(float));
         stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
         stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
+        stream.read(reinterpret_cast<char *>(&angularDistance), sizeof(float));
         stream.read(reinterpret_cast<char *>(&risk), sizeof(float));
         stream.read(reinterpret_cast<char *>(&tValue), sizeof(float));
         stream.read(reinterpret_cast<char *>(&depth), sizeof(uint8_t));
