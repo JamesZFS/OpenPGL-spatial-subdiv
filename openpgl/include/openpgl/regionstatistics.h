@@ -13,6 +13,7 @@ struct PGLRegionStatistics
     uint32_t depth = 0;
     float fluence = 0;
     float energy = 0;
+    float angularDistance = 0;
     float risk = 0;
     float tValue = 0;
     bool hasCandidateSplit = false;
