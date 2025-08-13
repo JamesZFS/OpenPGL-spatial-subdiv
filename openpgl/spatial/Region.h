@@ -127,7 +127,7 @@ struct DirectionalStatistics {
     }
 
     // Angle between the mean directions minus the two confidence cones' half angles
-    static float getEffectiveAngle(const DirectionalStatistics &a, const DirectionalStatistics &b, float alpha = 0.001) {
+    static float getEffectiveAngle(const DirectionalStatistics &a, const DirectionalStatistics &b, float alpha) {
         auto muA = a.getMean(), muB = b.getMean();
         float dot = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
         return std::max(0.0f, std::acos(dot) - a.getConfidenceInterval(alpha) - b.getConfidenceInterval(alpha));
