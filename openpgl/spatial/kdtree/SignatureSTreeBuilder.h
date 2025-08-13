@@ -83,6 +83,7 @@ struct KDTreePartitionBuilder
         float stdMultiplier {1.0f};
         float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
         float angularDistanceThreshold {M_PIf};  // disabled by default
+        float angularAlpha {1e-3};  // the 100(1-alpha)% confidence interval is used
         int numSimulationSamples {10000};
         float riskTolerance {0.1f}; // reject the signature subdivision if std / mean is above this threshold
         float tValueThreshold {3.0f}; // reject the signature subdivision if std / mean is above this threshold
@@ -111,7 +112,7 @@ struct KDTreePartitionBuilder
                    initializingIters == b.initializingIters && lookaheadDepth == b.lookaheadDepth &&
                    signatureDistanceThreshold == b.signatureDistanceThreshold && decayRatio == b.decayRatio &&
                    defensiveness == b.defensiveness && enablePromotion == b.enablePromotion &&
-                   stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold && numSimulationSamples == b.numSimulationSamples && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
+                   stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold && angularAlpha == b.angularAlpha && numSimulationSamples == b.numSimulationSamples && riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
                    multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature &&
                    confidenceType == b.confidenceType && defensiveType == b.defensiveType && filterType == b.filterType && signatureEnsembleConfig == b.signatureEnsembleConfig;
@@ -131,6 +132,7 @@ struct KDTreePartitionBuilder
             stdMultiplier = cfg.stdMultiplier;
             sufficientCriterionThreshold = cfg.sufficientCriterionThreshold;
             angularDistanceThreshold = cfg.angularDistanceThreshold;
+            angularAlpha = cfg.angularAlpha;
             numSimulationSamples = cfg.numSimulationSamples;
             riskTolerance = cfg.riskTolerance;
             tValueThreshold = cfg.tValueThreshold;
@@ -165,6 +167,7 @@ struct KDTreePartitionBuilder
             cfg.stdMultiplier = stdMultiplier;
             cfg.sufficientCriterionThreshold = sufficientCriterionThreshold;
             cfg.angularDistanceThreshold = angularDistanceThreshold;
+            cfg.angularAlpha = angularAlpha;
             cfg.numSimulationSamples = numSimulationSamples;
             cfg.riskTolerance = riskTolerance;
             cfg.tValueThreshold = tValueThreshold;
@@ -536,7 +539,7 @@ struct KDTreePartitionBuilder
             if (region.depth == root.depth) region.energy = region.angularDistance = 0;
             else {
                 region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
-                region.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, region.signatures.dir);
+                region.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, region.signatures.dir, settings.angularAlpha);
             }
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
@@ -633,7 +636,7 @@ struct KDTreePartitionBuilder
             if (region.depth == root.depth) region.energy = region.angularDistance = 0;
             else {
                 region.energy = getEnergy(root.signatures, region.signatures, settings);  // the root could change, so we need to recompute the distance even if updated
-                region.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, region.signatures.dir);
+                region.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, region.signatures.dir, settings.angularAlpha);
             }
             region.risk = region.signatures.getRisk();
             switch (settings.confidenceType) {
@@ -918,7 +921,7 @@ struct KDTreePartitionBuilder
             current.signatures.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
         current.energy = getEnergy(root.signatures, current.signatures, settings);
-        current.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, current.signatures.dir);
+        current.angularDistance = DirectionalStatistics::getEffectiveAngle(root.signatures.dir, current.signatures.dir, settings.angularAlpha);
         current.risk = current.signatures.getRisk();
         switch (settings.confidenceType) {
             // case PGL_SPATIAL_CONFIDENCE_RISK: current.risk = current.signature.getRisk(); break;
@@ -1617,6 +1620,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  stdMultiplier: " << stdMultiplier << std::endl;
     ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
     ss << "  angularDistanceThreshold: " << angularDistanceThreshold << std::endl;
+    ss << "  angularAlpha: " << angularAlpha << std::endl;
     ss << "  numSimulationSamples: " << numSimulationSamples << std::endl;
     ss << "  riskTolerance: " << riskTolerance << std::endl;
     ss << "  tValueThreshold: " << tValueThreshold << std::endl;
@@ -1676,6 +1680,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.write(reinterpret_cast<const char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
+    stream.write(reinterpret_cast<const char*>(&angularAlpha), sizeof(angularAlpha));
     stream.write(reinterpret_cast<const char*>(&numSimulationSamples), sizeof(numSimulationSamples));
     stream.write(reinterpret_cast<const char*>(&riskTolerance), sizeof(riskTolerance));
     stream.write(reinterpret_cast<const char*>(&tValueThreshold), sizeof(tValueThreshold));
@@ -1716,6 +1721,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&stdMultiplier), sizeof(stdMultiplier));
     stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.read(reinterpret_cast<char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
+    stream.read(reinterpret_cast<char*>(&angularAlpha), sizeof(angularAlpha));
     stream.read(reinterpret_cast<char*>(&numSimulationSamples), sizeof(numSimulationSamples));
     stream.read(reinterpret_cast<char*>(&riskTolerance), sizeof(riskTolerance));
     stream.read(reinterpret_cast<char*>(&tValueThreshold), sizeof(tValueThreshold));

@@ -59,6 +59,7 @@ extern "C"
         float stdMultiplier{1.0f};
         float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
         float angularDistanceThreshold {M_PIf};  // disabled by default
+        float angularAlpha {1e-3f};
         int numSimulationSamples {10000};
         float riskTolerance {0.1f};
         float tValueThreshold {3.0f};
