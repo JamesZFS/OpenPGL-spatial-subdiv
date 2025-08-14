@@ -31,6 +31,20 @@ inline uint32_t draw(float *sample, uint32_t size)
     return std::min(selected, size - 1);
 }
 
+inline uint32_t drawWeighted(float *sample, float *weights, uint32_t size) {
+    float W = 0;
+    for (uint32_t i = 0; i < size; ++i) W += weights[i];
+    if (W <= 0.0f) return 0;
+    uint32_t i = 0;
+    float w;
+    while (i + 1 < size && (w = weights[i] / W) <= *sample) {
+        ++i;
+        *sample -= w;
+    }
+    *sample /= w;  // sample reuse
+    return i;
+}
+
 template <typename RegionNeighbours>
 uint32_t sampleApproximateClosestRegionIdxRef(const RegionNeighbours &nh, const openpgl::Point3 &p, float sample)
 {
@@ -287,6 +301,7 @@ struct KNearestRegionsSearchTree
     {
         OPENPGL_ALIGNED_STRUCT_(16)
         embree::Vec3fa p;  //!< position
+        float size;  // region size
     };
 
     struct Neighbour
@@ -332,6 +347,8 @@ struct KNearestRegionsSearchTree
             const openpgl::SampleStatistics &combinedStats = region.candidate.sampleStatistics;
             const openpgl::Point3 distributionPivot = combinedStats.mean;
             points[i].p = embree::Vec3f(distributionPivot[0], distributionPivot[1], distributionPivot[2]);
+            Vector3 sigma = embree::sqrt(combinedStats.getVariance());
+            points[i].size = sigma.x * sigma.y * sigma.z;  // effective region size
         }
 
         index = std::unique_ptr<Index>(new Index(3, *this, 10));
@@ -392,7 +409,7 @@ struct KNearestRegionsSearchTree
         _isBuildNeighbours = true;
     }
 
-    uint32_t sampleClosestRegionIdx(const openpgl::Point3 &p, float *sample) const
+    uint32_t sampleClosestRegionIdx(const openpgl::Point3 &p, float *sample, bool weighted) const
     {
         OPENPGL_ASSERT(_isBuild);
 
@@ -412,7 +429,11 @@ struct KNearestRegionsSearchTree
             return -1;
         }
 
-        return ret_index[draw(sample, num_results)];
+        if (weighted) {
+            float weights[NUM_KNN];
+            for (int i = 0; i < NUM_KNN; ++i) weights[i] = points[ret_index[i]].size;
+            return ret_index[drawWeighted(sample, weights, num_results)];
+        } else return ret_index[draw(sample, num_results)];
     }
 
     uint32_t sampleApproximateClosestRegionIdx(unsigned int regionIdx, const openpgl::Point3 &p, float *sample) const
