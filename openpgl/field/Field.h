@@ -619,7 +619,7 @@ public:
     inline uint32_t getClosestRegionIdx(const KNearestRegionsSearchTree<Vecsize> &knnTree, const openpgl::Point3 &p, float *sample, uint32_t &id) const
     {
         OPENPGL_ASSERT(knnTree.isBuild());
-        const uint32_t regionIdx = knnTree.sampleClosestRegionIdx(p, sample);
+        const uint32_t regionIdx = knnTree.sampleClosestRegionIdx(p, sample, m_spatialSubdivBuilderSettings.improvedKNN);
         return regionIdx;
     }
 
