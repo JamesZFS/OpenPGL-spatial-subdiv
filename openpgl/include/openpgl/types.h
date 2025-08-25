@@ -56,4 +56,5 @@ enum PGL_SPATIAL_CONFIDENCE_TYPE
     PGL_SPATIAL_CONFIDENCE_TTEST,
     PGL_SPATIAL_CONFIDENCE_TTEST_PER_BIN,  // only sum up the bins that pass the t-test
     PGL_SPATIAL_CONFIDENCE_SIMULATION,     // estimate split confidence via MC simulation, assuming bin values follow multivariate normal distribution
+    PGL_SPATIAL_CONFIDENCE_SERIES,     // umvu fluence criterion + infinite series angular criterion
 };

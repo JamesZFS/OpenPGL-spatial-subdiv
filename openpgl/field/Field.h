@@ -321,7 +321,7 @@ public:
         for (auto &[region, _] : m_regionStorageContainer) {
             region.candidate.signatures.clear();
             region.candidate.energy = 0;
-            region.candidate.angularDistance = 0;
+            region.candidate.angularEnergy = 0;
             region.candidate.risk = 0;
             region.candidate.tValue = 0;
             region.candidate.sampleStatistics.weightMean = region.candidate.sampleStatistics.weightM2 = region.candidate.sampleStatistics.weightCnt = 0;
@@ -329,7 +329,7 @@ public:
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signatures.clear();
             cr.energy = 0;
-            cr.angularDistance = 0;
+            cr.angularEnergy = 0;
             cr.risk = 0;
             cr.tValue = 0;
             cr.sampleStatistics.weightMean = cr.sampleStatistics.weightM2 = cr.sampleStatistics.weightCnt = 0;
@@ -434,7 +434,7 @@ public:
             stats.splitPos = candidate.pivot;
         }
         stats.energy = region.candidate.energy;
-        stats.angularDistance = region.candidate.angularDistance;
+        stats.angularEnergy = region.candidate.angularEnergy;
         stats.risk = region.candidate.risk;
         stats.tValue = region.candidate.tValue;
         stats.fluence = region.candidate.signatures[0].getFluence();
@@ -460,7 +460,7 @@ public:
         auto &region = m_regionStorageContainer[cId].first;
         const auto *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
-        fStats.angularDistance = cStats.angularDistance;
+        fStats.angularEnergy = cStats.angularEnergy;
         fStats.risk = cStats.risk;
         fStats.tValue = cStats.tValue;
         fStats.depth = region.candidate.depth;
@@ -479,7 +479,7 @@ public:
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
             fStats.energy = std::max(fStats.energy, candidate->energy);
-            fStats.angularDistance = std::max(fStats.angularDistance, candidate->angularDistance);
+            fStats.angularEnergy = std::max(fStats.angularEnergy, candidate->angularEnergy);
             fStats.risk = std::max(fStats.risk, candidate->risk);
             if (std::abs(candidate->tValue) > std::abs(fStats.tValue)) fStats.tValue = candidate->tValue;
         }
