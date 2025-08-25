@@ -61,6 +61,7 @@ extern "C"
         float angularDistanceThreshold {M_PIf};  // disabled by default
         float angularAlpha {1e-3f};
         int numSimulationSamples {10000};
+        int numSeriesTerms {50};
         float riskTolerance {0.1f};
         float tValueThreshold {3.0f};
         float inlierPercent {0.99f};
