@@ -97,7 +97,7 @@ struct KDTreePartitionBuilder
         bool nonRecursive {false};  // if enabled, stop the subdivision when the promotion finishes
         bool singlePromotion {false}; // if enabled, promote at most one level for each parent node during the promotion handling
         bool optimizeSignature {false};  // if true, optimize signature computation by caching basis function values TODO: not compatible with signature ensemble
-        bool improvedKNN {false};  // if true, use improved stochastic query
+        PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
         PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};  // confidence metric to tell us whether we can trust our difference metric
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};  // how to grow the defensive sample count threshold
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};  // how to perform outlier removal
@@ -117,7 +117,7 @@ struct KDTreePartitionBuilder
                    stdMultiplier == b.stdMultiplier && sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold && angularAlpha == b.angularAlpha && numSimulationSamples == b.numSimulationSamples && numSeriesTerms == b.numSeriesTerms &&
                    riskTolerance == b.riskTolerance && tValueThreshold == b.tValueThreshold &&
                    inlierPercent == b.inlierPercent && DBORstdMultiplier == b.DBORstdMultiplier && tEpsK == b.tEpsK && varianceThreshold == b.varianceThreshold &&
-                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature && improvedKNN == b.improvedKNN &&
+                   multiplyCosine == b.multiplyCosine && reproject == b.reproject && nonRecursive == b.nonRecursive && singlePromotion == b.singlePromotion && optimizeSignature == b.optimizeSignature && knnType == b.knnType &&
                    confidenceType == b.confidenceType && defensiveType == b.defensiveType && filterType == b.filterType && signatureEnsembleConfig == b.signatureEnsembleConfig;
         }
 
@@ -151,7 +151,7 @@ struct KDTreePartitionBuilder
             nonRecursive = cfg.nonRecursive;
             singlePromotion = cfg.singlePromotion;
             optimizeSignature = cfg.optimizeSignature;
-            improvedKNN = cfg.improvedKNN;
+            knnType = cfg.knnType;
             confidenceType = cfg.confidenceType;
             defensiveType = cfg.defensiveType;
             filterType = cfg.filterType;
@@ -188,7 +188,7 @@ struct KDTreePartitionBuilder
             cfg.nonRecursive = nonRecursive;
             cfg.singlePromotion = singlePromotion;
             cfg.optimizeSignature = optimizeSignature;
-            cfg.improvedKNN = improvedKNN;
+            cfg.knnType = knnType;
             cfg.confidenceType = confidenceType;
             cfg.defensiveType = defensiveType;
             cfg.filterType = filterType;
@@ -1661,7 +1661,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  nonRecursive: " << nonRecursive << std::endl;
     ss << "  singlePromotion: " << singlePromotion << std::endl;
     ss << "  optimizeSignature: " << optimizeSignature << std::endl;
-    ss << "  improvedKNN: " << improvedKNN << std::endl;
+    ss << "  knnType: " << knnType << std::endl;
     ss << "  confidenceType: " << confidenceType << std::endl;
     ss << "  defensiveType: " << defensiveType << std::endl;
     ss << "  filterType: " << filterType << std::endl;
@@ -1722,7 +1722,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&nonRecursive), sizeof(nonRecursive));
     stream.write(reinterpret_cast<const char*>(&singlePromotion), sizeof(singlePromotion));
     stream.write(reinterpret_cast<const char*>(&optimizeSignature), sizeof(optimizeSignature));
-    stream.write(reinterpret_cast<const char*>(&improvedKNN), sizeof(improvedKNN));
+    stream.write(reinterpret_cast<const char*>(&knnType), sizeof(knnType));
     stream.write(reinterpret_cast<const char*>(&confidenceType), sizeof(confidenceType));
     stream.write(reinterpret_cast<const char*>(&defensiveType), sizeof(defensiveType));
     stream.write(reinterpret_cast<const char*>(&filterType), sizeof(filterType));
@@ -1765,7 +1765,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&nonRecursive), sizeof(nonRecursive));
     stream.read(reinterpret_cast<char*>(&singlePromotion), sizeof(singlePromotion));
     stream.read(reinterpret_cast<char*>(&optimizeSignature), sizeof(optimizeSignature));
-    stream.read(reinterpret_cast<char*>(&improvedKNN), sizeof(improvedKNN));
+    stream.read(reinterpret_cast<char*>(&knnType), sizeof(knnType));
     stream.read(reinterpret_cast<char*>(&confidenceType), sizeof(confidenceType));
     stream.read(reinterpret_cast<char*>(&defensiveType), sizeof(defensiveType));
     stream.read(reinterpret_cast<char*>(&filterType), sizeof(filterType));

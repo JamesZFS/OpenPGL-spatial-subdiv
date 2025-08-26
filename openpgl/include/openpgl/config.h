@@ -76,7 +76,7 @@ extern "C"
         bool nonRecursive{false};
         bool singlePromotion{false};
         bool optimizeSignature{false};
-        bool improvedKNN{false};
+        PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};
         PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};
         PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
         PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
