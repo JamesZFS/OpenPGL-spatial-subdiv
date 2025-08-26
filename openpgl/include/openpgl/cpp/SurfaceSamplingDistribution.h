@@ -49,12 +49,11 @@ struct SurfaceSamplingDistribution
      *
      * @param field The guiding field of the scene.
      * @param pos The position the guiding distribution is queried for.
-     * @param sample1D A random number used of a stochastic look-up is used.
+     * @param sample A random number used of a stochastic look-up is used.
      * @return true
      * @return false
      */
-    template <bool lookahead=false>
-    bool Init(const Field *field, const pgl_point3f &pos, float &sample1D);
+    bool Init(const Field *field, const pgl_point3f &pos, float *sample);
 
     /**
      * @brief Clears/resets the internal representation of the guiding distribution.
@@ -237,15 +236,11 @@ OPENPGL_INLINE void SurfaceSamplingDistribution::Clear()
     return pglSurfaceSamplingDistributionClear(m_surfaceSamplingDistributionHandle);
 }
 
-template <bool lookahead>
-OPENPGL_INLINE bool SurfaceSamplingDistribution::Init(const Field *field, const pgl_point3f &pos, float &sample1D)
+OPENPGL_INLINE bool SurfaceSamplingDistribution::Init(const Field *field, const pgl_point3f &pos, float *sample)
 {
     OPENPGL_ASSERT(m_surfaceSamplingDistributionHandle);
     OPENPGL_ASSERT(field->m_fieldHandle);
-    if constexpr(lookahead)
-        return pglFieldInitSurfaceSamplingDistributionFine(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, &sample1D);
-    else
-        return pglFieldInitSurfaceSamplingDistribution(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, &sample1D);
+    return pglFieldInitSurfaceSamplingDistribution(field->m_fieldHandle, m_surfaceSamplingDistributionHandle, pos, sample);
 }
 
 OPENPGL_INLINE void SurfaceSamplingDistribution::ApplyCosineProduct(const pgl_vec3f &normal)

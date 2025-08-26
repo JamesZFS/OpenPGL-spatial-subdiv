@@ -237,21 +237,14 @@ extern "C" OPENPGL_DLLEXPORT PGLSurfaceSamplingDistribution pglFieldNewSurfaceSa
 OPENPGL_CATCH_END(nullptr)
 
 extern "C" OPENPGL_DLLEXPORT bool pglFieldInitSurfaceSamplingDistribution(PGLField field, PGLSurfaceSamplingDistribution surfaceSamplingDistribution, pgl_point3f position,
-                                                                          float *sample1D)
+                                                                          float *sample)
 {
     const openpgl::Point3 pos(position.x, position.y, position.z);
     auto *gField = (IGuidingField *)field;
     ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
-    return gField->initSurfaceSamplingDistribution(gSurfaceSamplingDistribution, pos, sample1D);
+    return gField->initSurfaceSamplingDistribution(gSurfaceSamplingDistribution, pos, sample);
 }
-extern "C" OPENPGL_DLLEXPORT bool pglFieldInitSurfaceSamplingDistributionFine(PGLField field, PGLSurfaceSamplingDistribution surfaceSamplingDistribution, pgl_point3f position,
-                                                                          float *sample1D)
-{
-    const openpgl::Point3 pos(position.x, position.y, position.z);
-    auto *gField = (IGuidingField *)field;
-    ISurfaceSamplingDistribution *gSurfaceSamplingDistribution = (ISurfaceSamplingDistribution *)surfaceSamplingDistribution;
-    return gField->initSurfaceSamplingDistributionFine(gSurfaceSamplingDistribution, pos, sample1D);
-}
+
 extern "C" OPENPGL_DLLEXPORT PGLVolumeSamplingDistribution pglFieldNewVolumeSamplingDistribution(PGLField field) OPENPGL_CATCH_BEGIN
 {
     auto *gField = (IGuidingField *)field;

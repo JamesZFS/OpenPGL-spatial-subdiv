@@ -62,10 +62,7 @@ typedef ManagedObject Field;
     OPENPGL_CORE_INTERFACE PGLSurfaceSamplingDistribution pglFieldNewSurfaceSamplingDistribution(PGLField field);
 
     OPENPGL_CORE_INTERFACE bool pglFieldInitSurfaceSamplingDistribution(PGLField field, PGLSurfaceSamplingDistribution surfaceSamplingDistribution, pgl_point3f position,
-                                                                        float *sample1D);
-
-    OPENPGL_CORE_INTERFACE bool pglFieldInitSurfaceSamplingDistributionFine(PGLField field, PGLSurfaceSamplingDistribution surfaceSamplingDistribution, pgl_point3f position,
-                                                                            float *sample1D);
+                                                                        float *sample);
 
     OPENPGL_CORE_INTERFACE PGLVolumeSamplingDistribution pglFieldNewVolumeSamplingDistribution(PGLField field);
 

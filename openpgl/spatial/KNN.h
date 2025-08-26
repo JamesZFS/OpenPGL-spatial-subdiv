@@ -409,6 +409,35 @@ struct KNearestRegionsSearchTree
         _isBuildNeighbours = true;
     }
 
+    // Returns the average distance to nearest neighbors around p
+    float estimateNeighborDistance(const openpgl::Point3 &p) const
+    {
+        OPENPGL_ASSERT(_isBuild);
+
+        const float query_pt[3] = {p.x, p.y, p.z};
+
+        size_t num_results = NUM_KNN;
+        unsigned int ret_index[NUM_KNN];
+        float ret_dist_sqr[NUM_KNN];
+
+        num_results = index->knnSearch(&query_pt[0], num_results, &ret_index[0], &ret_dist_sqr[0]);
+
+        if (num_results == 0)
+        {
+#ifdef OPENPGL_SHOW_PRINT_OUTS
+            std::cout << "No closest region found" << std::endl;
+#endif
+            return -1;
+        }
+
+        float dist = 0;
+        for (int i = 0; i < num_results; ++i) {
+            dist += std::sqrt(ret_dist_sqr[i]);
+        }
+        dist /= float(num_results);
+        return dist;
+    }
+
     uint32_t sampleClosestRegionIdx(const openpgl::Point3 &p, float *sample, bool weighted) const
     {
         OPENPGL_ASSERT(_isBuild);
@@ -431,7 +460,7 @@ struct KNearestRegionsSearchTree
 
         if (weighted) {
             float weights[NUM_KNN];
-            for (int i = 0; i < NUM_KNN; ++i) weights[i] = points[ret_index[i]].size;
+            for (int i = 0; i < num_results; ++i) weights[i] = points[ret_index[i]].size;
             return ret_index[drawWeighted(sample, weights, num_results)];
         } else return ret_index[draw(sample, num_results)];
     }

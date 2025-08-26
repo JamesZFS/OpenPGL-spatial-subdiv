@@ -110,20 +110,20 @@ public:
         m_isSurface = isSurface;
     }
 
-    inline const RegionType *getRegion(const openpgl::Point3 &p, float *sample1D, uint32_t &id) const
+    inline const RegionType *getRegion(const openpgl::Point3 &p, float *sample, uint32_t &id) const
     {
         if (m_iteration > 0 && embree::inside(m_spatialSubdiv.getBounds(), p))
         {
-            if (m_useStochasticNNLookUp && *sample1D >= 0.f)
+            if (m_useStochasticNNLookUp && *sample >= 0.f)
             {
                 if (USE_PRECOMPUTED_NN)
                 {
-                    uint32_t regionIdx = getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample1D, id);
+                    uint32_t regionIdx = getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
                     return &m_regionStorageContainer[regionIdx].first;
                 }
                 else
                 {
-                    uint32_t regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample1D, id);
+                    uint32_t regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
                     if (regionIdx != -1)
                     {
                         return &m_regionStorageContainer[regionIdx].first;
@@ -154,12 +154,6 @@ public:
         uint32_t id;
         auto region = getRegion(p, &sample, id);
         return region ? id : -1;
-    }
-
-    // Deprecated
-    inline const RegionType *getFineRegion(const openpgl::Point3 &p, float *sample1D, uint32_t &id) const
-    {
-        return getRegion(p, sample1D, id);
     }
 
     void buildField(const SampleContainer &samples)
@@ -616,11 +610,29 @@ public:
         }
     }
 
+    static Point3 uniform3DToBall(float sample3D[3]) {
+        float phi = 2 * float(M_PI) * sample3D[0];
+        float cosTheta = 1 - 2 * sample3D[1];
+        float sinTheta = std::sqrt(1 - cosTheta * cosTheta);
+        float r = std::cbrt(sample3D[2]);
+        return {r * sinTheta * std::cos(phi), r * sinTheta * std::sin(phi), r * cosTheta};
+    }
+
     inline uint32_t getClosestRegionIdx(const KNearestRegionsSearchTree<Vecsize> &knnTree, const openpgl::Point3 &p, float *sample, uint32_t &id) const
     {
         OPENPGL_ASSERT(knnTree.isBuild());
-        const uint32_t regionIdx = knnTree.sampleClosestRegionIdx(p, sample, m_spatialSubdivBuilderSettings.improvedKNN);
-        return regionIdx;
+        switch (m_spatialSubdivBuilderSettings.knnType) {
+            case PGL_SPATIAL_KNN_UNIFORM:
+                return knnTree.sampleClosestRegionIdx(p, sample, false);
+            case PGL_SPATIAL_KNN_REGION_SIZE_WEIGHTED:
+                return knnTree.sampleClosestRegionIdx(p, sample, true);
+            case PGL_SPATIAL_KNN_JITTER: {
+                float dist = knnTree.estimateNeighborDistance(p);
+                float r = 1.0f * dist;  // TODO to be determined
+                Point3 q = p + r * uniform3DToBall(sample);  // jittered location
+                return m_spatialSubdiv.getDataIdxAtPos(q);
+            }
+        }
     }
 
     inline uint32_t getApproximateClosestRegionIdx(const KNearestRegionsSearchTree<Vecsize> &knnTree, const openpgl::Point3 &p, float *sample, uint32_t &id) const

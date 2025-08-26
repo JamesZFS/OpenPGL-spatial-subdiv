@@ -58,3 +58,10 @@ enum PGL_SPATIAL_CONFIDENCE_TYPE
     PGL_SPATIAL_CONFIDENCE_SIMULATION,     // estimate split confidence via MC simulation, assuming bin values follow multivariate normal distribution
     PGL_SPATIAL_CONFIDENCE_SERIES,     // umvu fluence criterion + infinite series angular criterion
 };
+
+enum PGL_SPATIAL_KNN_TYPE
+{
+    PGL_SPATIAL_KNN_UNIFORM = 0,  // Baseline
+    PGL_SPATIAL_KNN_REGION_SIZE_WEIGHTED,  // Proposal 1
+    PGL_SPATIAL_KNN_JITTER,  // Proposal 2
+};
