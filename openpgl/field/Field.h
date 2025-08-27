@@ -10,7 +10,6 @@
 #include "../spatial/kdtree/KDTree.h"
 #include "FieldStatistics.h"
 
-#include <tbb/scalable_allocator.h>
 #ifdef USE_EMBREE_PARALLEL
 #define TASKING_TBB
 #include <embreeSrc/common/algorithms/parallel_for.h>
@@ -35,14 +34,12 @@ public:
     // using ZeroValueSampleContainerInternal = ContainerInternal<ZeroValueSampleData>;
     using SampleContainerInternal = std::vector<SampleData>;
     using ZeroValueSampleContainerInternal = std::vector<ZeroValueSampleData>;
-    using SignatureAllocator = tbb::scalable_allocator<float>;
-    // using SignatureAllocator = std::allocator<float>;
 
-    typedef Region<DirectionalDistribution, typename TDirectionalDistributionFactory::Statistics, SignatureAllocator> RegionType;
+    typedef Region<DirectionalDistribution, typename TDirectionalDistributionFactory::Statistics> RegionType;
     typedef openpgl::Range RangeType;
     typedef std::pair<RegionType, RangeType> RegionStorageType;
     typedef tbb::concurrent_vector<RegionStorageType> RegionStorageContainerType;
-    typedef tbb::concurrent_vector<SubdivisionData<SignatureAllocator>> CandidateRegionStorageContainerType;
+    typedef tbb::concurrent_vector<SubdivisionData> CandidateRegionStorageContainerType;
 
     using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;  
     using SpatialStructure = typename SpatialStructureBuilder::SpatialStructure;
@@ -313,20 +310,14 @@ public:
 
     void clearSignatures() {
         for (auto &[region, _] : m_regionStorageContainer) {
-            region.candidate.signatures.clear();
+            region.candidate.signature.clear();
             region.candidate.energy = 0;
             region.candidate.angularEnergy = 0;
-            region.candidate.risk = 0;
-            region.candidate.tValue = 0;
-            region.candidate.sampleStatistics.weightMean = region.candidate.sampleStatistics.weightM2 = region.candidate.sampleStatistics.weightCnt = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
-            cr.signatures.clear();
+            cr.signature.clear();
             cr.energy = 0;
             cr.angularEnergy = 0;
-            cr.risk = 0;
-            cr.tValue = 0;
-            cr.sampleStatistics.weightMean = cr.sampleStatistics.weightM2 = cr.sampleStatistics.weightCnt = 0;
         }
     }
 
@@ -335,9 +326,7 @@ public:
         m_deterministic = cfg.deterministic;
         m_useStochasticNNLookUp = cfg.knnLookup;
         m_useISNNLookUp = cfg.isKnnLookup;
-        m_decayOnSpatialSplit = cfg.vmmDecay;
         m_spatialSubdivBuilderSettings.updateFromConfig(cfg);
-        // CEStatistics::clampValue = cfg.ceClampValue;
     }
 
     void loadSubdivConfig(PGLKDTreeArguments &cfg) const
@@ -345,9 +334,7 @@ public:
         cfg.deterministic = m_deterministic;
         cfg.knnLookup = m_useStochasticNNLookUp;
         cfg.isKnnLookup = m_useISNNLookUp;
-        cfg.vmmDecay = m_decayOnSpatialSplit;
         m_spatialSubdivBuilderSettings.loadToConfig(cfg);
-        // cfg.ceClampValue = CEStatistics::clampValue;
     }
 
     void resetField()
@@ -377,7 +364,7 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight) const {
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
         splitDim = 3;
         uint32_t id = getRegionId(pos);
         if (id < m_regionStorageContainer.size()) {
@@ -396,15 +383,12 @@ public:
             }
             if (index != -1) {
                 uint32_t lChildIdx = index - isRight;
-                auto left = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signatures[modelIndex]);
-                auto right = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signatures[modelIndex]);
-                m_candidateRegionStorageContainer[lChildIdx].signatures.fillDirectionalStats(left);
-                m_candidateRegionStorageContainer[lChildIdx + 1].signatures.fillDirectionalStats(right);
+                auto left = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx].signature);
+                auto right = PGLDirectionalSignature(m_candidateRegionStorageContainer[lChildIdx + 1].signature);
                 return {left, right};
             } else {
                 // At parent node
-                auto parent = PGLDirectionalSignature(candidate->signatures[modelIndex]);
-                candidate->signatures.fillDirectionalStats(parent);
+                auto parent = PGLDirectionalSignature(candidate->signature);
                 return {parent, parent};
             }
         }
@@ -417,7 +401,6 @@ public:
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
-        stats.removed = false;
         stats.numSamples = region.candidate.sampleStatistics.numSamples;
         stats.numZeroValueSamples = region.candidate.sampleStatistics.numZeroValueSamples;
         stats.depth = region.candidate.depth;
@@ -429,16 +412,12 @@ public:
         }
         stats.energy = region.candidate.energy;
         stats.angularEnergy = region.candidate.angularEnergy;
-        stats.risk = region.candidate.risk;
-        stats.tValue = region.candidate.tValue;
-        stats.fluence = region.candidate.signatures[0].getFluence();
+        stats.fluence = region.candidate.signature.getFluence();
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
         auto var = region.candidate.sampleStatistics.getVariance();
         stats.sampleVariance = { var.x, var.y, var.z };
-        stats.dborMean = region.candidate.sampleStatistics.weightMean;
-        stats.dborStd = region.candidate.sampleStatistics.getDBORStd();
         return stats;
     }
 
@@ -455,8 +434,6 @@ public:
         const auto *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
         fStats.angularEnergy = cStats.angularEnergy;
-        fStats.risk = cStats.risk;
-        fStats.tValue = cStats.tValue;
         fStats.depth = region.candidate.depth;
         fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
         // Traverse to the deepest level
@@ -474,13 +451,11 @@ public:
             candidate = &m_candidateRegionStorageContainer[fStats.id];
             fStats.energy = std::max(fStats.energy, candidate->energy);
             fStats.angularEnergy = std::max(fStats.angularEnergy, candidate->angularEnergy);
-            fStats.risk = std::max(fStats.risk, candidate->risk);
-            if (std::abs(candidate->tValue) > std::abs(fStats.tValue)) fStats.tValue = candidate->tValue;
         }
         if (fStats.id != -1) {
             fStats.depth = candidate->depth;
-            fStats.numSamples = (uint32_t) candidate->signatures.getNumSamples();
-            fStats.fluence = candidate->signatures[0].getFluence();
+            fStats.numSamples = (uint32_t) candidate->signature.numSamples;
+            fStats.fluence = candidate->signature.getFluence();
             fStats.hasCandidateSplit = false;
         }
         return {cStats, fStats};
@@ -632,6 +607,8 @@ public:
                 Point3 q = p + r * uniform3DToBall(sample);  // jittered location
                 return m_spatialSubdiv.getDataIdxAtPos(q);
             }
+            default:
+                throw std::runtime_error("Unknown knnType");
         }
     }
 

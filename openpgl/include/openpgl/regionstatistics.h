@@ -7,15 +7,12 @@
 struct PGLRegionStatistics
 {
     uint32_t id = -1;
-    bool removed = false;
     uint32_t numSamples = 0;
     uint32_t numZeroValueSamples = 0;
     uint32_t depth = 0;
     float fluence = 0;
     float energy = 0;
     float angularEnergy = 0;
-    float risk = 0;
-    float tValue = 0;
     bool hasCandidateSplit = false;
     uint8_t splitDim = 3;
     float splitPos = 0;
@@ -23,15 +20,12 @@ struct PGLRegionStatistics
     pgl_vec3f sampleVariance {0, 0, 0};
     pgl_point3f lowerBounds {0, 0, 0};
     pgl_point3f upperBounds {0, 0, 0};
-    float dborMean = 0;
-    float dborStd = 0;
 };
 
 struct PGLDirectionalSignature
 {
-    float signature[PGL_SIGNATURE_MAX_SIZE] = {};
-    float std[PGL_SIGNATURE_MAX_SIZE] = {};
-    uint8_t S = 0;
+    float signature = 0;
+    float std = 0;
     float numSamples = 0;
     // Mean direction estimate
     pgl_vec3f meanDir{0, 0, 0};

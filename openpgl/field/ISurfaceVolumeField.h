@@ -75,6 +75,6 @@ struct ISurfaceVolumeField
 
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;
 
-    virtual std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight) const = 0;
+    virtual std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const = 0;
 };
 }  // namespace openpgl
