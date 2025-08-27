@@ -312,11 +312,11 @@ extern "C" OPENPGL_DLLEXPORT std::pair<PGLRegionStatistics, PGLRegionStatistics>
     return gField->getCoarseFineRegionStatsSurface(pos);
 }
 
-extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight)
+extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight)
 {
     const auto *gField = (const IGuidingField *)field;
     const openpgl::Point3 pos(position.x, position.y, position.z);
-    return gField->getDirectionalSignatures(pos, lookaheadDepth, modelIndex, splitDim, isRight);
+    return gField->getDirectionalSignatures(pos, lookaheadDepth, splitDim, isRight);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

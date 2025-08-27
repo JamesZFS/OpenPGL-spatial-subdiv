@@ -159,7 +159,7 @@ struct Field
     std::pair<PGLRegionStatistics, PGLRegionStatistics> GetCoarseFineRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
     /// Returns the LR directional signatures of the regions at the given position and lookahead level (1 <= lookaheadDepth <= max lookaheadDepth)
-    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight) const;
+    std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const;
 
     /// Checks if the spatial structure and directional distribution of this Field are similar to the ones stored in another Field.
     bool operator==(const Field &b) const;
@@ -329,10 +329,10 @@ OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoa
     return pglFieldGetCoarseFineRegionStatsSurface(m_fieldHandle, pos);
 }
 
-OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t modelIndex, uint8_t &splitDim, bool &isRight) const
+OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const
 {
     OPENPGL_ASSERT(m_fieldHandle);
-    return pglFieldGetDirectionalSignatures(m_fieldHandle, pos, lookaheadDepth, modelIndex, splitDim, isRight);
+    return pglFieldGetDirectionalSignatures(m_fieldHandle, pos, lookaheadDepth, splitDim, isRight);
 }
 
 }  // namespace cpp

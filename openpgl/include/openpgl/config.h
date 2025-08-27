@@ -13,7 +13,6 @@
 #endif
 
 #include "common.h"
-#include "signaturearguments.h"
 #ifdef OPENPGL_BUILD
 #ifdef OPENPGL_DEVICE_TYPE_CPU_16
 #define OPENPGL_SUPPORT_DEVICE_TYPE_CPU_16
@@ -46,41 +45,21 @@ extern "C"
         bool deterministic{true};
         bool knnLookup{true};
         bool isKnnLookup{false};
-        PGL_SPATIAL_SPLIT_TYPE splitType {PGL_SPATIAL_SPLIT_BASELINE};
+
         uint32_t maxDepth {32};
-        uint32_t minSamplesCandidateSplit {1000};
-        uint32_t minSamplesPromotion {1000};
-        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};
-        uint32_t forcedSampleCountThreshold {(uint32_t) -1};  // disabled by default
-        uint32_t initializingIters {1};
-        uint32_t lookaheadDepth {3};
-        float signatureDistanceThreshold {0.05f};
-        bool enablePromotion{true};
-        float stdMultiplier{1.0f};
-        float sufficientCriterionThreshold {0.0f};  // Phi^{-1}(1 - fpSplitProbability)
-        float angularDistanceThreshold {M_PIf};  // disabled by default
-        float angularAlpha {1e-3f};
-        int numSimulationSamples {10000};
-        int numSeriesTerms {50};
-        float riskTolerance {0.1f};
-        float tValueThreshold {3.0f};
-        float inlierPercent {0.99f};
-        float DBORstdMultiplier {3.0f};
-        float ceDecay{0.8f};
-        float vmmDecay{0.25f};
-        float ceClampValue{1e5f};
-        float tEpsK{0.0f};
-        float varianceThreshold{1e-4f};
-        bool multiplyCosine{false};
-        bool reproject{false};
-        bool nonRecursive{false};
-        bool singlePromotion{false};
-        bool optimizeSignature{false};
-        PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};
-        PGL_SPATIAL_CONFIDENCE_TYPE confidenceType {PGL_SPATIAL_CONFIDENCE_NONE};
-        PGL_SPATIAL_DEFENSIVE_TYPE defensiveType {PGL_SPATIAL_DEFENSIVE_FIXED};
-        PGL_SPATIAL_FILTER_TYPE filterType {PGL_SPATIAL_FILTER_NONE};
-        std::vector<SignatureArguments> signatureEnsembleConfig {1};  // at least one model
+        uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
+        uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
+        uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
+        uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
+        uint32_t lookaheadDepth {6};  // levels of lookahead
+        float signatureDistanceThreshold {0.15f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
+        bool enablePromotion {true};
+        float fluenceAlpha {1e-4f};
+        float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
+        float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
+
+        PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type
+        PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
     };
 
     struct PGLVMMFactoryArguments
