@@ -5,6 +5,8 @@
 
 namespace openpgl {
 
+#define WEIGHTED_DIR_VARIANCE
+
 // CDF of standard normal distribution
 static inline float Phi(float x) {
     return 0.5f * (std::erf(x / std::sqrt(2)) + 1);
@@ -68,9 +70,13 @@ struct Signature  // Directional signature
             auto dir = pgl_vec3f(it->reprojectedDirection);
             float w = it->weight;
             dirSum[0] += w * dir[0], dirSum[1] += w * dir[1], dirSum[2] += w * dir[2];
-            // TODO perhaps shouldn't apply weight to the comoment
+#ifdef WEIGHTED_DIR_VARIANCE
             C(0, 0) += w * dir[0] * dir[0], C(0, 1) += w * dir[0] * dir[1], C(0, 2) += w * dir[0] * dir[2];
             C(1, 1) += w * dir[1] * dir[1], C(1, 2) += w * dir[1] * dir[2], C(2, 2) += w * dir[2] * dir[2];
+#else
+            C(0, 0) += dir[0] * dir[0], C(0, 1) += dir[0] * dir[1], C(0, 2) += dir[0] * dir[2];
+            C(1, 1) += dir[1] * dir[1], C(1, 2) += dir[1] * dir[2], C(2, 2) += dir[2] * dir[2];
+#endif
             totalWeight += w;
             totalWeight2 += w * w;
         }
@@ -155,10 +161,15 @@ struct Signature  // Directional signature
         auto d_bar = get_d_bar();  // mean direction, unnormalized
         float R2 = d_bar[0]*d_bar[0] + d_bar[1]*d_bar[1] + d_bar[2]*d_bar[2];
         auto mu = d_bar / std::sqrt(R2);
-        // TODO perhaps use numSamples instead of totalWeight as the deonminator
+#ifdef WEIGHTED_DIR_VARIANCE
         float avg_muT_Com_mu =
             C(0, 0) / totalWeight * mu[0] * mu[0] + 2 * C(0, 1) / totalWeight * mu[0] * mu[1] + 2 * C(0, 2) / totalWeight * mu[0] * mu[2] +
             C(1, 1) / totalWeight * mu[1] * mu[1] + 2 * C(1, 2) / totalWeight * mu[1] * mu[2] + C(2, 2) / totalWeight * mu[2] * mu[2];
+#else
+        float avg_muT_Com_mu =
+            C(0, 0) / numSamples * mu[0] * mu[0] + 2 * C(0, 1) / numSamples * mu[0] * mu[1] + 2 * C(0, 2) / numSamples * mu[0] * mu[2] +
+            C(1, 1) / numSamples * mu[1] * mu[1] + 2 * C(1, 2) / numSamples * mu[1] * mu[2] + C(2, 2) / numSamples * mu[2] * mu[2];
+#endif
         float V = 1.0f - avg_muT_Com_mu;
         return std::sqrt((V * totalWeight2) / (totalWeight * totalWeight * R2));
     }
