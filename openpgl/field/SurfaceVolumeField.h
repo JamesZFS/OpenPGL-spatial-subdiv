@@ -315,6 +315,22 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getLeafCount();
     }
 
+    size_t getLookaheadRegionCountSurface() const override {
+        return m_surfaceField.getLookaheadRegionCount();
+    }
+
+    size_t getMemoryKDTreeSurface() const override {
+        return m_surfaceField.getMemoryKDTree();
+    }
+
+    size_t getMemoryRegionDataSurface() const override {
+        return m_surfaceField.getMemoryRegionData();
+    }
+
+    size_t getMemoryLookaheadRegionDataSurface() const override {
+        return m_surfaceField.getMemoryLookaheadRegionData();
+    }
+
     PGLRegionStatistics getRegionStatsSurface(uint32_t id) const override
     {
         return m_surfaceField.getRegionStats(id);

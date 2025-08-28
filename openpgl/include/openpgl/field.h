@@ -78,8 +78,11 @@ typedef ManagedObject Field;
     OPENPGL_CORE_INTERFACE PGLFieldStatistics pglFieldGetVolumeStatistics(PGLField field);
 
     OPENPGL_CORE_INTERFACE size_t pglFieldGetRegionCountSurface(PGLField field);
-
     OPENPGL_CORE_INTERFACE size_t pglFieldGetLeafCountSurface(PGLField field);
+    OPENPGL_CORE_INTERFACE size_t pglFieldGetLookaheadRegionCountSurface(PGLField field);
+    OPENPGL_CORE_INTERFACE size_t pglFieldGetMemoryKDTreeSurface(PGLField field);
+    OPENPGL_CORE_INTERFACE size_t pglFieldGetMemoryRegionDataSurface(PGLField field);
+    OPENPGL_CORE_INTERFACE size_t pglFieldGetMemoryLookaheadRegionDataSurface(PGLField field);
 
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id);
 

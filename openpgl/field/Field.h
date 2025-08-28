@@ -39,7 +39,6 @@ public:
     typedef openpgl::Range RangeType;
     typedef std::pair<RegionType, RangeType> RegionStorageType;
     typedef tbb::concurrent_vector<RegionStorageType> RegionStorageContainerType;
-    typedef tbb::concurrent_vector<SubdivisionData> CandidateRegionStorageContainerType;
 
     using SpatialStructureBuilder = TSpatialStructureBuilder<RegionType, SampleContainerInternal, ZeroValueSampleContainerInternal, TSamplingDistribution>;  
     using SpatialStructure = typename SpatialStructureBuilder::SpatialStructure;
@@ -155,6 +154,8 @@ public:
 
     void buildField(const SampleContainer &samples)
     {
+        std::cout << "sizeof(RegionStorage) = " << sizeof(RegionStorageType) << std::endl;
+        std::cout << "sizeof(SubdivisionData) = " << sizeof(SubdivisionData) << std::endl;
         m_iteration = 0;
         m_totalSPP = 0;
         if (samples.samples.size() > 0)
@@ -364,6 +365,32 @@ public:
         return m_spatialSubdiv.getNumLeafs();  // return only the non-lookahead regions
     }
 
+    size_t getLookaheadRegionCount() const {
+        std::function<size_t(const SubdivisionData &)> countLookaheadsUnder = [&](const SubdivisionData &current) {
+            if (current.hasSplit())
+                return 2ul + countLookaheadsUnder(m_candidateRegionStorageContainer[current.lChildIdx]) + countLookaheadsUnder(m_candidateRegionStorageContainer[current.lChildIdx + 1]);
+            else
+                return 0ul;
+        };
+        size_t total = 0;
+        for (auto &[parent, _]: m_regionStorageContainer) {
+            total += countLookaheadsUnder(parent.candidate);
+        }
+        return total;
+    }
+
+    size_t getMemoryKDTree() const {
+        return m_spatialSubdiv.estimateMemoryCost();
+    }
+
+    size_t getMemoryRegionData() const {
+        return m_regionStorageContainer.size() * sizeof(RegionStorageType);
+    }
+
+    size_t getMemoryLookaheadRegionData() const {
+        return m_candidateRegionStorageContainer.size() * sizeof(SubdivisionData);
+    }
+
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
         splitDim = 3;
         uint32_t id = getRegionId(pos);
@@ -534,7 +561,7 @@ public:
         m_candidateRegionStorageContainer.reserve(size);
         for (size_t i = 0; i < size; i++)
         {
-            m_candidateRegionStorageContainer.emplace_back();
+            m_candidateRegionStorageContainer.append();
             m_candidateRegionStorageContainer[i].deserialize(is);
         }
         is.read(reinterpret_cast<char *>(&m_useStochasticNNLookUp), sizeof(m_useStochasticNNLookUp));
@@ -957,7 +984,7 @@ public:
 
     SpatialStructure m_spatialSubdiv;
     RegionStorageContainerType m_regionStorageContainer;
-    CandidateRegionStorageContainerType m_candidateRegionStorageContainer;
+    CandidateRegionStorage m_candidateRegionStorageContainer;
 
     bool m_useStochasticNNLookUp{false};
     bool m_useISNNLookUp{false};

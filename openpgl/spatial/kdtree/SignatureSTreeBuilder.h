@@ -128,7 +128,7 @@ struct KDTreePartitionBuilder
     };
 
     void build(KDTree &kdTree, const BBox &bounds, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples,
-        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage,
+        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage,
         const Settings &buildSettings, uint32_t iteration) const
     {
         std::cout << buildSettings.toString() << std::endl;
@@ -143,7 +143,7 @@ struct KDTreePartitionBuilder
     }
 
     void update(KDTree &kdTree, TSamplesContainer &samples, TZeroValueSamplesContainer &zeroSamples,
-        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage,
+        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage,
         const Settings &buildSettings, uint32_t iteration) const
     {
         Timer timer;
@@ -186,9 +186,8 @@ struct KDTreePartitionBuilder
 
     template<class TContainer, class FieldType>
     void evaluateRegions(KDTree &kdTree, TContainer &samples,
-        tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage,
+        tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage,
         const Settings &buildSettings, const FieldType &field) {
-        constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
 
         KDNode &root = kdTree.getRoot();
 
@@ -217,7 +216,7 @@ struct KDTreePartitionBuilder
 
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,
                         TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
-                        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage,
+                        tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage,
                         const Settings &settings, uint32_t iteration) const
     {
         OPENPGL_ASSERT(depth <= settings.maxDepth);
@@ -244,12 +243,8 @@ struct KDTreePartitionBuilder
             if (depth + 1 <= settings.maxDepth && iteration < settings.initializingIters && mergedStats.getNumSamples() > settings.sampleCountThreshold) {
                 // 1. sample count criterion
                 triggersSplit = true;
-                bool hasCandidateSplit = iteration >= settings.initializingIters && candidate.hasSplit();
-                uint32_t lChildIdx = candidate.lChildIdx;
-                if (hasCandidateSplit) {
-                    splitDim = candidate.dim;
-                    splitPos = candidate.pivot;
-                } else proposeSplit(mergedStats, splitDim, splitPos);
+                OPENPGL_ASSERT(!candidate.hasSplit());
+                proposeSplit(mergedStats, splitDim, splitPos);
                 OPENPGL_ASSERT(splitDim < 3);
 
                 auto rDataItr = dataStorage.emplace_back(region, Range());
@@ -257,14 +252,8 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    if (hasCandidateSplit) {
-                        regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
-                        regionLR[c]->candidate.energy = regionLR[c]->candidate.angularEnergy = 0;
-                        OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
-                    } else {
-                        regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, 0, c);
-                        regionLR[c]->candidate.depth = depth + 1;
-                    }
+                    regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, 0, c);
+                    regionLR[c]->candidate.depth = depth + 1;
                     initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                     regionLR[c]->splitFlag = 1;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
@@ -301,6 +290,7 @@ struct KDTreePartitionBuilder
                         // regionBounds set later
                         OPENPGL_ASSERT(regionLR[c]->candidate.depth > depth);
                     }
+                    candidateDataStorage.recycle_pair(lChildIdx);
 
                     // Extend KD tree
                     uint32_t nodeIdLeft = kdTree.addChildrenPair();
@@ -369,7 +359,7 @@ struct KDTreePartitionBuilder
     bool updateCandidateRegionsOnePromotion(uint8_t depth, const SubdivisionData &root, SubdivisionData &current,
         typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
         typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd,
-        tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &settings) const {
+        CandidateRegionStorage &candidateDataStorage, const Settings &settings) const {
         OPENPGL_ASSERT(depth == current.depth);
         OPENPGL_ASSERT(root.depth <= depth && depth <= settings.maxDepth);
         const uint8_t lookaheadLevel = current.depth - root.depth;
@@ -408,7 +398,7 @@ struct KDTreePartitionBuilder
             uint8_t splitDim;
             proposeSplit(current.sampleStatistics, splitDim, splitPos);
             current.dim = splitDim, current.pivot = splitPos;
-            current.lChildIdx = std::distance(candidateDataStorage.begin(), candidateDataStorage.grow_by(2));
+            current.lChildIdx = candidateDataStorage.add_pair();
             for (uint8_t c: {0, 1}) {
                 auto &child = candidateDataStorage[current.lChildIdx + c];
                 child.sampleStatistics = current.sampleStatistics;
@@ -501,7 +491,7 @@ struct KDTreePartitionBuilder
     }
 
     // Clear the signatures beneath current
-    void initCandidateSignatures(int lookaheadLevel, SubdivisionData &current, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &settings) const {
+    void initCandidateSignatures(int lookaheadLevel, SubdivisionData &current, CandidateRegionStorage &candidateDataStorage, const Settings &settings) const {
         current.signature.clear();
         current.energy = current.angularEnergy = 0;
         if (current.hasSplit()) {
@@ -521,7 +511,7 @@ struct KDTreePartitionBuilder
     }
 
     template<class TContainer, class FieldType>
-    void evaluateRegionsNode(KDTree &kdTree, KDNode &node, uint8_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &buildSettings, const FieldType &field) const
+    void evaluateRegionsNode(KDTree &kdTree, KDNode &node, uint8_t depth, TContainer &samples, const Range sampleRange, tbb::concurrent_vector<std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage, const Settings &buildSettings, const FieldType &field) const
     {
         if (sampleRange.size() == 0)
         {
@@ -574,7 +564,7 @@ struct KDTreePartitionBuilder
     template<class TContainer>
     void evaluateCandidateRegions(KDTree &kdTree, const SubdivisionData &root, SubdivisionData &current,
         typename TContainer::iterator samplesBegin, typename TContainer::iterator samplesEnd,
-        tbb::concurrent_vector<SubdivisionData> &candidateDataStorage, const Settings &settings) const {
+        CandidateRegionStorage &candidateDataStorage, const Settings &settings) const {
         constexpr bool isNonZeroSample = has_member_weight<typename TContainer::value_type>::value;
 
         // Update self
