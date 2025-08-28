@@ -71,6 +71,14 @@ struct ISurfaceVolumeField
 
     virtual size_t getLeafCountSurface() const = 0;
 
+    virtual size_t getLookaheadRegionCountSurface() const = 0;
+
+    virtual size_t getMemoryKDTreeSurface() const = 0;
+
+    virtual size_t getMemoryRegionDataSurface() const = 0;
+
+    virtual size_t getMemoryLookaheadRegionDataSurface() const = 0;
+
     virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;
 
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;

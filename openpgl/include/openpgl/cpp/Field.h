@@ -151,6 +151,10 @@ struct Field
 
     /// Returns the number of regions (including invalid and lookahead or just leafs) in the surface guiding Field.
     size_t GetRegionCountSurface(bool all = true) const;
+    size_t GetLookaheadRegionCountSurface() const;
+    size_t GetMemoryKDTreeSurface() const;
+    size_t GetMemoryRegionDataSurface() const;
+    size_t GetMemoryLookaheadRegionDataSurface() const;
 
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
@@ -315,6 +319,22 @@ OPENPGL_INLINE size_t Field::GetRegionCountSurface(bool all) const
         return pglFieldGetRegionCountSurface(m_fieldHandle);
     else
         return pglFieldGetLeafCountSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetLookaheadRegionCountSurface() const {
+    return pglFieldGetLookaheadRegionCountSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryKDTreeSurface() const {
+    return pglFieldGetMemoryKDTreeSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryRegionDataSurface() const {
+    return pglFieldGetMemoryRegionDataSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryLookaheadRegionDataSurface() const {
+    return pglFieldGetMemoryLookaheadRegionDataSurface(m_fieldHandle);
 }
 
 OPENPGL_INLINE PGLRegionStatistics Field::GetRegionStatisticsSurface(uint32_t id) const

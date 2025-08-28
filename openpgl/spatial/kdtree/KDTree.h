@@ -712,6 +712,10 @@ struct KDTree
         return treeStats;
     }
 
+    size_t estimateMemoryCost() const {
+        return m_nodes.size() * sizeof(KDNode);
+    }
+
    public:
     bool m_isInit{false};
 

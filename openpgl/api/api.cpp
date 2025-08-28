@@ -299,6 +299,26 @@ extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetLeafCountSurface(PGLField field)
     return gField->getLeafCountSurface();
 }
 
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetLookaheadRegionCountSurface(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getLookaheadRegionCountSurface();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryKDTreeSurface(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryKDTreeSurface();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryRegionDataSurface(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryRegionDataSurface();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryLookaheadRegionDataSurface(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryLookaheadRegionDataSurface();
+}
+
 extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id)
 {
     const auto *gField = (const IGuidingField *)field;

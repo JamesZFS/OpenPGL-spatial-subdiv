@@ -6,6 +6,7 @@
 #include "../data/SampleStatistics.h"
 #include "../data/Signature.h"
 #include "../openpgl_common.h"
+#include <tbb/concurrent_vector.h>
 #ifdef OPENPGL_RADIANCE_CACHES
 #include "../directional/OutgoingRadianceHistogram.h"
 #endif
@@ -15,8 +16,9 @@ namespace openpgl
 {
 
 struct SubdivisionData {
-    Signature signature;
-    SampleStatistics sampleStatistics;
+    // Necessary memory: 10 - 20 floats ~ 40 - 80 Bytes
+    Signature signature;  // 3 - 12 floats
+    SampleStatistics sampleStatistics;  // essentially 6 floats
 
     float pivot {0};
     uint8_t dim : 2 {3};
@@ -215,4 +217,69 @@ struct Region : public IRegion {
         return equal;
     }
 };
+
+class CandidateRegionStorage {
+public:
+    using iterator = tbb::concurrent_vector<SubdivisionData>::iterator;
+
+    void reserve(size_t n) {
+        m_data.reserve(n);
+    }
+
+    void clear() {
+        m_data.clear();
+    }
+    
+    size_t size() const { return m_data.size(); }
+
+    iterator begin() { return m_data.begin(); }
+
+    iterator end() { return m_data.end(); }
+
+    SubdivisionData &operator[](size_t idx) {
+        return m_data[idx];
+    }
+
+    const SubdivisionData &operator[](size_t idx) const {
+        return m_data[idx];
+    }
+
+    size_t add_pair() {
+        size_t idx = m_freeIndexStack.pop();  // Check if there is a recyclable pair before allocating new
+        if (idx != -1) return idx;
+        return std::distance(m_data.begin(), m_data.grow_by(2));
+    }
+
+    size_t append() {
+        return std::distance(m_data.begin(), m_data.emplace_back());
+    }
+
+    void recycle_pair(size_t idx) {
+        m_data[idx].reset();
+        m_data[idx+1].reset();
+        m_freeIndexStack.push(idx);
+    }
+
+private:
+    tbb::concurrent_vector<SubdivisionData> m_data;
+
+    struct ConcurrentIndexStack {
+        std::vector<size_t> indices;
+        std::mutex mutex;
+
+        void push(size_t i) {
+            std::lock_guard lock(mutex);
+            indices.push_back(i);
+        }
+
+        size_t pop() {
+            std::lock_guard lock(mutex);
+            if (indices.empty()) return -1;
+            size_t ret = indices.back();
+            indices.pop_back();
+            return ret;
+        }
+    } m_freeIndexStack;
+};
+
 }  // namespace openpgl
