@@ -74,6 +74,7 @@ struct KDTreePartitionBuilder
         float sufficientCriterionThreshold {1e-4f};  // Phi^{-1}(1 - alpha)
         float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
         float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
+        bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type
         PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
 
@@ -89,7 +90,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    enablePromotion == b.enablePromotion &&
                    sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold &&
-                   angularAlpha == b.angularAlpha && angularType == b.angularType && knnType == b.knnType;
+                   angularAlpha == b.angularAlpha && reproject == b.reproject && angularType == b.angularType && knnType == b.knnType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -104,6 +105,7 @@ struct KDTreePartitionBuilder
             sufficientCriterionThreshold = PhiInv(1.f - cfg.fluenceAlpha);
             angularDistanceThreshold = cfg.angularDistanceThreshold;
             angularAlpha = cfg.angularAlpha;
+            reproject = cfg.reproject;
             enablePromotion = cfg.enablePromotion;
             angularType = cfg.angularType;
             knnType = cfg.knnType;
@@ -121,6 +123,7 @@ struct KDTreePartitionBuilder
             cfg.fluenceAlpha = 1.f - Phi(sufficientCriterionThreshold);
             cfg.angularDistanceThreshold = angularDistanceThreshold;
             cfg.angularAlpha = angularAlpha;
+            cfg.reproject = reproject;
             cfg.enablePromotion = enablePromotion;
             cfg.angularType = angularType;
             cfg.knnType = knnType;
@@ -214,6 +217,29 @@ struct KDTreePartitionBuilder
         });
     }
 
+    void prepareSampleReprojection(typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd, const SampleStatistics &stats) const {
+        openpgl::Vector3 sampleVariance = stats.getVariance();
+        float minDistance = length(sampleVariance);
+        minDistance = 3.f * 3.f * sqrt(minDistance);
+
+        for (auto it = samplesBegin; it != samplesEnd; ++it) {
+            // Find the reprojected direction: nd = (pos + dist * dir - pivot).normalized()
+            if (std::isinf(it->distance) || !(it->distance > 0.0f)) continue;
+
+            const float distance = fmaxf(minDistance, it->distance);
+            const openpgl::Point3 samplePosition(it->position.x, it->position.y, it->position.z);
+            pgl_vec3f direction = it->direction;
+            const openpgl::Vector3 sampleDirection(direction.x, direction.y, direction.z);
+            const openpgl::Point3 originPosition = samplePosition + sampleDirection * distance;
+            openpgl::Vector3 newDirection = originPosition - stats.mean;
+            const float newDistance = embree::length(newDirection);
+            newDirection = newDirection / newDistance;
+
+            pgl_vec3f reprojectedDirection = {newDirection[0], newDirection[1], newDirection[2]};
+            it->reprojectedDirection = reprojectedDirection;
+        }
+    }
+
     void updateTreeNode(KDTree &kdTree, KDNode &node, uint8_t depth, uint8_t prevSplitDim, const BBox &bounds,
                         TSamplesContainer &samples, const Range &sampleRange, TZeroValueSamplesContainer &zeroSamples, const Range &zeroSampleRange,
                         tbb::concurrent_vector< std::pair<TRegion, Range> > &dataStorage, CandidateRegionStorage &candidateDataStorage,
@@ -268,7 +294,8 @@ struct KDTreePartitionBuilder
                 nodeLR[1]->setDataNodeIdx(std::distance(dataStorage.begin(), rDataItr));
             } else if (depth + 1 <= settings.maxDepth && iteration >= settings.initializingIters) {
                 // 2. Signature-based criterion
-                Timer timer;
+                if (settings.reproject)
+                    prepareSampleReprojection(samplesBegin, samplesEnd, mergedStats);
 
                 // Update candidate regions and check for promotion
                 if (updateCandidateRegionsOnePromotion(depth, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {
@@ -656,6 +683,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
     ss << "  angularDistanceThreshold: " << angularDistanceThreshold << std::endl;
     ss << "  angularAlpha: " << angularAlpha << std::endl;
+    ss << "  reproject: " << reproject << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  angularType: " << angularType << std::endl;
     ss << "  knnType: " << knnType << std::endl;
@@ -672,6 +700,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&initializingIters), sizeof(initializingIters));
     stream.write(reinterpret_cast<const char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.write(reinterpret_cast<const char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
+    stream.write(reinterpret_cast<const char*>(&reproject), sizeof(reproject));
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.write(reinterpret_cast<const char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
@@ -690,6 +719,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&initializingIters), sizeof(initializingIters));
     stream.read(reinterpret_cast<char*>(&lookaheadDepth), sizeof(lookaheadDepth));
     stream.read(reinterpret_cast<char*>(&signatureDistanceThreshold), sizeof(signatureDistanceThreshold));
+    stream.read(reinterpret_cast<char*>(&reproject), sizeof(reproject));
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.read(reinterpret_cast<char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
