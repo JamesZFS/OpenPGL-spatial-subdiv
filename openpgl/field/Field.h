@@ -388,7 +388,8 @@ public:
     }
 
     size_t getMemoryLookaheadRegionData() const {
-        return m_candidateRegionStorageContainer.size() * sizeof(SubdivisionData);
+        return m_candidateRegionStorageContainer.size() * 56;
+        // return m_candidateRegionStorageContainer.size() * sizeof(SubdivisionData);
     }
 
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
@@ -630,7 +631,10 @@ public:
                 return knnTree.sampleClosestRegionIdx(p, sample, true);
             case PGL_SPATIAL_KNN_JITTER: {
                 float dist = knnTree.estimateNeighborDistance(p);
-                float r = 1.0f * dist;  // TODO to be determined
+                float r = 0.0f;
+                if (dist > 0.0f) {
+                    r = dist * m_spatialSubdivBuilderSettings.knnJitterMultiplier;
+                }
                 Point3 q = p + r * uniform3DToBall(sample);  // jittered location
                 return m_spatialSubdiv.getDataIdxAtPos(q);
             }

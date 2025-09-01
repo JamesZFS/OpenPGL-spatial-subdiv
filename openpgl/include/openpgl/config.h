@@ -57,6 +57,7 @@ extern "C"
         float fluenceAlpha {1e-4f};
         float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
         float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
+        float knnJitterMultiplier {1.0f};
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
 
         PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type

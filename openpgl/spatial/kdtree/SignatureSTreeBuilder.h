@@ -74,6 +74,7 @@ struct KDTreePartitionBuilder
         float sufficientCriterionThreshold {1e-4f};  // Phi^{-1}(1 - alpha)
         float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
         float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
+        float knnJitterMultiplier {1.0f};
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
         PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type
         PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
@@ -90,7 +91,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    enablePromotion == b.enablePromotion &&
                    sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold &&
-                   angularAlpha == b.angularAlpha && reproject == b.reproject && angularType == b.angularType && knnType == b.knnType;
+                   angularAlpha == b.angularAlpha && knnJitterMultiplier == b.knnJitterMultiplier && reproject == b.reproject && angularType == b.angularType && knnType == b.knnType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -105,6 +106,7 @@ struct KDTreePartitionBuilder
             sufficientCriterionThreshold = PhiInv(1.f - cfg.fluenceAlpha);
             angularDistanceThreshold = cfg.angularDistanceThreshold;
             angularAlpha = cfg.angularAlpha;
+            knnJitterMultiplier = cfg.knnJitterMultiplier;
             reproject = cfg.reproject;
             enablePromotion = cfg.enablePromotion;
             angularType = cfg.angularType;
@@ -124,6 +126,7 @@ struct KDTreePartitionBuilder
             cfg.angularDistanceThreshold = angularDistanceThreshold;
             cfg.angularAlpha = angularAlpha;
             cfg.reproject = reproject;
+            cfg.knnJitterMultiplier = knnJitterMultiplier;
             cfg.enablePromotion = enablePromotion;
             cfg.angularType = angularType;
             cfg.knnType = knnType;
@@ -683,6 +686,7 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
     ss << "  angularDistanceThreshold: " << angularDistanceThreshold << std::endl;
     ss << "  angularAlpha: " << angularAlpha << std::endl;
+    ss << "  knnJitterMultiplier: " << knnJitterMultiplier << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
     ss << "  angularType: " << angularType << std::endl;
@@ -705,6 +709,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.write(reinterpret_cast<const char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
     stream.write(reinterpret_cast<const char*>(&angularAlpha), sizeof(angularAlpha));
+    stream.write(reinterpret_cast<const char*>(&knnJitterMultiplier), sizeof(knnJitterMultiplier));
     stream.write(reinterpret_cast<const char*>(&angularType), sizeof(angularType));
     stream.write(reinterpret_cast<const char*>(&knnType), sizeof(knnType));
 }
@@ -724,6 +729,7 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.read(reinterpret_cast<char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
     stream.read(reinterpret_cast<char*>(&angularAlpha), sizeof(angularAlpha));
+    stream.read(reinterpret_cast<char*>(&knnJitterMultiplier), sizeof(knnJitterMultiplier));
     stream.read(reinterpret_cast<char*>(&angularType), sizeof(angularType));
     stream.read(reinterpret_cast<char*>(&knnType), sizeof(knnType));
 }
