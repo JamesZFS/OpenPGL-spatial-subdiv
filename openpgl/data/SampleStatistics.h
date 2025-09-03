@@ -15,18 +15,12 @@ struct SampleStatistics
     Point3 mean{0.0f};
     Vector3 variance{0.0f};
     float numSamples{0};
-    float numZeroValueSamples{0.0f};
-    
-    BBox sampleBounds{openpgl::Vector3(std::numeric_limits<float>::max()), openpgl::Vector3(-std::numeric_limits<float>::max())};
 
     inline void clear()
     {
         mean = Point3(0.0f);
         variance = Vector3(0.0f);
         numSamples = 0.0f;
-        numZeroValueSamples = 0.0f;
-        sampleBounds.lower = openpgl::Vector3(std::numeric_limits<float>::max());
-        sampleBounds.upper = openpgl::Vector3(-std::numeric_limits<float>::max());
     }
 
     inline void addSample(const Point3 sample)
@@ -40,7 +34,6 @@ struct SampleStatistics
         const Point3 oldMean = mean;
         mean += (sample - oldMean) * incWeight;
         variance += (((sample - oldMean) * (sample - mean)) - variance) * incWeight;
-        sampleBounds.extend(sample);
         OPENPGL_ASSERT(isValid());
     }
 
@@ -54,101 +47,15 @@ struct SampleStatistics
         return variance;
     }
 
-    inline BBox getSampleBounds() const
-    {
-        return sampleBounds;
-    }
-
-    inline Vector3 getSampleBoundsExtend() const
-    {
-        return sampleBounds.upper - sampleBounds.lower;
-    }
-
-    inline bool hasValidBoundRange() const
-    {
-        bool validBoundRange = false;
-        Vector3 boundExtend = sampleBounds.upper - sampleBounds.lower;
-        if (boundExtend.x + boundExtend.y + boundExtend.z > 0.f)
-        {
-            validBoundRange = true;
-        }
-        return validBoundRange;
-    }
-
     inline void decay(const float &a)
     {
         OPENPGL_ASSERT(a >= 0.f);
         numSamples *= a;
-        numZeroValueSamples *= a;
     }
 
     inline float getNumSamples() const
     {
         return numSamples;
-    }
-
-    inline void addNumZeroValueSamples(const int numZeroValueSamples)
-    {
-        this->numZeroValueSamples += numZeroValueSamples;
-    }
-
-    inline float getNumZeroValueSamples() const
-    {
-        return numZeroValueSamples;
-    }
-
-    void split(const uint8_t &splitDim, const float &splitPos, const float &decay, const bool &splitLower)
-    {
-        OPENPGL_ASSERT(decay >= 0.0f && decay <= 1.0f) ;
-
-        if(numSamples > 0.f)
-        {
-            const float tmpVariance = variance[splitDim];
-#if STATS_HANDLE_UPON_SPLIT == 0
-            const float stdDerivation = std::sqrt(tmpVariance);
-            float const newVariance = tmpVariance - tmpVariance / 4.0f;
-            variance[splitDim] = newVariance;
-#endif
-
-            if(splitLower)
-            {
-#if STATS_HANDLE_UPON_SPLIT == 1
-                float scale = (sampleBounds.upper[splitDim] - splitPos) / (sampleBounds.upper[splitDim] - sampleBounds.lower[splitDim]);
-                scale = embree::clamp(scale, 0.0f, 1.0f);
-                float const newVariance = scale * scale * tmpVariance;
-                variance[splitDim] = newVariance;
-                mean[splitDim] = embree::lerp(sampleBounds.upper[splitDim], mean[splitDim], scale);
-#endif
-
-                sampleBounds.lower[splitDim] = std::max(splitPos, sampleBounds.lower[splitDim]);
-#if STATS_HANDLE_UPON_SPLIT == 0
-                mean[splitDim] = std::min(sampleBounds.upper[splitDim], mean[splitDim] + stdDerivation / 2.0f);
-#endif
-                // TODO: there are rare ocasions where this can happen (boarder of the head scene)
-                // find a way to handle these
-                //OPENPGL_ASSERT(mean[splitDim] >= sampleBounds.lower[splitDim]);
-                //mean[splitDim] += stdDerivation / 2.0f;
-            }
-            else
-            {
-#if STATS_HANDLE_UPON_SPLIT == 1
-                float scale = (splitPos - sampleBounds.lower[splitDim]) / (sampleBounds.upper[splitDim] - sampleBounds.lower[splitDim]);
-                scale = embree::clamp(scale, 0.0f, 1.0f);
-                float const newVariance = scale * scale * tmpVariance;
-                variance[splitDim] = newVariance;
-                mean[splitDim] = embree::lerp(sampleBounds.lower[splitDim], mean[splitDim], scale);
-#endif
-
-                sampleBounds.upper[splitDim] = std::min(splitPos, sampleBounds.upper[splitDim]);
-#if STATS_HANDLE_UPON_SPLIT == 0
-                mean[splitDim] = std::max(sampleBounds.lower[splitDim], mean[splitDim] - stdDerivation / 2.0f);
-#endif
-                //OPENPGL_ASSERT(mean[splitDim] <= sampleBounds.upper[splitDim]);
-                //mean[splitDim] -= stdDerivation / 2.0f;
-            }
-
-            numSamples *= decay;
-        }
     }
 
     void merge(const SampleStatistics &b)
@@ -181,9 +88,6 @@ struct SampleStatistics
         variance.x = variance.x >= 0.f ? variance.x : 0.f;
         variance.y = variance.y >= 0.f ? variance.y : 0.f;
         variance.z = variance.z >= 0.f ? variance.z : 0.f;
-        sampleBounds.extend(b.sampleBounds);
-
-        numZeroValueSamples += b.numZeroValueSamples;
 
         OPENPGL_ASSERT(isValid());
         // const float weightMeanA = weightMean, weightMeanB = b.weightMean;
@@ -200,12 +104,10 @@ struct SampleStatistics
     {
         bool valid = true;
         valid = valid && numSamples >= 0.0f;
-        valid = valid && numZeroValueSamples >= 0.0f;
-        OPENPGL_ASSERT(valid);
+
         valid = valid && embree::isvalid(mean.x);
         valid = valid && embree::isvalid(mean.y);
         valid = valid && embree::isvalid(mean.z);
-        OPENPGL_ASSERT(valid);
 
         valid = valid && std::isfinite(variance.x);
         valid = valid && std::isfinite(variance.y);
@@ -233,11 +135,8 @@ struct SampleStatistics
         ss.precision(5);
         ss << "SampleStatistics:" << std::endl;
         ss << "numSamples: " << numSamples << std::endl;
-        ss << "numZeroValueSamples: " << numZeroValueSamples << std::endl;
         ss << "mean: " << mean[0] << ",\t" << mean[1] << ",\t" << mean[2] << std::endl;
         ss << "variance: " << variance[0] << ",\t" << variance[1] << ",\t" << variance[2] << std::endl;
-        ss << "sampleBounds: [" << sampleBounds.lower[0] << ",\t" << sampleBounds.lower[1] << ",\t" << sampleBounds.lower[2] << "] \t [" << sampleBounds.upper[0] << ",\t"
-           << sampleBounds.upper[1] << ",\t" << sampleBounds.upper[2] << "] " << std::endl;
         return ss.str();
     }
 
@@ -246,8 +145,6 @@ struct SampleStatistics
         stream.write(reinterpret_cast<const char *>(&mean), sizeof(Point3));
         stream.write(reinterpret_cast<const char *>(&variance), sizeof(Vector3));
         stream.write(reinterpret_cast<const char *>(&numSamples), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&sampleBounds), sizeof(BBox));
     }
 
     void deserialize(std::istream &stream)
@@ -255,17 +152,13 @@ struct SampleStatistics
         stream.read(reinterpret_cast<char *>(&mean), sizeof(Point3));
         stream.read(reinterpret_cast<char *>(&variance), sizeof(Vector3));
         stream.read(reinterpret_cast<char *>(&numSamples), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&sampleBounds), sizeof(BBox));
     }
 
     bool operator==(const SampleStatistics &b) const
     {
         bool equal = true;
         if (mean.x != b.mean.x || mean.y != b.mean.y || mean.z != b.mean.z || variance.x != b.variance.x || variance.y != b.variance.y ||
-            variance.z != b.variance.z || numSamples != b.numSamples || sampleBounds.lower.x != b.sampleBounds.lower.x ||
-            sampleBounds.lower.y != b.sampleBounds.lower.y || sampleBounds.lower.z != b.sampleBounds.lower.z || sampleBounds.upper.x != b.sampleBounds.upper.x ||
-            sampleBounds.upper.y != b.sampleBounds.upper.y || sampleBounds.upper.z != b.sampleBounds.upper.z)
+            variance.z != b.variance.z || numSamples != b.numSamples)
         {
             equal = false;
         }
@@ -455,9 +348,6 @@ struct IntegerSampleStatistics
             sampleStats.variance.x = intSampleBounds.upper.x - intSampleBounds.lower.x <= 0 ? 0.f : sampleStats.variance.x;
             sampleStats.variance.y = intSampleBounds.upper.y - intSampleBounds.lower.y <= 0 ? 0.f : sampleStats.variance.y;
             sampleStats.variance.z = intSampleBounds.upper.z - intSampleBounds.lower.z <= 0 ? 0.f : sampleStats.variance.z;
-
-            // using the real (float) measured sample bound and not a transformed version of the integer sample bound for accuracy reasons
-            sampleStats.sampleBounds = sampleBounds;
         }
         OPENPGL_ASSERT(sampleStats.isValid());
         return sampleStats;

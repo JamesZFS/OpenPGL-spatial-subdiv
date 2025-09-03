@@ -281,7 +281,7 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    regionLR[c]->candidate.sampleStatistics.split(splitDim, splitPos, 0, c);
+                    regionLR[c]->candidate.sampleStatistics.clear();
                     regionLR[c]->candidate.depth = depth + 1;
                     initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                     regionLR[c]->splitFlag = 1;
@@ -354,7 +354,6 @@ struct KDTreePartitionBuilder
                 // No split! Just merge in new samples
                 if (!region.candidate.updated) {
                     region.candidate.sampleStatistics = mergedStats;
-                    region.candidate.sampleStatistics.addNumZeroValueSamples(zeroSampleRange.size());
                 }
                 region.numZeroValueSamples = zeroSampleRange.size();
                 // if (sampleRange.size() == 0) {
@@ -399,7 +398,8 @@ struct KDTreePartitionBuilder
             typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
             typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd) {
             if (!region.updated) {
-                region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
+                if (!region.hasSplit())
+                    region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
             } else {
                 OPENPGL_ASSERT(region.signature.numSamples == 0);
@@ -432,7 +432,7 @@ struct KDTreePartitionBuilder
             for (uint8_t c: {0, 1}) {
                 auto &child = candidateDataStorage[current.lChildIdx + c];
                 child.sampleStatistics = current.sampleStatistics;
-                child.sampleStatistics.split(splitDim, splitPos, 0, c);
+                child.sampleStatistics.clear();
                 child.depth = depth + 1;
             }
         }

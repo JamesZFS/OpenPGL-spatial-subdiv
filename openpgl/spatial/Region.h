@@ -17,7 +17,7 @@ namespace openpgl
 
 struct SubdivisionData {
     // Necessary memory: 10 - 20 floats ~ 40 - 80 Bytes
-    Signature signature;  // 3 - 12 floats
+    Signature signature;  // 3 - 6 floats
     SampleStatistics sampleStatistics;  // essentially 6 floats
 
     float pivot {0};
@@ -86,11 +86,6 @@ struct Region : public IRegion {
     inline const BBox &getRegionBounds() const
     {
         return regionBounds;
-    }
-
-    inline const BBox &getSampleBounds() const
-    {
-        return candidate.sampleStatistics.sampleBounds;
     }
 
 #ifdef OPENPGL_RADIANCE_CACHES
