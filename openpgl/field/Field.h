@@ -430,7 +430,6 @@ public:
             return stats;
         auto &region = m_regionStorageContainer[id].first;
         stats.numSamples = region.candidate.sampleStatistics.numSamples;
-        stats.numZeroValueSamples = region.candidate.sampleStatistics.numZeroValueSamples;
         stats.depth = region.candidate.depth;
         stats.hasCandidateSplit = region.candidate.hasSplit();
         if (stats.hasCandidateSplit) {
