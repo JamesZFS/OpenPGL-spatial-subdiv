@@ -388,8 +388,8 @@ public:
     }
 
     size_t getMemoryLookaheadRegionData() const {
-        return m_candidateRegionStorageContainer.size() * 56;
-        // return m_candidateRegionStorageContainer.size() * sizeof(SubdivisionData);
+        // return m_candidateRegionStorageContainer.size() * 56;
+        return m_candidateRegionStorageContainer.size() * sizeof(SubdivisionData);
     }
 
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const {
