@@ -31,6 +31,7 @@ struct PGLDirectionalSignature
     pgl_vec3f meanDir{0, 0, 0};
     float kappa = 0;  // of the VMF
     float sigmaDir = 0;
+    float kappa_eff = 0;
 };
 
 // From https://www.shadertoy.com/view/XlGcRh
