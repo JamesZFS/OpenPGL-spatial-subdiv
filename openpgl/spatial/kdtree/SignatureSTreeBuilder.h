@@ -476,7 +476,9 @@ struct KDTreePartitionBuilder
         switch (settings.angularType)
         {
             case PGL_SPATIAL_ANGULAR_SERIES:
-                return Signature::getAngularSplitConfidence(a, b, settings.angularDistanceThreshold);  // split probability
+                return Signature::getAngularSplitConfidence<false>(a, b, settings.angularDistanceThreshold);  // split probability
+            case PGL_SPATIAL_ANGULAR_SERIES_EFFECTIVE_KAPPA:
+                return Signature::getAngularSplitConfidence<true>(a, b, settings.angularDistanceThreshold);  // split probability
             case PGL_SPATIAL_ANGULAR_HEURISTIC:
                 return Signature::getAngularDistance(a, b, settings.angularAlpha);  // effective angular distance
             default:
@@ -505,6 +507,7 @@ struct KDTreePartitionBuilder
                            right.angularEnergy > settings.angularDistanceThreshold
                        );
             case PGL_SPATIAL_ANGULAR_SERIES:
+            case PGL_SPATIAL_ANGULAR_SERIES_EFFECTIVE_KAPPA:
                 return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
                        (
                             // Signature

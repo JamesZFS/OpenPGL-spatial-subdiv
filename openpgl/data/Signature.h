@@ -109,6 +109,7 @@ struct Signature  // Directional signature
         out.meanDir = getMeanDir();
         out.kappa = getKappa();
         out.sigmaDir = getMeanDirStd();
+        out.kappa_eff = getKappaEff();
         return out;
     }
 
@@ -155,6 +156,13 @@ struct Signature  // Directional signature
         return R * (3 - R2) / (1 - R2);  // approximation
     }
 
+    float getKappaEff() const {  // approximate 1 / sigma^2 without using Comoment
+        float R2 = get_R_bar2();
+        R2 = std::min(R2, 1.0f - 1e-6f); // prevent div by 0
+        float KappaEff = 0.5f * R2 * (3 - R2) / (1 - R2);
+        return KappaEff * (totalWeight * totalWeight) / totalWeight2;
+    }
+
     // Standard error of the mean direction estimate
     float getMeanDirStd() const {
         if (totalWeight == 0) return 0;
@@ -188,12 +196,20 @@ struct Signature  // Directional signature
     }
 
     // Approximate the split probability P(w_a dot w_b <= cos deltaTheta) using series sum
+    template<bool UseEffectiveKappa>
     static float getAngularSplitConfidence(const Signature &A, const Signature &B, float deltaTheta) {
         float x = std::cos(deltaTheta);
         auto muA = A.getMeanDir(), muB = B.getMeanDir();
         float z = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
-        float sigmaA = A.getMeanDirStd(), sigmaB = B.getMeanDirStd();
-        float kappaA = 1.0f/(sigmaA*sigmaA), kappaB = 1.0f/(sigmaB*sigmaB);
+        float kappaA, kappaB;
+        if constexpr(UseEffectiveKappa) {
+            kappaA = A.getKappaEff();
+            kappaB = B.getKappaEff();
+        } else {
+            float sigmaA = A.getMeanDirStd(), sigmaB = B.getMeanDirStd();
+            kappaA = 1.0f/(sigmaA*sigmaA);
+            kappaB = 1.0f/(sigmaB*sigmaB);
+        }
         float kappa = kappaA * kappaB / (kappaA + kappaB);  // effective kappa
 
         // Compute the series
