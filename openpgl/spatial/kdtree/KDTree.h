@@ -452,6 +452,26 @@ struct KDTree
         return treeLet.nodes[nodeIdx].getDataIdx();
     }
 #endif
+
+    std::pair<uint32_t, uint8_t> getDataIdxDepthAtPos(const Vector3 &pos) const
+    {
+        OPENPGL_ASSERT(m_isInit);
+        OPENPGL_ASSERT(embree::inside(m_bounds, pos));
+
+        uint32_t nodeIdx = 0;
+        uint8_t depth = 1;
+        while (!m_nodesPtr[nodeIdx].isLeaf())
+        {
+            uint8_t splitDim = m_nodesPtr[nodeIdx].getSplitDim();
+            float pivot = m_nodesPtr[nodeIdx].getSplitPivot();
+
+            nodeIdx = m_nodesPtr[nodeIdx].getLeftChildIdx();
+            nodeIdx += pos[splitDim] >= pivot ? 1 : 0;
+            depth++;
+        }
+        return {m_nodesPtr[nodeIdx].getDataIdx(), depth};
+    }
+    
     uint32_t getMaxNodeDepth(const KDNode &node) const
     {
         if (node.isLeaf())
