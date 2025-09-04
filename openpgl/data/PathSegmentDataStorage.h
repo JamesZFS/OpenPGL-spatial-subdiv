@@ -382,7 +382,6 @@ struct PathSegmentDataStorage
                         dsd.guidingPDF = currentPathSegment.pdfGuidingDirectionIn;
                         dsd.normal = currentPathSegment.normal;
 #endif
-                        dsd.cosineTerm = std::max(0.f, pglDirection.x * currentPathSegment.normal.x + pglDirection.y * currentPathSegment.normal.y + pglDirection.z * currentPathSegment.normal.z);
                         dsd.distance = distance;
                         dsd.flags = flags;
 #if defined(OPENPGL_PATHSEGMENT_STORAGE_USE_ARRAY)
