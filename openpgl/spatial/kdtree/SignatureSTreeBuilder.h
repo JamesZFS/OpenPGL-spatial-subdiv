@@ -283,6 +283,7 @@ struct KDTreePartitionBuilder
                     regionLR[c]->candidate.sampleStatistics.clear();
                     initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                     regionLR[c]->splitFlag = 1;
+                    regionLR[c]->splitKind = PGL_SPATIAL_SPLIT_SAMPLE_COUNT;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
                 }
 
@@ -299,7 +300,8 @@ struct KDTreePartitionBuilder
                     prepareSampleReprojection(samplesBegin, samplesEnd, mergedStats);
 
                 // Update candidate regions and check for promotion
-                if (updateCandidateRegionsOnePromotion(depth, 0, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings)) {
+                if (auto splitKind = updateCandidateRegionsOnePromotion(depth, 0, candidate, candidate, samplesBegin, samplesEnd, zeroSamplesBegin, zeroSamplesEnd, candidateDataStorage, settings);
+                    splitKind != PGL_SPATIAL_SPLIT_NONE) {
                     OPENPGL_ASSERT(candidate.hasSplit());
                     splitDim = candidate.dim, splitPos = candidate.pivot;
                     triggersSplit = true;
@@ -313,6 +315,7 @@ struct KDTreePartitionBuilder
                         regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
                         initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                         regionLR[c]->splitFlag += 1;
+                        regionLR[c]->splitKind = splitKind;
                         // regionBounds set later
                     }
                     candidateDataStorage.recycle_pair(lChildIdx);
@@ -380,7 +383,7 @@ struct KDTreePartitionBuilder
         }
     }
 
-    bool updateCandidateRegionsOnePromotion(uint8_t depth, uint8_t lookaheadLevel, const SubdivisionData &root, SubdivisionData &current,
+    PGL_SPATIAL_SPLIT_KIND updateCandidateRegionsOnePromotion(uint8_t depth, uint8_t lookaheadLevel, const SubdivisionData &root, SubdivisionData &current,
         typename TSamplesContainer::iterator samplesBegin, typename TSamplesContainer::iterator samplesEnd,
         typename TZeroValueSamplesContainer::iterator zeroSamplesBegin, typename TZeroValueSamplesContainer::iterator zeroSamplesEnd,
         CandidateRegionStorage &candidateDataStorage, const Settings &settings) const {
@@ -431,21 +434,21 @@ struct KDTreePartitionBuilder
             update(right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd);
 
             // Try promotion of the current split: either child should exceed the energy threshold
-            if (checkPromotion(root, left, right, settings))
-                return true;
+            if (auto splitKind = checkPromotion(root, left, right, settings); splitKind != PGL_SPATIAL_SPLIT_NONE)
+                return splitKind;
 
             if (lookaheadLevel + 1 < settings.lookaheadDepth) {
                 // Update L/R recursively
-                bool hasPromotionLR[2] = {false, false};
+                uint8_t hasPromotionLR[2] = {PGL_SPATIAL_SPLIT_NONE, PGL_SPATIAL_SPLIT_NONE};
                 invoke(
                     [&] { hasPromotionLR[0] = updateCandidateRegionsOnePromotion(depth + 1, lookaheadLevel + 1, root, left, samplesBegin, samplesMid, zeroSamplesBegin, zeroSamplesMid, candidateDataStorage, settings); },
                     [&] { hasPromotionLR[1] = updateCandidateRegionsOnePromotion(depth + 1, lookaheadLevel + 1, root, right, samplesMid, samplesEnd, zeroSamplesMid, zeroSamplesEnd, candidateDataStorage, settings); }
                 );
-                return hasPromotionLR[0] || hasPromotionLR[1];
+                return (PGL_SPATIAL_SPLIT_KIND)(hasPromotionLR[0] | hasPromotionLR[1]);
             }
         }
 
-        return false;
+        return PGL_SPATIAL_SPLIT_NONE;
     }
 
     // a: root, b: child
@@ -465,37 +468,30 @@ struct KDTreePartitionBuilder
         }
     }
 
-    static bool checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
-        if (!settings.enablePromotion) return false;
+    static PGL_SPATIAL_SPLIT_KIND checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
+        if (!settings.enablePromotion) return PGL_SPATIAL_SPLIT_NONE;
         float fluenceEnergy = std::max(getFluenceEnergy(root.signature, left.signature, settings), getFluenceEnergy(root.signature, right.signature, settings));
         float angularEnergy = 0;
-        switch (settings.angularType) {
-            case PGL_SPATIAL_ANGULAR_OFF:
-                return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
-                            // Signature
-                            fluenceEnergy > settings.sufficientCriterionThreshold;
-            case PGL_SPATIAL_ANGULAR_HEURISTIC:
-                angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
-                return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
-                       (
-                            // Signature
-                           fluenceEnergy > settings.sufficientCriterionThreshold ||
-                           // Angular
-                           angularEnergy > settings.angularDistanceThreshold
-                       );
-            case PGL_SPATIAL_ANGULAR_SERIES:
-                angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
-                return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
-                       (
-                            // Signature
-                           fluenceEnergy > settings.sufficientCriterionThreshold ||
-                           // Angular
-                           angularEnergy > 1.f - settings.angularAlpha
-                       );
-            default:
-                std::cerr << "Unknown confidence type" << std::endl;
-                return false;
+        uint8_t ret = PGL_SPATIAL_SPLIT_NONE;
+
+        if (left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion) {
+            if (fluenceEnergy > settings.sufficientCriterionThreshold) ret |= PGL_SPATIAL_SPLIT_FLUENCE;
+            switch (settings.angularType) {
+                case PGL_SPATIAL_ANGULAR_OFF:  break;
+                case PGL_SPATIAL_ANGULAR_HEURISTIC:
+                    angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
+                    if (angularEnergy > settings.angularDistanceThreshold) ret |= PGL_SPATIAL_SPLIT_ANGULAR;
+                    break;
+                case PGL_SPATIAL_ANGULAR_SERIES:
+                    angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
+                    if (angularEnergy > 1.f - settings.angularAlpha) ret |= PGL_SPATIAL_SPLIT_ANGULAR;
+                    break;
+                default:
+                    std::cerr << "Unknown confidence type" << std::endl;
+                    break;
+            }
         }
+        return (PGL_SPATIAL_SPLIT_KIND)ret;
     }
 
     // Clear the signatures beneath current

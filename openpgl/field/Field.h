@@ -442,6 +442,7 @@ public:
             stats.splitDim = candidate.dim;
             stats.splitPos = candidate.pivot;
         }
+        stats.splitKind = region.splitKind;
         stats.energy = 0;
         stats.angularEnergy = 0;
         stats.fluence = region.candidate.signature.getFluence();
@@ -502,6 +503,7 @@ public:
             return stats;
         stats.id = id;
         stats.depth = depth;
+        stats.splitKind = m_regionStorageContainer[id].first.splitKind;
         return stats;
     }
 
