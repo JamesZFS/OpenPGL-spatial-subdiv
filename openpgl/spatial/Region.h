@@ -131,6 +131,10 @@ struct Region : public IRegion {
     }
     */
 
+    size_t getHeapMemory() const {
+        return distribution.getHeapMemory() + trainingStatistics.getHeapMemory();
+    }
+
     void serialize(std::ostream &stream) const
     {
         stream.write(reinterpret_cast<const char *>(&valid), sizeof(valid));

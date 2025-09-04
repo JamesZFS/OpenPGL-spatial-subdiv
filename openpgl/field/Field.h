@@ -159,7 +159,7 @@ public:
 
     void buildField(const SampleContainer &samples)
     {
-        std::cout << "sizeof(RegionStorage) = " << sizeof(RegionStorageType) << std::endl;
+        std::cout << "sizeof(RegionStorage) >= " << sizeof(RegionStorageType) << std::endl;
         std::cout << "sizeof(SubdivisionData) = " << sizeof(SubdivisionData) << std::endl;
         m_iteration = 0;
         m_totalSPP = 0;
@@ -385,7 +385,12 @@ public:
     }
 
     size_t getMemoryRegionData() const {
-        return m_regionStorageContainer.size() * sizeof(RegionStorageType);
+        size_t stackMemory = m_regionStorageContainer.size() * sizeof(RegionStorageType);
+        size_t heapMemory = 0;  // Positive for QuadTree
+        for (auto &[region, _] : m_regionStorageContainer) {
+            heapMemory += region.getHeapMemory();
+        }
+        return stackMemory + heapMemory;
     }
 
     size_t getMemoryLookaheadRegionData() const {

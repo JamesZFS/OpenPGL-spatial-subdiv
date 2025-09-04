@@ -85,6 +85,8 @@ struct ParallaxAwareVonMisesFisherMixture
     embree::Vec3<embree::vfloat<VecSize>> _fluenceRGBWeightsWithMIS[NumVectors];
     embree::Vec3<embree::vfloat<VecSize>> _fluenceRGBWeights[NumVectors];
 #endif
+    size_t getHeapMemory() const { return 0; }
+
     void serialize(std::ostream &stream) const;
 
     void deserialize(std::istream &stream);

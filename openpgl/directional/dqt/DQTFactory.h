@@ -137,6 +137,10 @@ class DirectionalQuadtreeFactory
             }
         }
 
+        size_t getHeapMemory() const {
+            return nodes.size() * sizeof(StatsNode);
+        }
+
         void serialize(std::ostream &os) const
         {
             os.write(reinterpret_cast<const char *>(&numSamples), sizeof(numSamples));
