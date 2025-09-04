@@ -83,6 +83,7 @@ struct Region : public IRegion {
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
+    uint8_t splitKind{0};  // this region is a result of which kind of split?
 
     SubdivisionData candidate;
 #ifdef OPENPGL_RADIANCE_CACHES
@@ -150,6 +151,7 @@ struct Region : public IRegion {
 #endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
+        stream.write(reinterpret_cast<const char *>(&splitKind), sizeof(splitKind));
         candidate.serialize(stream);
     }
 
@@ -167,6 +169,7 @@ struct Region : public IRegion {
 #endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
+        stream.read(reinterpret_cast<char *>(&splitKind), sizeof(splitKind));
         candidate.deserialize(stream);
     }
 
@@ -192,6 +195,7 @@ struct Region : public IRegion {
         ss << "\t trainingStatistics: " << trainingStatistics.toString() << std::endl;
         ss << "\t sampleStatistics: " << candidate.sampleStatistics.toString() << std::endl;
         ss << "\t splitFlag: " << splitFlag << std::endl;
+        ss << "\t splitKind: " << splitKind << std::endl;
         ss << "\t valid: " << valid << std::endl;
         return ss.str();
     }
@@ -199,7 +203,7 @@ struct Region : public IRegion {
     bool operator==(const Region &b) const
     {
         bool equal = true;
-        if (!candidate.sampleStatistics.operator==(b.candidate.sampleStatistics) || splitFlag != b.splitFlag)
+        if (!candidate.sampleStatistics.operator==(b.candidate.sampleStatistics) || splitFlag != b.splitFlag || splitKind != b.splitKind)
         {
             equal = false;
         }

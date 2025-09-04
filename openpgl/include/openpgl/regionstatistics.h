@@ -15,6 +15,7 @@ struct PGLRegionStatistics
     bool hasCandidateSplit = false;
     uint8_t splitDim = 3;
     float splitPos = 0;
+    uint8_t splitKind = 0;
     // pgl_point3f sampleMean {0, 0, 0};
     pgl_vec3f sampleVariance {0, 0, 0};
     pgl_point3f lowerBounds {0, 0, 0};
