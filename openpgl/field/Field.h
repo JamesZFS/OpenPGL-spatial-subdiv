@@ -489,6 +489,17 @@ public:
         return {cStats, fStats};
     }
 
+    PGLRegionStatistics getBriefRegionStats(const openpgl::Point3 &pos) const
+    {
+        PGLRegionStatistics stats{.id = (uint32_t) -1, .fluence = 0};
+        auto [id, depth] = getRegionIdDepth(pos);
+        if (id >= m_regionStorageContainer.size())
+            return stats;
+        stats.id = id;
+        stats.depth = depth;
+        return stats;
+    }
+
     void serialize(std::ostream &os) const
     {
         os.write(reinterpret_cast<const char *>(&m_isSurface), sizeof(m_isSurface));
