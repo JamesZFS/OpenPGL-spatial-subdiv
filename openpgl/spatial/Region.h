@@ -73,7 +73,6 @@ struct Region : public IRegion {
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
-    SampleStatistics sampleStatistics;
     Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
