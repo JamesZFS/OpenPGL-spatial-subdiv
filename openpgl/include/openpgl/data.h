@@ -62,9 +62,6 @@ struct PGLSampleData
     /// Used by SignatureSTreeBuilder
     pgl_direction reprojectedDirection;
 
-    // non-negative cosine term
-    float cosineTerm;
-
     /// the distance to the source of the incident radiance
     float distance;
 
@@ -76,10 +73,6 @@ struct PGLSampleData
     pgl_direction directionOut;
     /// the outgoing, reflected/scattered radiance (i.e., incident radiance time BSDF/phase divided by pdf)
     pgl_spectrum radianceOut;
-#endif
-
-#ifdef OPENPGL_CACHE_BASIS_FUNCTIONS
-    float basisFunction[PGL_SIGNATURE_MAX_SIZE];
 #endif
 };
 
