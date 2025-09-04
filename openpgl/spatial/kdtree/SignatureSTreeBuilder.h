@@ -311,12 +311,9 @@ struct KDTreePartitionBuilder
                     // Inheritance
                     for (uint8_t c: {0, 1}) {
                         regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
-                        regionLR[c]->candidate.energy = regionLR[c]->candidate.angularEnergy = 0;
-                        OPENPGL_ASSERT(regionLR[c]->candidate.depth == depth + 1);
                         initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                         regionLR[c]->splitFlag += 1;
                         // regionBounds set later
-                        OPENPGL_ASSERT(regionLR[c]->candidate.depth > depth);
                     }
                     candidateDataStorage.recycle_pair(lChildIdx);
 
@@ -402,8 +399,6 @@ struct KDTreePartitionBuilder
             }
             region.signature.addSamples(samplesBegin, samplesEnd);
             region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
-            region.energy = getFluenceEnergy(root.signature, region.signature, settings);  // the root could change, so we need to recompute the distance even if updated
-            region.angularEnergy = getAngularEnergy(root.signature, region.signature, settings);
         };
 
         // Update current
@@ -472,33 +467,30 @@ struct KDTreePartitionBuilder
 
     static bool checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
         if (!settings.enablePromotion) return false;
+        float fluenceEnergy = std::max(getFluenceEnergy(root.signature, left.signature, settings), getFluenceEnergy(root.signature, right.signature, settings));
+        float angularEnergy = 0;
         switch (settings.angularType) {
             case PGL_SPATIAL_ANGULAR_OFF:
                 return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
-                           (
-                                // Signature
-                               left.energy > settings.sufficientCriterionThreshold ||
-                               right.energy > settings.sufficientCriterionThreshold
-                           );
+                            // Signature
+                            fluenceEnergy > settings.sufficientCriterionThreshold;
             case PGL_SPATIAL_ANGULAR_HEURISTIC:
+                angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
                 return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
                        (
                             // Signature
-                           left.energy > settings.sufficientCriterionThreshold ||
-                           right.energy > settings.sufficientCriterionThreshold ||
+                           fluenceEnergy > settings.sufficientCriterionThreshold ||
                            // Angular
-                           left.angularEnergy > settings.angularDistanceThreshold ||
-                           right.angularEnergy > settings.angularDistanceThreshold
+                           angularEnergy > settings.angularDistanceThreshold
                        );
             case PGL_SPATIAL_ANGULAR_SERIES:
+                angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
                 return left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion &&
                        (
                             // Signature
-                           left.energy > settings.sufficientCriterionThreshold ||
-                           right.energy > settings.sufficientCriterionThreshold ||
+                           fluenceEnergy > settings.sufficientCriterionThreshold ||
                            // Angular
-                           left.angularEnergy > 1.f - settings.angularAlpha ||
-                           right.angularEnergy > 1.f - settings.angularAlpha
+                           angularEnergy > 1.f - settings.angularAlpha
                        );
             default:
                 std::cerr << "Unknown confidence type" << std::endl;
@@ -509,7 +501,6 @@ struct KDTreePartitionBuilder
     // Clear the signatures beneath current
     void initCandidateSignatures(int lookaheadLevel, SubdivisionData &current, CandidateRegionStorage &candidateDataStorage, const Settings &settings) const {
         current.signature.clear();
-        current.energy = current.angularEnergy = 0;
         if (current.hasSplit()) {
             auto &left = candidateDataStorage[current.lChildIdx];
             auto &right = candidateDataStorage[current.lChildIdx + 1];
@@ -589,8 +580,6 @@ struct KDTreePartitionBuilder
         } else {
             current.signature.addZeroSamples(std::distance(samplesBegin, samplesEnd));
         }
-        current.energy = getFluenceEnergy(root.signature, current.signature, settings);
-        current.angularEnergy = getAngularEnergy(root.signature, current.signature, settings);
 
         if (current.hasSplit()) {
             // Split samples

@@ -28,25 +28,19 @@ struct SubdivisionData {
     };
     static_assert(sizeof(SampleStatistics) >= 3 * 4);
 
-    float energy = 0.0f;  // distance between self and the parent node, or the statistics of the sufficient criterion
-    float angularEnergy = 0.0f;
     bool updated = false;  // flag to indicate if this split has seen the latest samples
 
-    SubdivisionData() : signature(), sampleStatistics(), energy(0.0f), angularEnergy(0.0f), updated(false) {}
+    SubdivisionData() : signature(), sampleStatistics(), updated(false) {}
 
     SubdivisionData(const SubdivisionData &other) {
         signature = other.signature;
         sampleStatistics = other.sampleStatistics;
-        energy = other.energy;
-        angularEnergy = other.angularEnergy;
         updated = other.updated;
     }
 
     SubdivisionData &operator=(const SubdivisionData &other) {
         signature = other.signature;
         sampleStatistics = other.sampleStatistics;
-        energy = other.energy;
-        angularEnergy = other.angularEnergy;
         updated = other.updated;
         return *this;
     }
@@ -63,8 +57,6 @@ struct SubdivisionData {
     void reset() {
         signature.clear();
         sampleStatistics.clear();
-        energy = 0.0f;
-        angularEnergy = 0.0f;
         updated = false;
     }
 
@@ -72,8 +64,6 @@ struct SubdivisionData {
     {
         stream.write(reinterpret_cast<const char *>(&signature), sizeof(signature));
         sampleStatistics.serialize(stream);
-        stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&angularEnergy), sizeof(float));
         stream.write(reinterpret_cast<const char *>(&updated), sizeof(bool));
     }
 
@@ -81,8 +71,6 @@ struct SubdivisionData {
     {
         stream.read(reinterpret_cast<char *>(&signature), sizeof(signature));
         sampleStatistics.deserialize(stream);
-        stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&angularEnergy), sizeof(float));
         stream.read(reinterpret_cast<char *>(&updated), sizeof(bool));
     }
 };

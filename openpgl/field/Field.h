@@ -317,13 +317,9 @@ public:
     void clearSignatures() {
         for (auto &[region, _] : m_regionStorageContainer) {
             region.candidate.signature.clear();
-            region.candidate.energy = 0;
-            region.candidate.angularEnergy = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signature.clear();
-            cr.energy = 0;
-            cr.angularEnergy = 0;
         }
     }
 
@@ -441,8 +437,8 @@ public:
             stats.splitDim = candidate.dim;
             stats.splitPos = candidate.pivot;
         }
-        stats.energy = region.candidate.energy;
-        stats.angularEnergy = region.candidate.angularEnergy;
+        stats.energy = 0;
+        stats.angularEnergy = 0;
         stats.fluence = region.candidate.signature.getFluence();
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
@@ -481,9 +477,9 @@ public:
             }
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
-            fStats.energy = std::max(fStats.energy, candidate->energy);
             fStats.depth++;
-            fStats.angularEnergy = std::max(fStats.angularEnergy, candidate->angularEnergy);
+            fStats.energy = std::max(fStats.energy, SpatialStructureBuilder::getFluenceEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
+            fStats.angularEnergy = std::max(fStats.angularEnergy, SpatialStructureBuilder::getAngularEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
         }
         if (fStats.id != -1) {
             fStats.numSamples = (uint32_t) candidate->signature.numSamples;
