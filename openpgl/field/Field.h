@@ -152,6 +152,11 @@ public:
         return region ? id : -1;
     }
 
+    std::pair<uint32_t, uint8_t> getRegionIdDepth(const openpgl::Point3 &p) const
+    {
+        return m_spatialSubdiv.getDataIdxDepthAtPos(p);
+    }
+
     void buildField(const SampleContainer &samples)
     {
         std::cout << "sizeof(RegionStorage) = " << sizeof(RegionStorageType) << std::endl;
@@ -312,13 +317,9 @@ public:
     void clearSignatures() {
         for (auto &[region, _] : m_regionStorageContainer) {
             region.candidate.signature.clear();
-            region.candidate.energy = 0;
-            region.candidate.angularEnergy = 0;
         }
         for (auto &cr : m_candidateRegionStorageContainer) {
             cr.signature.clear();
-            cr.energy = 0;
-            cr.angularEnergy = 0;
         }
     }
 
@@ -430,15 +431,14 @@ public:
             return stats;
         auto &region = m_regionStorageContainer[id].first;
         stats.numSamples = region.candidate.sampleStatistics.numSamples;
-        stats.depth = region.candidate.depth;
         stats.hasCandidateSplit = region.candidate.hasSplit();
         if (stats.hasCandidateSplit) {
             const auto &candidate = region.candidate;
             stats.splitDim = candidate.dim;
             stats.splitPos = candidate.pivot;
         }
-        stats.energy = region.candidate.energy;
-        stats.angularEnergy = region.candidate.angularEnergy;
+        stats.energy = 0;
+        stats.angularEnergy = 0;
         stats.fluence = region.candidate.signature.getFluence();
         // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
@@ -453,15 +453,16 @@ public:
     {
         PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0};
         PGLRegionStatistics fStats = cStats;
-        uint32_t cId = getRegionId(pos);
+        auto [cId, cDepth] = getRegionIdDepth(pos);
         if (cId >= m_regionStorageContainer.size())
             return {cStats, fStats};
         cStats = getRegionStats(cId);
+        cStats.depth = cDepth;
         auto &region = m_regionStorageContainer[cId].first;
         const auto *candidate = &region.candidate;
         fStats.energy = cStats.energy;  // max energy along the path
         fStats.angularEnergy = cStats.angularEnergy;
-        fStats.depth = region.candidate.depth;
+        fStats.depth = cDepth;
         fStats.lowerBounds = cStats.lowerBounds, fStats.upperBounds = cStats.upperBounds;
         // Traverse to the deepest level
         while (candidate->hasSplit()) {
@@ -476,11 +477,11 @@ public:
             }
             // Visit next lookahead
             candidate = &m_candidateRegionStorageContainer[fStats.id];
-            fStats.energy = std::max(fStats.energy, candidate->energy);
-            fStats.angularEnergy = std::max(fStats.angularEnergy, candidate->angularEnergy);
+            fStats.depth++;
+            fStats.energy = std::max(fStats.energy, SpatialStructureBuilder::getFluenceEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
+            fStats.angularEnergy = std::max(fStats.angularEnergy, SpatialStructureBuilder::getAngularEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
         }
         if (fStats.id != -1) {
-            fStats.depth = candidate->depth;
             fStats.numSamples = (uint32_t) candidate->signature.numSamples;
             fStats.fluence = candidate->signature.getFluence();
             fStats.hasCandidateSplit = false;

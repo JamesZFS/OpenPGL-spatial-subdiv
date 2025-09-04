@@ -18,28 +18,45 @@ namespace openpgl
 struct SubdivisionData {
     // Necessary memory: 10 - 20 floats ~ 40 - 80 Bytes
     Signature signature;  // 3 - 6 floats
-    SampleStatistics sampleStatistics;  // essentially 6 floats
+    union {  // can only have sampleStatistics before a split
+        SampleStatistics sampleStatistics;  // essentially 7 floats
+        struct {
+            float pivot {0};
+            uint8_t dim : 2 {0};
+            uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
+        };
+    };
+    static_assert(sizeof(SampleStatistics) >= 3 * 4);
 
-    float pivot {0};
-    uint8_t dim : 2 {3};
-    uint32_t lChildIdx : 30 {0};  // index into the candidate region storage
-
-    float energy = 0.0f;  // distance between self and the parent node, or the statistics of the sufficient criterion
-    float angularEnergy = 0.0f;
-    uint8_t depth {0};
     bool updated = false;  // flag to indicate if this split has seen the latest samples
 
-    bool hasSplit() const { return dim < 3; }
+    SubdivisionData() : signature(), sampleStatistics(), updated(false) {}
+
+    SubdivisionData(const SubdivisionData &other) {
+        signature = other.signature;
+        sampleStatistics = other.sampleStatistics;
+        updated = other.updated;
+    }
+
+    SubdivisionData &operator=(const SubdivisionData &other) {
+        signature = other.signature;
+        sampleStatistics = other.sampleStatistics;
+        updated = other.updated;
+        return *this;
+    }
+
+
+    bool hasSplit() const { return sampleStatistics.numSamples < 0; }  // magic
+
+    void setSplit(uint8_t dim, float pivot) {
+        this->dim = dim;
+        this->pivot = pivot;
+        sampleStatistics.numSamples = -1;  // flag for having split
+    }
 
     void reset() {
         signature.clear();
         sampleStatistics.clear();
-        pivot = 0;
-        dim = 3;
-        lChildIdx = 0;
-        energy = 0.0f;
-        angularEnergy = 0.0f;
-        depth = 0;
         updated = false;
     }
 
@@ -47,11 +64,6 @@ struct SubdivisionData {
     {
         stream.write(reinterpret_cast<const char *>(&signature), sizeof(signature));
         sampleStatistics.serialize(stream);
-        stream.write(reinterpret_cast<const char *>(&pivot), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
-        stream.write(reinterpret_cast<const char *>(&energy), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&angularEnergy), sizeof(float));
-        stream.write(reinterpret_cast<const char *>(&depth), sizeof(uint8_t));
         stream.write(reinterpret_cast<const char *>(&updated), sizeof(bool));
     }
 
@@ -59,11 +71,6 @@ struct SubdivisionData {
     {
         stream.read(reinterpret_cast<char *>(&signature), sizeof(signature));
         sampleStatistics.deserialize(stream);
-        stream.read(reinterpret_cast<char *>(&pivot), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&pivot + 1), sizeof(uint32_t));  // dim and lChildIdx
-        stream.read(reinterpret_cast<char *>(&energy), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&angularEnergy), sizeof(float));
-        stream.read(reinterpret_cast<char *>(&depth), sizeof(uint8_t));
         stream.read(reinterpret_cast<char *>(&updated), sizeof(bool));
     }
 };
