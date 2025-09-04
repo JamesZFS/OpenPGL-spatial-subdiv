@@ -341,6 +341,11 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getCoarseFineRegionStats(pos);
     }
 
+    PGLRegionStatistics getBriefRegionStatsSurface(const openpgl::Point3 &pos) const override
+    {
+        return m_surfaceField.getBriefRegionStats(pos);
+    }
+
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const override
     {
         return m_surfaceField.getDirectionalSignatures(pos, lookaheadDepth, splitDim, isRight);

@@ -86,8 +86,9 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id);
 
-    // Deprecated
     OPENPGL_CORE_INTERFACE std::pair<PGLRegionStatistics, PGLRegionStatistics> pglFieldGetCoarseFineRegionStatsSurface(PGLField field, pgl_point3f position);
+
+    OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetBriefRegionStatsSurface(PGLField field, pgl_point3f position);
 
     OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight);
 
