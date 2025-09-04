@@ -93,6 +93,10 @@ struct DirectionalQuadtree
         return out.str();
     }
 
+    size_t getHeapMemory() const {
+        return nodes.size() * sizeof(DirectionalQuadtreeNode);
+    }
+
     void serialize(std::ostream &os) const
     {
         os.write(reinterpret_cast<const char *>(&_pivotPosition), sizeof(_pivotPosition));
