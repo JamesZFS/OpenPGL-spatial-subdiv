@@ -160,6 +160,7 @@ struct Signature  // Directional signature
         float x = std::cos(deltaTheta);
         auto muA = A.getMeanDir(), muB = B.getMeanDir();
         float z = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
+        z = std::clamp(z, -1.f, 1.f);
         float kappaA, kappaB;
         kappaA = A.getKappaEff();
         kappaB = B.getKappaEff();
