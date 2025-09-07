@@ -185,7 +185,7 @@ struct Signature  // Directional signature
 
     // Stores the precomputed (1/kappa, max cos(theta)) pairs
     constexpr static int LUTSIZE = 256;
-    const static std::array<std::pair<float, float>, LUTSIZE> AngularLUT1Deg, AngularLUT3Deg, AngularLUT10Deg;
+    const static std::array<std::pair<float, float>, LUTSIZE> AngularLUTHalfDeg, AngularLUT1Deg, AngularLUT3Deg, AngularLUT10Deg;
 #ifdef ANGULAR_LUT_STATS
     inline static std::array<int, LUTSIZE> LUTStats;
 #endif
@@ -226,7 +226,9 @@ struct Signature  // Directional signature
         float kappa = kappaA * kappaB / (kappaA + kappaB);  // effective kappa
 
         deltaTheta = deltaTheta * 180.0f / M_PIf;  // to degrees
-        if (0.99 <= deltaTheta && deltaTheta < 1.01) {
+        if (0.49 <= deltaTheta && deltaTheta < 0.51) {
+            return _getAngularSplitDecision(AngularLUTHalfDeg, kappa, z);
+        } else if (0.99 <= deltaTheta && deltaTheta < 1.01) {
             return _getAngularSplitDecision(AngularLUT1Deg, kappa, z);
         } else if (2.99 <= deltaTheta && deltaTheta < 3.01) {
             return _getAngularSplitDecision(AngularLUT3Deg, kappa, z);
