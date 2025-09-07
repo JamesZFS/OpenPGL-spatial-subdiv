@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
+#include <array>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <iostream>
+#include "openpgl/regionstatistics.h"
 
 namespace openpgl {
 
@@ -173,6 +179,79 @@ struct Signature  // Directional signature
             s += 0.5f * std::exp(-float(l*(l+1)) / (2.f*kappa)) * std::legendre(l, z) * (std::legendre(l+1, x) - std::legendre(l-1, x));
         }
         return std::clamp(s, 0.f, 1.f);
+    }
+
+    // Stores the precomputed (1/kappa, max cos(theta)) pairs
+    constexpr static int LUTSIZE = 256;
+    const static std::array<std::pair<float, float>, LUTSIZE> AngularLUT1Deg, AngularLUT3Deg, AngularLUT10Deg;
+
+    /// Make angular split decision by querying the LookUp Table that stores the pairs of (1/kappa, max cos(theta)).
+    /// Specifically, for an input effective kappa, we take the inverse, find the nearest pair in the LUT.
+    /// Then, we compare the cosine of the two signature angles against that from the LUT.
+    /// Smaller or equal => split. Else => no split.
+    /// Interpolation is applied whenever possible
+    static bool _getAngularSplitDecision(const std::array<std::pair<float, float>, LUTSIZE> &lut, float k, float z) {
+        float invK = 1.f / k;
+        // Find i such that lut[i].first <= invK < lut[i+1].first
+        auto it = std::upper_bound(lut.begin(), lut.end(), std::make_pair(invK, -1.f), [](const auto &a, const auto &b) { return a.first < b.first; });
+        if (it == lut.begin()) {  // invK < lut[0].first, should not happen in general
+            return false;
+        } else if (it == lut.end()) {  // lut[-1].first <= invK, meaning K is too small, we don't split
+            return false;
+        } else {
+            int i = std::distance(lut.begin(), it) - 1;
+            auto [invK0, z0] = lut[i];
+            auto [invK1, z1] = lut[i+1];
+            float z_interp = z0 + (z1 - z0) * (invK - invK0) / (invK1 - invK0);
+            return z <= z_interp;
+        }
+    }
+
+    static void test() {
+        const auto &lut = AngularLUT1Deg;
+        auto find = [&](float invK) -> int { 
+            auto it = std::upper_bound(lut.begin(), lut.end(), std::make_pair(invK, -1.f), [](const auto &a, const auto &b) { return a.first < b.first; });
+            if (it == lut.begin()) return 0;
+            return std::distance(lut.begin(), it) - 1;
+        };
+        auto check = [](int a, int b) {
+            if (a != b)
+                std::cerr << "Error: " << a << " != " << b << std::endl;
+        };
+        check(find(0), 0);
+        check(find(0.00040), 1);
+        check(find(0.0007843137254901963), 2);
+        check(find(0.02), 61 - 10);
+        check(find(0.1), 255);
+        check(find(10.0), 255);
+    }
+
+    static bool getAngularSplitDecision(const Signature &A, const Signature &B, float deltaTheta, float alpha) {
+        static bool once = true;
+        if (once) {
+            test();
+            once = false;
+        }
+
+        if (alpha != 1e-4f) throw std::runtime_error("Error: only alpha = 1e-4 is supported in the LUT-based angular split decision.");
+        auto muA = A.getMeanDir(), muB = B.getMeanDir();
+        float z = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
+        z = std::clamp(z, -1.f, 1.f);
+        float kappaA, kappaB;
+        kappaA = A.getKappaEff();
+        kappaB = B.getKappaEff();
+        float kappa = kappaA * kappaB / (kappaA + kappaB);  // effective kappa
+
+        deltaTheta = deltaTheta * 180.0f / M_PIf;  // to degrees
+        if (0.99 <= deltaTheta && deltaTheta < 1.01) {
+            return _getAngularSplitDecision(AngularLUT1Deg, kappa, z);
+        } else if (2.99 <= deltaTheta && deltaTheta < 3.01) {
+            return _getAngularSplitDecision(AngularLUT3Deg, kappa, z);
+        } else if (9.99 <= deltaTheta && deltaTheta < 10.01) {
+            return _getAngularSplitDecision(AngularLUT10Deg, kappa, z);
+        } else {
+            throw std::runtime_error("Error: only 1, 3, 10 degrees are supported in the LUT-based angular split decision.");
+        }
     }
 };
 

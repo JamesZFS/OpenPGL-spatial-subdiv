@@ -21,6 +21,7 @@ set(OPENPGL_SRC
     directional/IVolumeSamplingDistribution.cpp
     directional/vmm/VMMPhaseFunctions.cpp
     data/MultivariateNormalSampler.cpp
+    data/Signature.cpp
     ../third-party/embreeSrc/common/simd/sse.cpp
     ../third-party/embreeSrc/common/sys/alloc.cpp
     ../third-party/embreeSrc/common/sys/barrier.cpp

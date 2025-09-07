@@ -459,10 +459,10 @@ struct KDTreePartitionBuilder
     static float getAngularEnergy(const Signature &a, const Signature &b, const Settings &settings) {
         switch (settings.angularType)
         {
-            case PGL_SPATIAL_ANGULAR_SERIES:
-                return Signature::getAngularSplitConfidence(a, b, settings.angularDistanceThreshold);  // split probability
             case PGL_SPATIAL_ANGULAR_HEURISTIC:
                 return Signature::getAngularDistance(a, b, settings.angularAlpha);  // effective angular distance
+            case PGL_SPATIAL_ANGULAR_SERIES:
+                return Signature::getAngularSplitConfidence(a, b, settings.angularDistanceThreshold);  // split probability
             default:
                 return 0;
         }
@@ -485,6 +485,11 @@ struct KDTreePartitionBuilder
                 case PGL_SPATIAL_ANGULAR_SERIES:
                     angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
                     if (angularEnergy > 1.f - settings.angularAlpha) ret |= PGL_SPATIAL_SPLIT_ANGULAR;
+                    break;
+                case PGL_SPATIAL_ANGULAR_LUT:
+                    if (Signature::getAngularSplitDecision(root.signature, left.signature, settings.angularDistanceThreshold, settings.angularAlpha) ||
+                        Signature::getAngularSplitDecision(root.signature, right.signature, settings.angularDistanceThreshold, settings.angularAlpha))
+                        ret |= PGL_SPATIAL_SPLIT_ANGULAR;
                     break;
                 default:
                     std::cerr << "Unknown confidence type" << std::endl;
