@@ -41,6 +41,19 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
 
     ~SurfaceVolumeField() override
     {
+#ifdef ANGULAR_LUT_STATS
+        // Report AngularLUT stats:
+        std::cout << "AngularLUT Statistics:" << std::endl
+            << "bin, \tquery times, \tpercentage" << std::endl;
+        int total = 0;
+        for (int i = 0; i < Signature::LUTSIZE; ++i) {
+            total += Signature::LUTStats[i];
+        }
+        for (int i = 0; i < Signature::LUTSIZE; ++i) {
+            if (Signature::LUTStats[i] > 0)
+                std::cout << i << ", \t" << Signature::LUTStats[i] << ", \t" << (float)Signature::LUTStats[i] / total * 100.f << "%\n";
+        }
+#endif
         std::cout << "SurfaceVolumeField::updateField() took " << m_timeUpdateField << " ms in total" << std::endl;
     }
 

@@ -198,13 +198,10 @@ struct Signature  // Directional signature
     static bool _getAngularSplitDecision(const std::array<std::pair<float, float>, LUTSIZE> &lut, float k, float z) {
         float invK = 1.f / k;
         // Find i such that lut[i].first <= invK < lut[i+1].first
-        auto it = std::upper_bound(lut.begin(), lut.end(), std::make_pair(invK, -1.f), [](const auto &a, const auto &b) { return a.first < b.first; });
-        if (it == lut.begin()) {  // invK < lut[0].first, should not happen in general
-            return false;
-        } else if (it == lut.end()) {  // lut[-1].first <= invK, meaning K is too small, we don't split
+        int i = (int) ((invK - lut[0].first) / (lut[LUTSIZE - 1].first - lut[0].first) * LUTSIZE);
+        if (i < 0 || i >= LUTSIZE) {  // invK < 0 or lut[-1].first <= invK, meaning K is too small, we don't split
             return false;
         } else {
-            int i = std::distance(lut.begin(), it) - 1;
 #ifdef ANGULAR_LUT_STATS
             LUTStats[i]++;
 #endif
