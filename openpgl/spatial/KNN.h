@@ -301,7 +301,6 @@ struct KNearestRegionsSearchTree
     {
         OPENPGL_ALIGNED_STRUCT_(16)
         embree::Vec3fa p;  //!< position
-        float size;  // region size
     };
 
     struct Neighbour
@@ -344,11 +343,8 @@ struct KNearestRegionsSearchTree
         for (size_t i = 0; i < num_points; i++)
         {
             const auto &region = regionStorage[i].first;
-            const openpgl::SampleStatistics &combinedStats = region.candidate.sampleStatistics;
-            const openpgl::Point3 distributionPivot = combinedStats.mean;
+            const openpgl::Point3 distributionPivot = region.candidate.sampleStatistics.mean;
             points[i].p = embree::Vec3f(distributionPivot[0], distributionPivot[1], distributionPivot[2]);
-            Vector3 sigma = embree::sqrt(combinedStats.getVariance());
-            points[i].size = sigma.x * sigma.y * sigma.z;  // effective region size
         }
 
         index = std::unique_ptr<Index>(new Index(3, *this, 10));
@@ -438,7 +434,7 @@ struct KNearestRegionsSearchTree
         return dist;
     }
 
-    uint32_t sampleClosestRegionIdx(const openpgl::Point3 &p, float *sample, bool weighted) const
+    uint32_t sampleClosestRegionIdx(const openpgl::Point3 &p, float *sample) const
     {
         OPENPGL_ASSERT(_isBuild);
 
@@ -458,11 +454,7 @@ struct KNearestRegionsSearchTree
             return -1;
         }
 
-        if (weighted) {
-            float weights[NUM_KNN];
-            for (int i = 0; i < num_results; ++i) weights[i] = points[ret_index[i]].size;
-            return ret_index[drawWeighted(sample, weights, num_results)];
-        } else return ret_index[draw(sample, num_results)];
+        return ret_index[draw(sample, num_results)];
     }
 
     uint32_t sampleApproximateClosestRegionIdx(unsigned int regionIdx, const openpgl::Point3 &p, float *sample) const

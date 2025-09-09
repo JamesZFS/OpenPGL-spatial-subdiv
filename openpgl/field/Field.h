@@ -774,9 +774,7 @@ public:
         OPENPGL_ASSERT(knnTree.isBuild());
         switch (m_spatialSubdivBuilderSettings.knnType) {
             case PGL_SPATIAL_KNN_UNIFORM:
-                return knnTree.sampleClosestRegionIdx(p, sample, false);
-            case PGL_SPATIAL_KNN_REGION_SIZE_WEIGHTED:
-                return knnTree.sampleClosestRegionIdx(p, sample, true);
+                return knnTree.sampleClosestRegionIdx(p, sample);
             case PGL_SPATIAL_KNN_JITTER: {
                 float dist = knnTree.estimateNeighborDistance(p);
                 float r = 0.0f;
