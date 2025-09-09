@@ -188,17 +188,6 @@ public:
 
     ~Field()
     {
-#ifdef ANGULAR_LUT_STATS
-        // Report AngularLUT stats:
-        int total = 0;
-        for (int i = 0; i < Signature::LUTSIZE; ++i) {
-            total += Signature::LUTStats[i];
-        }
-        for (int i = 0; i < Signature::LUTSIZE; ++i) {
-            if (Signature::LUTStats[i] > 0)
-                std::cout << "AngularLUT bin " << i << " used " << Signature::LUTStats[i] << " times, \t" << (float)Signature::LUTStats[i] / total * 100.f << "%\n";
-        }
-#endif
         m_regionKNNSearchTree.reset();
     }
 
