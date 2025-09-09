@@ -319,6 +319,12 @@ extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryLookaheadRegionDataSurface(
     return gField->getMemoryLookaheadRegionDataSurface();
 }
 
+extern "C" OPENPGL_DLLEXPORT uint32_t pglFieldGetRegionIdxKNNSurface(PGLField field, pgl_point3f p, float *sample) {
+    const auto *gField = (const IGuidingField *)field;
+    const openpgl::Point3 pos(p.x, p.y, p.z);
+    return gField->getRegionIdxKNNSurface(pos, sample);
+}
+
 extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetRegionStatsSurface(PGLField field, uint32_t id)
 {
     const auto *gField = (const IGuidingField *)field;

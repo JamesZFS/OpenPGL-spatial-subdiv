@@ -343,6 +343,10 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
         return m_surfaceField.getMemoryLookaheadRegionData();
     }
 
+    uint32_t getRegionIdxKNNSurface(const openpgl::Point3 &p, float *sample) const override {
+        return m_surfaceField.getRegionIdxKNN(p, sample);
+    }
+
     PGLRegionStatistics getRegionStatsSurface(uint32_t id) const override
     {
         return m_surfaceField.getRegionStats(id);
