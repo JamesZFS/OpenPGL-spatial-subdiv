@@ -161,13 +161,12 @@ struct Device : public IDevice
             gFieldSettings.debugSettings.dumpCacheCellPosition =
                 Point3(args.debugArguments.dumpCacheCellPosition.x, args.debugArguments.dumpCacheCellPosition.y, args.debugArguments.dumpCacheCellPosition.z);
             gFieldSettings.debugSettings.dumpCacheCellLocation = args.debugArguments.dumpCacheCellLocation;
+            gFieldSettings.debugSettings.dumpUpdateDistributionData = args.debugArguments.dumpUpdateDistributionData;
 
             PGLKDTreeArguments *spatialSturctureArguments = (PGLKDTreeArguments *)args.spatialSturctureArguments;
             gFieldSettings.settings.useStochasticNNLookUp = spatialSturctureArguments->knnLookup;
             gFieldSettings.settings.useISNNLookUp = spatialSturctureArguments->isKnnLookup;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.minSamples = spatialSturctureArguments->minSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxSamples = spatialSturctureArguments->maxSamples;
-            gFieldSettings.settings.spatialSubdivBuilderSettings.maxDepth = spatialSturctureArguments->maxDepth;
+            gFieldSettings.settings.spatialSubdivBuilderSettings.updateFromConfig(*spatialSturctureArguments);
             delete spatialSturctureArguments;
 
             PGLVMMFactoryArguments *directionalDistributionArguments = (PGLVMMFactoryArguments *)args.directionalDistributionArguments;

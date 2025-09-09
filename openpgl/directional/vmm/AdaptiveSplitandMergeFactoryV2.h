@@ -81,6 +81,8 @@ struct AdaptiveSplitAndMergeFactoryV2
 
         void decay(const float &alpha);
 
+        size_t getHeapMemory() const { return 0; }
+
         void serialize(std::ostream &stream) const;
 
         void deserialize(std::istream &stream);

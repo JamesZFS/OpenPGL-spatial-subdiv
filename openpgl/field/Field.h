@@ -74,6 +74,94 @@ public:
         DebugSettings debugSettings;
         std::string toString() const;
     };
+    struct DistributionUpdateDebugDump
+    {
+        bool update{true};
+        SampleDataStorage samples;
+        SampleDataStorage samplesPrepared;
+
+        DirectionalDistribution distribution;
+        DirectionalDistributionTrainingStatistics trainingStatistics;
+        SampleStatistics sampleStatistics;
+        // WeightsStatistics weightsStatistics;
+        DirectionalDistributionFactorySettings factorySettings;
+
+        void Store(std::string distDebugDumpFilename) const
+        {
+            std::filebuf fb;
+            fb.open(distDebugDumpFilename, std::ios::out | std::ios::binary);
+            if (!fb.is_open())
+                throw std::runtime_error("error: couldn't open file!");
+            std::ostream os(&fb);
+            os.write(reinterpret_cast<const char *>(&update), sizeof(update));
+            samples.serialize(os);
+            samplesPrepared.serialize(os);
+            distribution.serialize(os);
+            trainingStatistics.serialize(os);
+            sampleStatistics.serialize(os);
+            // weightsStatistics.serialize(os);
+            factorySettings.serialize(os);
+
+            os.flush();
+            fb.close();
+        }
+
+        void Load(std::string distDebugDumpFilename)
+        {
+            std::filebuf fb;
+            fb.open(distDebugDumpFilename, std::ios::in | std::ios::binary);
+            if (!fb.is_open())
+                throw std::runtime_error("error: couldn't open file");
+            std::istream is(&fb);
+            is.read(reinterpret_cast<char *>(&update), sizeof(update));
+            samples.deserialize(is);
+            samplesPrepared.deserialize(is);
+            distribution.deserialize(is);
+            trainingStatistics.deserialize(is);
+            sampleStatistics.deserialize(is);
+            // weightsStatistics.deserialize(is);
+            factorySettings.deserialize(is);
+
+            fb.close();
+        }
+
+        DirectionalDistributionFactory getFactory() const
+        {
+            return DirectionalDistributionFactory();
+        }
+
+        DirectionalDistribution Update()
+        {
+            DirectionalDistribution distributionTmp = distribution;
+            DirectionalDistributionFactory factory;
+            DirectionalDistributionTrainingStatistics trainingStatisticsTmp = trainingStatistics;
+
+            std::vector<SampleData> samplesTmp;
+            bool surface = true;
+            if (surface)
+            {
+                for (int i = 0; i < samples.sizeSurface(); i++)
+                    samplesTmp.push_back(samples.getSampleSurface(i));
+            }
+            else
+            {
+                for (int i = 0; i < samples.sizeVolume(); i++)
+                    samplesTmp.push_back(samples.getSampleVolume(i));
+            }
+            // std::cout << "numSamples: " << updateDump.trainingStatistics.splittingStatistics.numSamples << std::endl;
+            // std::cout << "numSamples: " << updateDump.trainingStatistics.getNumSamples() << std::endl;
+            std::cout << "before: " << std::endl;
+            std::cout << distribution.toString() << std::endl;
+            typename DirectionalDistributionFactory::FittingStatistics fittingStats;
+            factory.prepareSamples(samplesTmp.data(), samplesTmp.size(), sampleStatistics, /*updateDump.weightsStatistics,*/ factorySettings);
+            if (update)
+                factory.update(distributionTmp, trainingStatisticsTmp, samplesTmp.data(), samplesTmp.size(), factorySettings, fittingStats);
+            else
+                factory.fit(distributionTmp, trainingStatisticsTmp, samplesTmp.data(), samplesTmp.size(), factorySettings, fittingStats);
+            std::cout << distributionTmp.toString() << std::endl;
+            return distributionTmp;
+        }
+    };
 
 public:
     Field() = default;
@@ -230,6 +318,7 @@ public:
             m_timeLastUpdate = updateAll.elapsed() * 1e-3f;
 
             // if(m_writeBackSortedSamples) {
+            /*
             if (true)
             {
                 embree::parallel_for(size_t(0), samples.samples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
@@ -237,6 +326,7 @@ public:
                         samples.samples[i] = samples_[i];
                 });
             }
+            */
         }
         m_iteration++;
     }
@@ -775,7 +865,7 @@ public:
                         }
                         dump.distribution = regionStorage.first.distribution;
                         dump.trainingStatistics = regionStorage.first.trainingStatistics;
-                        dump.sampleStatistics = regionStorage.first.sampleStatistics;
+                        //dump.sampleStatistics = regionStorage.first.sampleStatistics;
                         // dump.weightsStatistics = regionStorage.first.weightsStatistics;
                         dump.factorySettings = m_distributionFactorySettings;
                     }
@@ -902,7 +992,7 @@ public:
                             }
                             dump.distribution = regionStorage.first.distribution;
                             dump.trainingStatistics = regionStorage.first.trainingStatistics;
-                            dump.sampleStatistics = regionStorage.first.sampleStatistics;
+                            //dump.sampleStatistics = regionStorage.first.sampleStatistics;
                             // dump.weightsStatistics = regionStorage.first.weightsStatistics;
                             dump.factorySettings = m_distributionFactorySettings;
                         }
