@@ -155,6 +155,7 @@ struct Field
     size_t GetMemoryKDTreeSurface() const;
     size_t GetMemoryRegionDataSurface() const;
     size_t GetMemoryLookaheadRegionDataSurface() const;
+    uint32_t GetRegionIdxKNNSurface(pgl_point3f p, float *sample) const;
 
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
     PGLRegionStatistics GetRegionStatisticsSurface(uint32_t id) const;
@@ -344,6 +345,10 @@ OPENPGL_INLINE size_t Field::GetMemoryRegionDataSurface() const {
 
 OPENPGL_INLINE size_t Field::GetMemoryLookaheadRegionDataSurface() const {
     return pglFieldGetMemoryLookaheadRegionDataSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE uint32_t Field::GetRegionIdxKNNSurface(pgl_point3f p, float *sample) const {
+    return pglFieldGetRegionIdxKNNSurface(m_fieldHandle, p, sample);
 }
 
 OPENPGL_INLINE PGLRegionStatistics Field::GetRegionStatisticsSurface(uint32_t id) const

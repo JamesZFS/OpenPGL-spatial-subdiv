@@ -79,6 +79,8 @@ struct ISurfaceVolumeField
 
     virtual size_t getMemoryLookaheadRegionDataSurface() const = 0;
 
+    virtual uint32_t getRegionIdxKNNSurface(const openpgl::Point3 &p, float *sample) const = 0;
+
     virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;
 
     virtual std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStatsSurface(const Point3 &position) const = 0;

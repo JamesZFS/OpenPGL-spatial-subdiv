@@ -220,7 +220,7 @@ public:
                 }
                 else
                 {
-                    uint32_t regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
+                    uint32_t regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
                     if (regionIdx != -1)
                     {
                         return &m_regionStorageContainer[regionIdx].first;
@@ -631,6 +631,10 @@ public:
         return stats;
     }
 
+    uint32_t getRegionIdxKNN(const openpgl::Point3 &p, float *sample) const {
+        return getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
+    }
+
     void serialize(std::ostream &os) const
     {
         os.write(reinterpret_cast<const char *>(&m_isSurface), sizeof(m_isSurface));
@@ -765,7 +769,7 @@ public:
         return {r * sinTheta * std::cos(phi), r * sinTheta * std::sin(phi), r * cosTheta};
     }
 
-    inline uint32_t getClosestRegionIdx(const KNearestRegionsSearchTree<Vecsize> &knnTree, const openpgl::Point3 &p, float *sample, uint32_t &id) const
+    inline uint32_t getClosestRegionIdx(const KNearestRegionsSearchTree<Vecsize> &knnTree, const openpgl::Point3 &p, float *sample) const
     {
         OPENPGL_ASSERT(knnTree.isBuild());
         switch (m_spatialSubdivBuilderSettings.knnType) {
