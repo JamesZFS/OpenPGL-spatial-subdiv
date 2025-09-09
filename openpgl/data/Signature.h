@@ -183,31 +183,31 @@ struct Signature  // Directional signature
         return std::clamp(s, 0.f, 1.f);
     }
 
-    // Stores the precomputed (1/kappa, max cos(theta)) pairs
+    // Stores the precomputed (1/sqrt(kappa), max cos(theta)) pairs
     constexpr static int LUTSIZE = 256;
     const static std::array<std::pair<float, float>, LUTSIZE> AngularLUTHalfDeg, AngularLUT1Deg, AngularLUT3Deg, AngularLUT10Deg;
 #ifdef ANGULAR_LUT_STATS
     inline static std::array<int, LUTSIZE> LUTStats;
 #endif
 
-    /// Make angular split decision by querying the LookUp Table that stores the pairs of (1/kappa, max cos(theta)).
+    /// Make angular split decision by querying the LookUp Table that stores the pairs of (1/sqrt(kappa), max cos(theta)).
     /// Specifically, for an input effective kappa, we take the inverse, find the nearest pair in the LUT.
     /// Then, we compare the cosine of the two signature angles against that from the LUT.
     /// Smaller or equal => split. Else => no split.
     /// Interpolation is applied whenever possible
     static bool _getAngularSplitDecision(const std::array<std::pair<float, float>, LUTSIZE> &lut, float k, float z) {
-        float invK = 1.f / k;
-        // Find i such that lut[i].first <= invK < lut[i+1].first
-        int i = (int) ((invK - lut[0].first) / (lut[LUTSIZE - 1].first - lut[0].first) * LUTSIZE);
-        if (i < 0 || i >= LUTSIZE) {  // invK < 0 or lut[-1].first <= invK, meaning K is too small, we don't split
+        float std = 1.f / std::sqrt(k);
+        // Find i such that lut[i].first <= std < lut[i+1].first
+        int i = (int) ((std - lut[0].first) / (lut[LUTSIZE - 1].first - lut[0].first) * LUTSIZE);
+        if (i < 0 || i >= LUTSIZE) {  // std < 0 or lut[-1].first <= std, meaning K is too small, we don't split
             return false;
         } else {
 #ifdef ANGULAR_LUT_STATS
             LUTStats[i]++;
 #endif
-            auto [invK0, z0] = lut[i];
-            auto [invK1, z1] = lut[i+1];
-            float z_interp = z0 + (z1 - z0) * (invK - invK0) / (invK1 - invK0);
+            auto [std0, z0] = lut[i];
+            auto [std1, z1] = lut[i+1];
+            float z_interp = z0 + (z1 - z0) * (std - std0) / (std1 - std0);
             return z <= z_interp;
         }
     }
