@@ -50,8 +50,7 @@ struct SurfaceVolumeField : public ISurfaceVolumeField
             total += Signature::LUTStats[i];
         }
         for (int i = 0; i < Signature::LUTSIZE; ++i) {
-            if (Signature::LUTStats[i] > 0)
-                std::cout << i << ", \t" << Signature::LUTStats[i] << ", \t" << (float)Signature::LUTStats[i] / total * 100.f << "%\n";
+            std::cout << i << ", \t" << Signature::LUTStats[i] << ", \t" << (float)Signature::LUTStats[i] / total * 100.f << "%\n";
         }
 #endif
         std::cout << "SurfaceVolumeField::updateField() took " << m_timeUpdateField << " ms in total" << std::endl;
