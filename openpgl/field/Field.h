@@ -17,7 +17,7 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #endif
-#define USE_PRECOMPUTED_NN 0
+#define USE_PRECOMPUTED_NN 1
 
 // #define DUMP_DISTRIBUTION_UPDATE_DATA
 
@@ -214,7 +214,7 @@ public:
             if (m_useStochasticNNLookUp && *sample >= 0.f)
             {
                 uint32_t regionIdx;
-                if (USE_PRECOMPUTED_NN)
+                if (USE_PRECOMPUTED_NN && m_spatialSubdivBuilderSettings.knnType != PGL_SPATIAL_KNN_JITTER)
                 {
                     regionIdx = getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
                 }
@@ -632,7 +632,7 @@ public:
     }
 
     uint32_t getRegionIdxKNN(const openpgl::Point3 &p, float *sample) const {
-        if (USE_PRECOMPUTED_NN)
+        if (USE_PRECOMPUTED_NN && m_spatialSubdivBuilderSettings.knnType != PGL_SPATIAL_KNN_JITTER)
         {
             uint32_t id;
             return getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
@@ -803,10 +803,13 @@ public:
         uint32_t dataIdx = m_spatialSubdiv.getDataIdxAtPos(p);
         OPENPGL_ASSERT(dataIdx < m_regionStorageContainer.size());
         id = dataIdx;
-        if (m_useISNNLookUp)
-            return knnTree.sampleApproximateClosestRegionIdxIS(dataIdx, p, sample);
-        else
-            return knnTree.sampleApproximateClosestRegionIdx(dataIdx, p, sample);
+        switch (m_spatialSubdivBuilderSettings.knnType) {
+            case PGL_SPATIAL_KNN_UNIFORM: return knnTree.sampleApproximateClosestRegionIdx(dataIdx, p, sample);
+            case PGL_SPATIAL_KNN_IS: return knnTree.template sampleApproximateClosestRegionIdxIS<false>(dataIdx, p, sample);
+            case PGL_SPATIAL_KNN_IS2: return knnTree.template sampleApproximateClosestRegionIdxIS<true>(dataIdx, p, sample);
+            default:
+                throw std::runtime_error("Unknown knnType");
+        }
     }
 
     inline void buildSpatialStructure(const BBox &bounds, SampleContainerInternal &samples, ZeroValueSampleContainerInternal &zeroValueSamples)

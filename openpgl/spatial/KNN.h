@@ -71,6 +71,7 @@ struct RegionNeighbours<4>
     embree::vuint<4> ids[2];
     embree::Vec3<embree::vfloat<4>> points[2];
     uint32_t size;
+    uint32_t selfIdx = -1;
 
     inline void set(uint32_t i, uint32_t id, float x, float y, float z)
     {
@@ -123,6 +124,7 @@ struct RegionNeighbours<4>
             return ids[1][asInt(d1)[i1] & 3];
     }
 
+    template<bool UpweightSelf>
     inline uint32_t sampleApproximateClosestRegionIdxIS(const openpgl::Point3 &p, float *sample) const
     {
         const embree::Vec3<embree::vfloat<4>> _p(p[0], p[1], p[2]);
@@ -133,9 +135,17 @@ struct RegionNeighbours<4>
         embree::vfloat<4> dist[2];
         dist[0] = embree::dot(d[0], d[0]);
         dist[1] = embree::dot(d[1], d[1]);
+        if constexpr(UpweightSelf) {
+            // Set self distance to 0
+            if (selfIdx < 4) {
+                dist[0][selfIdx] = 0.f;
+            } else if (selfIdx < 8) {
+                dist[1][selfIdx - 4] = 0.f;
+            }
+        }
 
         const float maxDist = std::max(embree::reduce_max(dist[0]), embree::reduce_max(dist[1]));
-        const float sigma = std::sqrt(maxDist) / 4.0f;
+        const float sigma = std::sqrt(maxDist) / 6.0f;
         dist[0] = embree::fastapprox::exp(-0.5f * dist[0] / (sigma * sigma));
         dist[1] = embree::fastapprox::exp(-0.5f * dist[1] / (sigma * sigma));
 #ifdef KNN_IS_SIMD
@@ -199,6 +209,7 @@ struct RegionNeighbours<8>
     embree::vuint<8> ids;
     embree::Vec3<embree::vfloat<8>> points;
     uint32_t size;
+    uint32_t selfIdx = -1;
 
     inline void set(uint32_t i, uint32_t id, float x, float y, float z)
     {
@@ -230,6 +241,7 @@ struct RegionNeighbours<8>
         return this->ids[asInt(distances)[selected] & 7];
     }
 
+    template<bool UpweightSelf>
     inline uint32_t sampleApproximateClosestRegionIdxIS(const openpgl::Point3 &p, float *sample) const
     {
         const embree::Vec3<embree::vfloat<8>> _p(p[0], p[1], p[2]);
@@ -237,8 +249,14 @@ struct RegionNeighbours<8>
         d = this->points - _p;
         embree::vfloat<8> dist = embree::dot(d, d);
         const float maxDist = embree::reduce_max(dist);
-        const float sigma = std::sqrt(maxDist) / 4.0f;
+        const float sigma = std::sqrt(maxDist) / 6.0f;
         dist = embree::fastapprox::exp(-0.5f * dist / (sigma * sigma));
+        if constexpr(UpweightSelf) {
+            if (selfIdx < 8) {
+                // Set self distance to 0
+                dist[selfIdx] = 0.f;
+            }
+        }
 
 #ifdef KNN_IS_SIMD
         const embree::vfloat<8> cdfs = vinclusive_prefix_sum(dist);
@@ -319,6 +337,7 @@ struct KNearestRegionsSearchTree
     template <typename TRegionStorageContainer>
     void buildRegionSearchTree(const TRegionStorageContainer &regionStorage)
     {
+        std::cout << "Building region search tree with " << regionStorage.size() << " regions." << std::endl;
         num_points = regionStorage.size();
         if (points)
         {
@@ -370,7 +389,10 @@ struct KNearestRegionsSearchTree
                 for (; i < num_results; i++)
                 {
                     size_t idx = ret_index[i];
-                    selfIsIn = selfIsIn || idx == n;
+                    if (idx == n) {
+                        selfIsIn = true;
+                        nh.selfIdx = i;
+                    }
                     nh.set(i, idx, points[idx].p.x, points[idx].p.y, points[idx].p.z);
                 }
                 for (; i < NUM_KNN_NEIGHBOURS; i++)
@@ -458,10 +480,11 @@ struct KNearestRegionsSearchTree
         return out;
     }
 
+    template<bool UpweightSelf>
     uint32_t sampleApproximateClosestRegionIdxIS(unsigned int regionIdx, const openpgl::Point3 &p, float *sample) const
     {
         OPENPGL_ASSERT(_isBuildNeighbours);
-        uint32_t out = neighbours[regionIdx].sampleApproximateClosestRegionIdxIS(p, sample);
+        uint32_t out = neighbours[regionIdx].template sampleApproximateClosestRegionIdxIS<UpweightSelf>(p, sample);
         return out;
     }
 

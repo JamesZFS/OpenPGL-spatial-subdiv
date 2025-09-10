@@ -26,6 +26,8 @@ enum PGL_SPATIAL_KNN_TYPE
 {
     PGL_SPATIAL_KNN_UNIFORM = 0,  // Baseline
     PGL_SPATIAL_KNN_JITTER,
+    PGL_SPATIAL_KNN_IS,   // ISKNN (when precomputation is enabled)
+    PGL_SPATIAL_KNN_IS2,  // ISKNN with self's distance set to zero
 };
 
 enum PGL_SPATIAL_SPLIT_KIND
