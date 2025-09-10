@@ -76,7 +76,7 @@ struct SampleStatistics
 
         mean = meanA * (float)numSamplesA + meanB * (float)numSamplesB;
         numSamples += numSamplesB;
-        mean /= float(numSamples);
+        if (numSamples > 0) mean /= float(numSamples);
 
         sampleVariance = (sampleVarianceA + numSamplesA * meanA * meanA + sampleVarianceB + numSamplesB * meanB * meanB) - numSamples * mean * mean;
         // const float weightMeanA = weightMean, weightMeanB = b.weightMean;

@@ -348,8 +348,9 @@ struct KNearestRegionsSearchTree
         for (size_t i = 0; i < num_points; i++)
         {
             const auto &region = regionStorage[i].first;
-            const openpgl::Point3 distributionPivot = region.sampleStatistics.mean;
-            points[i].p = embree::Vec3f(distributionPivot[0], distributionPivot[1], distributionPivot[2]);
+            const openpgl::Point3 pivot = region.sampleStatistics.mean;
+            OPENPGL_ASSERT(!std::isnan(pivot.x) && !std::isnan(pivot.y) && !std::isnan(pivot.z));
+            points[i].p = embree::Vec3f(pivot[0], pivot[1], pivot[2]);
         }
 
         index = std::unique_ptr<Index>(new Index(3, *this, 10));
