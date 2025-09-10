@@ -31,20 +31,6 @@ inline uint32_t draw(float *sample, uint32_t size)
     return std::min(selected, size - 1);
 }
 
-inline uint32_t drawWeighted(float *sample, float *weights, uint32_t size) {
-    float W = 0;
-    for (uint32_t i = 0; i < size; ++i) W += weights[i];
-    if (W <= 0.0f) return 0;
-    uint32_t i = 0;
-    float w;
-    while (i + 1 < size && (w = weights[i] / W) <= *sample) {
-        ++i;
-        *sample -= w;
-    }
-    *sample /= w;  // sample reuse
-    return i;
-}
-
 template <typename RegionNeighbours>
 uint32_t sampleApproximateClosestRegionIdxRef(const RegionNeighbours &nh, const openpgl::Point3 &p, float sample)
 {
@@ -343,7 +329,7 @@ struct KNearestRegionsSearchTree
         for (size_t i = 0; i < num_points; i++)
         {
             const auto &region = regionStorage[i].first;
-            const openpgl::Point3 distributionPivot = region.candidate.sampleStatistics.mean;
+            const openpgl::Point3 distributionPivot = region.sampleStatistics.mean;
             points[i].p = embree::Vec3f(distributionPivot[0], distributionPivot[1], distributionPivot[2]);
         }
 

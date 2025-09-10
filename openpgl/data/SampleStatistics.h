@@ -74,7 +74,7 @@ struct SampleStatistics
         const float numSamplesA = numSamples;
         const float numSamplesB = b.numSamples;
 
-        const float weightA = numSamplesA / (numSamplesA + numSamplesB);
+        const float weightA = (numSamplesA + numSamplesB > 0) ? numSamplesA / (numSamplesA + numSamplesB) : 0;
         const float weightB = 1.0f - weightA;
         mean = meanA * weightA + meanB * weightB;
         numSamples += numSamplesB;
