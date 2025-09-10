@@ -578,7 +578,6 @@ public:
         return stats;
     }
 
-    // ! Deprecated API
     std::pair<PGLRegionStatistics, PGLRegionStatistics> getCoarseFineRegionStats(const openpgl::Point3 &pos) const
     {
         PGLRegionStatistics cStats{.id = (uint32_t) -1, .fluence = 0};

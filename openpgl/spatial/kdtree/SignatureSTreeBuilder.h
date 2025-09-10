@@ -248,6 +248,7 @@ struct KDTreePartitionBuilder
                         const Settings &settings, uint32_t iteration) const
     {
         OPENPGL_ASSERT(depth <= settings.maxDepth);
+        if (sampleRange.size() == 0) return;
         uint8_t splitDim = 3;
         float splitPos;
         auto samplesBegin = samples.begin() + sampleRange.m_begin, samplesEnd = samples.begin() + sampleRange.m_end;
@@ -351,9 +352,6 @@ struct KDTreePartitionBuilder
                 // No split! Just merge in new samples
                 region.sampleStatistics = mergedStats;
                 region.numZeroValueSamples = zeroSampleRange.size();
-                // if (sampleRange.size() == 0) {
-                //     std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << " bounds = " << region.regionBounds << std::endl;
-                // }
                 range = sampleRange;
 #ifdef OPENPGL_RADIANCE_CACHES
                 range.m_is_begin = zeroSampleRange.m_begin;
