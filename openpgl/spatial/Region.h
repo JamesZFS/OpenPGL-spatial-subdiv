@@ -80,6 +80,7 @@ struct Region : public IRegion {
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
+    SampleStatistics sampleStatistics;  // needs to be kept for parent regions for KNN and PAVMM fit
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
     uint8_t splitKind{0};  // this region is a result of which kind of split?
@@ -142,7 +143,7 @@ struct Region : public IRegion {
         distribution.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&regionBounds), sizeof(regionBounds));
         trainingStatistics.serialize(stream);
-        candidate.sampleStatistics.serialize(stream);
+        sampleStatistics.serialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.serialize(stream);
 #endif
@@ -158,7 +159,7 @@ struct Region : public IRegion {
         distribution.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&regionBounds), sizeof(regionBounds));
         trainingStatistics.deserialize(stream);
-        candidate.sampleStatistics.deserialize(stream);
+        sampleStatistics.deserialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.deserialize(stream);
 #endif

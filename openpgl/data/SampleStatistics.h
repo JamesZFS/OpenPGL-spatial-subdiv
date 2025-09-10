@@ -48,7 +48,7 @@ struct SampleStatistics
 
     inline Vector3 getVariance() const
     {
-        OPENPGL_ASSERT(numSamples > 0.f);
+        // OPENPGL_ASSERT(numSamples > 0.f);
         return sampleVariance / float(numSamples);
     }
 

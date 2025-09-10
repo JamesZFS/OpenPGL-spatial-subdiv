@@ -112,22 +112,22 @@ public:
         {
             if (m_useStochasticNNLookUp && *sample >= 0.f)
             {
+                uint32_t regionIdx;
                 if (USE_PRECOMPUTED_NN)
                 {
-                    uint32_t regionIdx = getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
+                    regionIdx = getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
+                }
+                else
+                {
+                    regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
+                }
+                if (regionIdx != -1)
+                {
                     return &m_regionStorageContainer[regionIdx].first;
                 }
                 else
                 {
-                    uint32_t regionIdx = getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
-                    if (regionIdx != -1)
-                    {
-                        return &m_regionStorageContainer[regionIdx].first;
-                    }
-                    else
-                    {
-                        return nullptr;
-                    }
+                    return nullptr;
                 }
             }
             else
@@ -435,7 +435,7 @@ public:
         if (id >= m_regionStorageContainer.size())
             return stats;
         auto &region = m_regionStorageContainer[id].first;
-        stats.numSamples = region.candidate.sampleStatistics.numSamples;
+        stats.numSamples = region.sampleStatistics.numSamples;
         stats.hasCandidateSplit = region.candidate.hasSplit();
         if (stats.hasCandidateSplit) {
             const auto &candidate = region.candidate;
@@ -446,10 +446,10 @@ public:
         stats.energy = 0;
         stats.angularEnergy = 0;
         stats.fluence = region.candidate.signature.getFluence();
-        // stats.sampleMean = {region.sampleStatistics.getMean().x, region.sampleStatistics.getMean().y, region.sampleStatistics.getMean().z};
+        stats.sampleMean = {region.sampleStatistics.mean.x, region.sampleStatistics.mean.y, region.sampleStatistics.mean.z};
         stats.lowerBounds = {region.regionBounds.lower.x, region.regionBounds.lower.y, region.regionBounds.lower.z};
         stats.upperBounds = {region.regionBounds.upper.x, region.regionBounds.upper.y, region.regionBounds.upper.z};
-        auto var = region.candidate.sampleStatistics.getVariance();
+        auto var = region.sampleStatistics.getVariance();
         stats.sampleVariance = { var.x, var.y, var.z };
         return stats;
     }
@@ -508,7 +508,15 @@ public:
     }
 
     uint32_t getRegionIdxKNN(const openpgl::Point3 &p, float *sample) const {
-        return getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
+        if (USE_PRECOMPUTED_NN)
+        {
+            uint32_t id;
+            return getApproximateClosestRegionIdx(m_regionKNNSearchTree, p, sample, id);
+        }
+        else
+        {
+            return getClosestRegionIdx(m_regionKNNSearchTree, p, sample);
+        }
     }
 
     void serialize(std::ostream &os) const
@@ -720,20 +728,20 @@ public:
 #endif
             {
                 RegionStorageType &regionStorage = m_regionStorageContainer[n];
-                openpgl::Point3 sampleMean = regionStorage.first.candidate.sampleStatistics.mean;
+                openpgl::Point3 sampleMean = regionStorage.first.sampleStatistics.mean;
                 if (regionStorage.second.size() > 0)
                 {
                     if (m_fitRegions)
                     {
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
                         m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
-                                                             regionStorage.first.candidate.sampleStatistics, m_distributionFactorySettings);
+                                                             regionStorage.first.sampleStatistics, m_distributionFactorySettings);
                         m_distributionFactory.fit(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
                                                   regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
 #ifdef OPENPGL_RADIANCE_CACHES
                         m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
                                                                     regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
-                                                                    regionStorage.first.candidate.sampleStatistics);
+                                                                    regionStorage.first.sampleStatistics);
                         regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);
@@ -787,7 +795,7 @@ public:
                     regionStorage.first.splitFlag--;
                 }
 
-                openpgl::Point3 sampleMean = regionStorage.first.candidate.sampleStatistics.mean;
+                openpgl::Point3 sampleMean = regionStorage.first.sampleStatistics.mean;
                 if (regionStorage.second.size() > 0)
                 {
 #ifdef OPENPGL_DEBUG_MODE
@@ -806,13 +814,13 @@ public:
                         }
                         typename DirectionalDistributionFactory::FittingStatistics fittingStats;
                         m_distributionFactory.prepareSamples(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
-                                                             regionStorage.first.candidate.sampleStatistics, m_distributionFactorySettings);
+                                                             regionStorage.first.sampleStatistics, m_distributionFactorySettings);
                         m_distributionFactory.update(regionStorage.first.distribution, regionStorage.first.trainingStatistics, samples.data() + regionStorage.second.m_begin,
                                                      regionStorage.second.m_end - regionStorage.second.m_begin, m_distributionFactorySettings, fittingStats);
 #ifdef OPENPGL_RADIANCE_CACHES
                         m_distributionFactory.updateFluenceEstimate(regionStorage.first.distribution, samples.data() + regionStorage.second.m_begin,
                                                                     regionStorage.second.m_end - regionStorage.second.m_begin, regionStorage.first.numZeroValueSamples,
-                                                                    regionStorage.first.candidate.sampleStatistics);
+                                                                    regionStorage.first.sampleStatistics);
                         regionStorage.first.outRadianceHist.update(samples.data() + regionStorage.second.m_begin, regionStorage.second.m_end - regionStorage.second.m_begin,
                                                                    zeroValueSamples.data() + regionStorage.second.m_is_begin,
                                                                    regionStorage.second.m_is_end - regionStorage.second.m_is_begin);

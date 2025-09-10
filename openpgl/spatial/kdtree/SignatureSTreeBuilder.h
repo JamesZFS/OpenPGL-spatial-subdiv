@@ -258,12 +258,8 @@ struct KDTreePartitionBuilder
             auto &[region, range] = dataStorage[dataIdx];
             auto &candidate = region.candidate;
             // Avoid double counting when this node is a first-level split
-            SampleStatistics mergedStats = candidate.sampleStatistics;
-            if (region.candidate.updated) {   // a result of a recent signature-based split
-                region.regionBounds = bounds;
-            } else {
-                mergedStats.merge(computeStats(samplesBegin, samplesEnd));
-            }
+            SampleStatistics mergedStats = region.sampleStatistics;
+            mergedStats.merge(computeStats(samplesBegin, samplesEnd));
 
             KDNode *nodeLR[2] = {nullptr, nullptr};
             bool triggersSplit = false;
@@ -280,11 +276,12 @@ struct KDTreePartitionBuilder
 
                 // Inheritance
                 for (uint8_t c: {0, 1}) {
-                    regionLR[c]->candidate.sampleStatistics.clear();
                     initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                     regionLR[c]->splitFlag = 1;
                     regionLR[c]->splitKind = PGL_SPATIAL_SPLIT_SAMPLE_COUNT;
                     (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
+                    regionLR[c]->sampleStatistics.clear();
+                    regionLR[c]->sampleStatistics.mean = regionLR[c]->regionBounds.center();  // initialize the mean
                 }
 
                 // Extend KD tree
@@ -306,7 +303,7 @@ struct KDTreePartitionBuilder
                     splitDim = candidate.dim, splitPos = candidate.pivot;
                     triggersSplit = true;
 
-                    auto rDataItr = dataStorage.emplace_back(region, Range());
+                    auto rDataItr = dataStorage.emplace_back(region, Range());  // copy
                     RegionType *regionLR[2] = {&region, &rDataItr->first};
                     uint32_t lChildIdx = candidate.lChildIdx;
 
@@ -316,7 +313,9 @@ struct KDTreePartitionBuilder
                         initCandidateSignatures(0, regionLR[c]->candidate, candidateDataStorage, settings);
                         regionLR[c]->splitFlag += 1;
                         regionLR[c]->splitKind = splitKind;
-                        // regionBounds set later
+                        (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
+                        regionLR[c]->sampleStatistics.clear();
+                        regionLR[c]->sampleStatistics.mean = regionLR[c]->regionBounds.center();  // initialize the mean
                     }
                     candidateDataStorage.recycle_pair(lChildIdx);
 
@@ -350,9 +349,7 @@ struct KDTreePartitionBuilder
                 );
             } else {
                 // No split! Just merge in new samples
-                if (!region.candidate.updated) {
-                    region.candidate.sampleStatistics = mergedStats;
-                }
+                region.sampleStatistics = mergedStats;
                 region.numZeroValueSamples = zeroSampleRange.size();
                 // if (sampleRange.size() == 0) {
                 //     std::cerr << "Warning: empty region at depth " << (int) depth << " id = " << dataIdx << " bounds = " << region.regionBounds << std::endl;
