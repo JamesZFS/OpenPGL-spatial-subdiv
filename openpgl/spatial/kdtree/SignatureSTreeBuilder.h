@@ -67,16 +67,15 @@ struct KDTreePartitionBuilder
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
-        uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
+        uint32_t initializingIters {0};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {6};  // levels of lookahead
         float signatureDistanceThreshold {0.15f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
         bool enablePromotion {true};
         float sufficientCriterionThreshold {1e-4f};  // Phi^{-1}(1 - alpha)
-        float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
-        float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
-        float knnJitterMultiplier {1.0f};
+        PGL_SPATIAL_ANGULAR_THS angularDistanceThreshold {PGL_SPATIAL_ANGULAR_3_DEG};
+        float knnJitterMultiplier {0.1f};
+        bool enableAngular {true};
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
-        PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type
         PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
 
         void serialize(std::ostream& stream) const;
@@ -91,7 +90,7 @@ struct KDTreePartitionBuilder
                    signatureDistanceThreshold == b.signatureDistanceThreshold &&
                    enablePromotion == b.enablePromotion &&
                    sufficientCriterionThreshold == b.sufficientCriterionThreshold && angularDistanceThreshold == b.angularDistanceThreshold &&
-                   angularAlpha == b.angularAlpha && knnJitterMultiplier == b.knnJitterMultiplier && reproject == b.reproject && angularType == b.angularType && knnType == b.knnType;
+                   enableAngular == b.enableAngular && knnJitterMultiplier == b.knnJitterMultiplier && reproject == b.reproject && knnType == b.knnType;
         }
 
         void updateFromConfig(const PGLKDTreeArguments &cfg)
@@ -105,11 +104,10 @@ struct KDTreePartitionBuilder
             signatureDistanceThreshold = cfg.signatureDistanceThreshold;
             sufficientCriterionThreshold = PhiInv(1.f - cfg.fluenceAlpha);
             angularDistanceThreshold = cfg.angularDistanceThreshold;
-            angularAlpha = cfg.angularAlpha;
+            enableAngular = cfg.enableAngular;
             knnJitterMultiplier = cfg.knnJitterMultiplier;
             reproject = cfg.reproject;
             enablePromotion = cfg.enablePromotion;
-            angularType = cfg.angularType;
             knnType = cfg.knnType;
         }
 
@@ -124,11 +122,10 @@ struct KDTreePartitionBuilder
             cfg.signatureDistanceThreshold = signatureDistanceThreshold;
             cfg.fluenceAlpha = 1.f - Phi(sufficientCriterionThreshold);
             cfg.angularDistanceThreshold = angularDistanceThreshold;
-            cfg.angularAlpha = angularAlpha;
+            cfg.enableAngular = enableAngular;
             cfg.reproject = reproject;
             cfg.knnJitterMultiplier = knnJitterMultiplier;
             cfg.enablePromotion = enablePromotion;
-            cfg.angularType = angularType;
             cfg.knnType = knnType;
         }
     };
@@ -451,44 +448,17 @@ struct KDTreePartitionBuilder
         return Signature::getFluenceSplitConfidence(a, b, settings.signatureDistanceThreshold);
     }
 
-    static float getAngularEnergy(const Signature &a, const Signature &b, const Settings &settings) {
-        switch (settings.angularType)
-        {
-            case PGL_SPATIAL_ANGULAR_HEURISTIC:
-                return Signature::getAngularDistance(a, b, settings.angularAlpha);  // effective angular distance
-            case PGL_SPATIAL_ANGULAR_SERIES:
-                return Signature::getAngularSplitConfidence(a, b, settings.angularDistanceThreshold);  // split probability
-            default:
-                return 0;
-        }
-    }
-
     static PGL_SPATIAL_SPLIT_KIND checkPromotion(const SubdivisionData &root, const SubdivisionData &left, const SubdivisionData &right, const Settings &settings) {
         if (!settings.enablePromotion) return PGL_SPATIAL_SPLIT_NONE;
         float fluenceEnergy = std::max(getFluenceEnergy(root.signature, left.signature, settings), getFluenceEnergy(root.signature, right.signature, settings));
-        float angularEnergy = 0;
         uint8_t ret = PGL_SPATIAL_SPLIT_NONE;
 
         if (left.signature.numSamples > settings.minSamplesPromotion && right.signature.numSamples > settings.minSamplesPromotion) {
             if (fluenceEnergy > settings.sufficientCriterionThreshold) ret |= PGL_SPATIAL_SPLIT_FLUENCE;
-            switch (settings.angularType) {
-                case PGL_SPATIAL_ANGULAR_OFF:  break;
-                case PGL_SPATIAL_ANGULAR_HEURISTIC:
-                    angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
-                    if (angularEnergy > settings.angularDistanceThreshold) ret |= PGL_SPATIAL_SPLIT_ANGULAR;
-                    break;
-                case PGL_SPATIAL_ANGULAR_SERIES:
-                    angularEnergy = std::max(getAngularEnergy(root.signature, left.signature, settings), getAngularEnergy(root.signature, right.signature, settings));
-                    if (angularEnergy > 1.f - settings.angularAlpha) ret |= PGL_SPATIAL_SPLIT_ANGULAR;
-                    break;
-                case PGL_SPATIAL_ANGULAR_LUT:
-                    if (Signature::getAngularSplitDecision(root.signature, left.signature, settings.angularDistanceThreshold, settings.angularAlpha) ||
-                        Signature::getAngularSplitDecision(root.signature, right.signature, settings.angularDistanceThreshold, settings.angularAlpha))
-                        ret |= PGL_SPATIAL_SPLIT_ANGULAR;
-                    break;
-                default:
-                    std::cerr << "Unknown confidence type" << std::endl;
-                    break;
+            if (settings.enableAngular &&
+               (Signature::getAngularSplitDecision(root.signature, left.signature, settings.angularDistanceThreshold) ||
+                Signature::getAngularSplitDecision(root.signature, right.signature, settings.angularDistanceThreshold))) {
+                ret |= PGL_SPATIAL_SPLIT_ANGULAR;
             }
         }
         return (PGL_SPATIAL_SPLIT_KIND)ret;
@@ -655,12 +625,12 @@ inline std::string KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValue
     ss << "  lookaheadDepth: " << lookaheadDepth << std::endl;
     ss << "  signatureDistanceThreshold: " << signatureDistanceThreshold << std::endl;
     ss << "  sufficientCriterionThreshold: " << sufficientCriterionThreshold << std::endl;
-    ss << "  angularDistanceThreshold: " << angularDistanceThreshold << std::endl;
-    ss << "  angularAlpha: " << angularAlpha << std::endl;
+    float degrees[4] = {0.5, 1, 3, 10};
+    ss << "  angularDistanceThreshold: " << degrees[angularDistanceThreshold] << " deg" << std::endl;
     ss << "  knnJitterMultiplier: " << knnJitterMultiplier << std::endl;
+    ss << "  enableAngular: " << enableAngular << std::endl;
     ss << "  reproject: " << reproject << std::endl;
     ss << "  enablePromotion: " << enablePromotion << std::endl;
-    ss << "  angularType: " << angularType << std::endl;
     ss << "  knnType: " << knnType << std::endl;
     return ss.str();
 }
@@ -679,9 +649,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.write(reinterpret_cast<const char*>(&enablePromotion), sizeof(enablePromotion));
     stream.write(reinterpret_cast<const char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.write(reinterpret_cast<const char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
-    stream.write(reinterpret_cast<const char*>(&angularAlpha), sizeof(angularAlpha));
     stream.write(reinterpret_cast<const char*>(&knnJitterMultiplier), sizeof(knnJitterMultiplier));
-    stream.write(reinterpret_cast<const char*>(&angularType), sizeof(angularType));
+    stream.write(reinterpret_cast<const char*>(&enableAngular), sizeof(enableAngular));
     stream.write(reinterpret_cast<const char*>(&knnType), sizeof(knnType));
 }
 
@@ -699,9 +668,8 @@ inline void KDTreePartitionBuilder<TRegion, TSamplesContainer, TZeroValueSamples
     stream.read(reinterpret_cast<char*>(&enablePromotion), sizeof(enablePromotion));
     stream.read(reinterpret_cast<char*>(&sufficientCriterionThreshold), sizeof(sufficientCriterionThreshold));
     stream.read(reinterpret_cast<char*>(&angularDistanceThreshold), sizeof(angularDistanceThreshold));
-    stream.read(reinterpret_cast<char*>(&angularAlpha), sizeof(angularAlpha));
     stream.read(reinterpret_cast<char*>(&knnJitterMultiplier), sizeof(knnJitterMultiplier));
-    stream.read(reinterpret_cast<char*>(&angularType), sizeof(angularType));
+    stream.read(reinterpret_cast<char*>(&enableAngular), sizeof(enableAngular));
     stream.read(reinterpret_cast<char*>(&knnType), sizeof(knnType));
 }
 

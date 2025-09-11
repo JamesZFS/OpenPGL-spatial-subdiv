@@ -6,8 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <iostream>
 #include "openpgl/regionstatistics.h"
+#include "openpgl/types.h"
 
 // #define ANGULAR_LUT_STATS
 
@@ -212,8 +212,8 @@ struct Signature  // Directional signature
         }
     }
 
-    static bool getAngularSplitDecision(const Signature &A, const Signature &B, float deltaTheta, float alpha) {
-        if (alpha != 1e-4f) throw std::runtime_error("Error: only alpha = 1e-4 is supported in the LUT-based angular split decision.");
+    static bool getAngularSplitDecision(const Signature &A, const Signature &B, PGL_SPATIAL_ANGULAR_THS deltaTheta) {
+        // Assuming alpha set to 1e-4
         auto muA = A.getMeanDir(), muB = B.getMeanDir();
         float z = muA[0] * muB[0] + muA[1] * muB[1] + muA[2] * muB[2];
         z = std::clamp(z, -1.f, 1.f);
@@ -222,17 +222,17 @@ struct Signature  // Directional signature
         kappaB = B.getKappaEff();
         float kappa = kappaA * kappaB / (kappaA + kappaB);  // effective kappa
 
-        deltaTheta = deltaTheta * 180.0f / M_PIf;  // to degrees
-        if (0.49 <= deltaTheta && deltaTheta < 0.51) {
-            return _getAngularSplitDecision(AngularLUTHalfDeg, kappa, z);
-        } else if (0.99 <= deltaTheta && deltaTheta < 1.01) {
-            return _getAngularSplitDecision(AngularLUT1Deg, kappa, z);
-        } else if (2.99 <= deltaTheta && deltaTheta < 3.01) {
-            return _getAngularSplitDecision(AngularLUT3Deg, kappa, z);
-        } else if (9.99 <= deltaTheta && deltaTheta < 10.01) {
-            return _getAngularSplitDecision(AngularLUT10Deg, kappa, z);
-        } else {
-            throw std::runtime_error("Error: only 1, 3, 10 degrees are supported in the LUT-based angular split decision.");
+        switch (deltaTheta) {
+            case PGL_SPATIAL_ANGULAR_HALF_DEG:
+                return _getAngularSplitDecision(AngularLUTHalfDeg, kappa, z);
+            case PGL_SPATIAL_ANGULAR_1_DEG:
+                return _getAngularSplitDecision(AngularLUT1Deg, kappa, z);
+            case PGL_SPATIAL_ANGULAR_3_DEG:
+                return _getAngularSplitDecision(AngularLUT3Deg, kappa, z);
+            case PGL_SPATIAL_ANGULAR_10_DEG:
+                return _getAngularSplitDecision(AngularLUT10Deg, kappa, z);
+            default:
+                throw std::runtime_error("Error: only 1, 3, 10 degrees are supported in the LUT-based angular split decision.");
         }
     }
 };
