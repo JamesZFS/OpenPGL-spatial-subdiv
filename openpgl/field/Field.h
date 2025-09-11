@@ -608,7 +608,6 @@ public:
             candidate = &m_candidateRegionStorageContainer[fStats.id];
             fStats.depth++;
             fStats.energy = std::max(fStats.energy, SpatialStructureBuilder::getFluenceEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
-            fStats.angularEnergy = std::max(fStats.angularEnergy, SpatialStructureBuilder::getAngularEnergy(region.candidate.signature, candidate->signature, m_spatialSubdivBuilderSettings));
         }
         if (fStats.id != -1) {
             fStats.numSamples = (uint32_t) candidate->signature.numSamples;

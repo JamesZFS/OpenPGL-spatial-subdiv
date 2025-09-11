@@ -50,17 +50,16 @@ extern "C"
         uint32_t minSamplesCandidateSplit {1000};  // to ensure the proposed split position is good enough
         uint32_t minSamplesPromotion {1000};  // to ensure the variance of signature estimates are small enough
         uint32_t sampleCountThreshold {PGL_TREE_MAX_SAMPLE_PER_LEAF};  // threshold of OpenPGL's standard subdivision scheme
-        uint32_t initializingIters {1};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
+        uint32_t initializingIters {0};  // the number of iterations to use the standard subdivision scheme, after which the signature threshold kicks in
         uint32_t lookaheadDepth {6};  // levels of lookahead
         float signatureDistanceThreshold {0.15f};  // triggers promotion if the distance between the signatures of the left and right children is greater than this threshold
         bool enablePromotion {true};
         float fluenceAlpha {1e-4f};
-        float angularDistanceThreshold {3.f * M_PIf / 180.f};  // 3 degrees by default
-        float angularAlpha {1e-4};  // the 100(1-alpha)% confidence interval is used
-        float knnJitterMultiplier {1.0f};
+        PGL_SPATIAL_ANGULAR_THS angularDistanceThreshold {PGL_SPATIAL_ANGULAR_3_DEG};
+        float knnJitterMultiplier {0.1f};
+        bool enableAngular {true};
         bool reproject {false};  // whether to reproject samples to the center of the parent region when calculating signatures
 
-        PGL_SPATIAL_ANGULAR_TYPE angularType {PGL_SPATIAL_ANGULAR_SERIES};  // angular criterion type
         PGL_SPATIAL_KNN_TYPE knnType {PGL_SPATIAL_KNN_UNIFORM};  // stochastic query strategy
     };
 
