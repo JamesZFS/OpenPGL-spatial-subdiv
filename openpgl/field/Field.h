@@ -19,7 +19,7 @@
 #endif
 #define USE_PRECOMPUTED_NN 0
 
-#define DUMP_DISTRIBUTION_UPDATE_DATA
+// #define DUMP_DISTRIBUTION_UPDATE_DATA
 
 namespace openpgl
 {
@@ -384,6 +384,7 @@ public:
             m_timeLastUpdate = updateAll.elapsed() * 1e-3f;
             std::cout << "updateField() took " << updateAll.elapsed() * 1e-3f << " ms" << std::endl;
             // if(m_writeBackSortedSamples) {
+            /*
             if (true)
             {
                 embree::parallel_for(size_t(0), samples.samples.size(), size_t(4 * 4096), [&](const embree::range<size_t> &r) {
@@ -393,6 +394,7 @@ public:
                     }
                 });
             }
+            */
         }
         m_iteration++;
     }

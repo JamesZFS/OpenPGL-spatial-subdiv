@@ -80,7 +80,6 @@ struct Region : public IRegion {
     TDistribution distribution;
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
-    Vector3 regionPivot;
     size_t numZeroValueSamples{0};
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
     uint8_t splitKind{0};  // this region is a result of which kind of split?
@@ -148,7 +147,6 @@ struct Region : public IRegion {
         stream.write(reinterpret_cast<const char *>(&initialized), sizeof(initialized));
         distribution.serialize(stream);
         stream.write(reinterpret_cast<const char *>(&regionBounds), sizeof(regionBounds));
-        stream.write(reinterpret_cast<const char *>(&regionPivot), sizeof(regionPivot));
         trainingStatistics.serialize(stream);
         candidate.sampleStatistics.serialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
@@ -166,7 +164,6 @@ struct Region : public IRegion {
         stream.read(reinterpret_cast<char *>(&initialized), sizeof(initialized));
         distribution.deserialize(stream);
         stream.read(reinterpret_cast<char *>(&regionBounds), sizeof(regionBounds));
-        stream.read(reinterpret_cast<char *>(&regionPivot), sizeof(regionPivot));
         trainingStatistics.deserialize(stream);
         candidate.sampleStatistics.deserialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
