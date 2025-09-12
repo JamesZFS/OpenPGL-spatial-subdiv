@@ -337,7 +337,7 @@ struct KNearestRegionsSearchTree
     template <typename TRegionStorageContainer>
     void buildRegionSearchTree(const TRegionStorageContainer &regionStorage)
     {
-        std::cout << "Building region search tree with " << regionStorage.size() << " regions." << std::endl;
+        std::cout << "KNearestRegionsSearchTree::buildRegionSearchTree() with " << regionStorage.size() << " regions." << std::endl;
         num_points = regionStorage.size();
         if (points)
         {
@@ -361,6 +361,7 @@ struct KNearestRegionsSearchTree
 
     void buildRegionNeighbours()
     {
+        std::cout << "KNearestRegionsSearchTree:buildRegionNeighbours()" << std::endl;
         OPENPGL_ASSERT(_isBuild);
 
         if (neighbours)
