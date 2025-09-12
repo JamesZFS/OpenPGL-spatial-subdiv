@@ -20,7 +20,6 @@ set(OPENPGL_SRC
     directional/ISurfaceSamplingDistribution.cpp
     directional/IVolumeSamplingDistribution.cpp
     directional/vmm/VMMPhaseFunctions.cpp
-    data/MultivariateNormalSampler.cpp
     data/Signature.cpp
     ../third-party/embreeSrc/common/simd/sse.cpp
     ../third-party/embreeSrc/common/sys/alloc.cpp
@@ -194,7 +193,7 @@ target_include_directories(${PROJECT_NAME}
     ${TBB_INCLUDE_DIRS}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE TBB::${OPENPGL_TBB_COMPONENT} TBB::tbbmalloc)
+target_link_libraries(${PROJECT_NAME} PRIVATE TBB::${OPENPGL_TBB_COMPONENT})
 if (OPENPGL_EF_IMAGE_SPACE_GUIDING_BUFFER)
   target_include_directories(${PROJECT_NAME}
     PRIVATE
