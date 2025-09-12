@@ -16,8 +16,9 @@ namespace openpgl
 {
 
 struct SubdivisionData {
-    // Necessary memory: 10 - 20 floats ~ 40 - 80 Bytes
-    Signature signature;  // 3 - 6 floats
+    Signature signature;  // 6 floats
+    // We use the union trick to save memory
+    // The observation is that a candidate region can either have sampleStatistics (before a candidate split), or candidate split proposal, but not necessarily both
     union {  // can only have sampleStatistics before a split
         SampleStatistics sampleStatistics;  // essentially 7 floats
         struct {
@@ -81,7 +82,9 @@ struct Region : public IRegion {
     BBox regionBounds;
     TTrainingStatistics trainingStatistics;
     SampleStatistics sampleStatistics;  // needs to be kept for parent regions for KNN and PAVMM fit
+#ifdef OPENPGL_RADIANCE_CACHES
     size_t numZeroValueSamples{0};
+#endif
     uint8_t splitFlag{0};  // a positive splitFlag indicates the number of splits to reach this region. This allows us to decay the directional model multiple times.
     uint8_t splitKind{0};  // this region is a result of which kind of split?
 
@@ -152,8 +155,8 @@ struct Region : public IRegion {
         sampleStatistics.serialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.serialize(stream);
-#endif
         stream.write(reinterpret_cast<const char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
+#endif
         stream.write(reinterpret_cast<const char *>(&splitFlag), sizeof(splitFlag));
         stream.write(reinterpret_cast<const char *>(&splitKind), sizeof(splitKind));
         candidate.serialize(stream);
@@ -169,8 +172,8 @@ struct Region : public IRegion {
         sampleStatistics.deserialize(stream);
 #ifdef OPENPGL_RADIANCE_CACHES
         outRadianceHist.deserialize(stream);
-#endif
         stream.read(reinterpret_cast<char *>(&numZeroValueSamples), sizeof(numZeroValueSamples));
+#endif
         stream.read(reinterpret_cast<char *>(&splitFlag), sizeof(splitFlag));
         stream.read(reinterpret_cast<char *>(&splitKind), sizeof(splitKind));
         candidate.deserialize(stream);
@@ -267,6 +270,7 @@ public:
     }
 
     void recycle_pair(size_t idx) {
+        OPENPGL_ASSERT(idx & 1 == 0);
         m_data[idx].reset();
         m_data[idx+1].reset();
         m_freeIndexStack.push(idx);
