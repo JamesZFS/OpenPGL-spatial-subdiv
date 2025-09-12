@@ -169,8 +169,6 @@ struct KDTreePartitionBuilder
                 for (size_t i = r.begin(); i < r.end(); ++i) {
                     auto &region = dataStorage[i].first;
                     region.candidate.updated = false;
-                    if (region.splitFlag)   // clear signatures of this region and its lookaheads
-                        clearSignatures(0, region.candidate, candidateDataStorage);
                     if (region.candidate.signature.numSamples > PGL_SIGNATURE_MAX_SAMPLES)
                         region.candidate.signature.decay(0.5f);
                 }
@@ -311,6 +309,7 @@ struct KDTreePartitionBuilder
                     // Inheritance
                     for (uint8_t c: {0, 1}) {
                         regionLR[c]->candidate = candidateDataStorage[lChildIdx + c];
+                        clearSignatures(0, regionLR[c]->candidate, candidateDataStorage);
                         regionLR[c]->splitFlag += 1;
                         regionLR[c]->splitKind = splitKind;
                         (c ? regionLR[c]->regionBounds.lower[splitDim] : regionLR[c]->regionBounds.upper[splitDim]) = splitPos;
@@ -391,9 +390,10 @@ struct KDTreePartitionBuilder
                 if (!region.hasSplit())
                     region.sampleStatistics.merge(computeStats(samplesBegin, samplesEnd));
                 region.updated = true;
-                region.signature.addSamples(samplesBegin, samplesEnd);
-                region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
             }
+            // We still update the signature for the case with update, for we cleared the signatures since the last promotion
+            region.signature.addSamples(samplesBegin, samplesEnd);
+            region.signature.addZeroSamples(std::distance(zeroSamplesBegin, zeroSamplesEnd));
         };
 
         // Update current
