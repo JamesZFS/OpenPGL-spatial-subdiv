@@ -377,6 +377,13 @@ extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetBriefRegionStatsSurf
     return gField->getBriefRegionStatsSurface(pos);
 }
 
+extern "C" OPENPGL_DLLEXPORT PGLRegionStatistics pglFieldGetBriefRegionStatsVolume(PGLField field, pgl_point3f position)
+{
+    const auto *gField = (const IGuidingField *)field;
+    const openpgl::Point3 pos(position.x, position.y, position.z);
+    return gField->getBriefRegionStatsVolume(pos);
+}
+
 extern "C" OPENPGL_DLLEXPORT std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight)
 {
     const auto *gField = (const IGuidingField *)field;

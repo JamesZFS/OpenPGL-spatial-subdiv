@@ -99,6 +99,8 @@ typedef ManagedObject Field;
 
     OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetBriefRegionStatsSurface(PGLField field, pgl_point3f position);
 
+    OPENPGL_CORE_INTERFACE PGLRegionStatistics pglFieldGetBriefRegionStatsVolume(PGLField field, pgl_point3f position);
+
     OPENPGL_CORE_INTERFACE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> pglFieldGetDirectionalSignatures(PGLField field, pgl_point3f position, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight);
 
     OPENPGL_CORE_INTERFACE PGLRange pglFieldGetSurfaceSampleRange(PGLField field, size_t id);

@@ -173,6 +173,8 @@ struct Field
     /// More efficient, less data
     PGLRegionStatistics GetBriefRegionStatisticsSurface(openpgl::cpp::Point3f pos) const;
 
+    PGLRegionStatistics GetBriefRegionStatisticsVolume(openpgl::cpp::Point3f pos) const;
+
     /// Returns the LR directional signatures of the regions at the given position and lookahead level (1 <= lookaheadDepth <= max lookaheadDepth)
     std::pair<PGLDirectionalSignature, PGLDirectionalSignature> GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const;
 
@@ -398,6 +400,11 @@ OPENPGL_INLINE std::pair<PGLRegionStatistics, PGLRegionStatistics> Field::GetCoa
 OPENPGL_INLINE PGLRegionStatistics Field::GetBriefRegionStatisticsSurface(openpgl::cpp::Point3f pos) const {
     OPENPGL_ASSERT(m_fieldHandle);
     return pglFieldGetBriefRegionStatsSurface(m_fieldHandle, pos);
+}
+
+OPENPGL_INLINE PGLRegionStatistics Field::GetBriefRegionStatisticsVolume(openpgl::cpp::Point3f pos) const {
+    OPENPGL_ASSERT(m_fieldHandle);
+    return pglFieldGetBriefRegionStatsVolume(m_fieldHandle, pos);
 }
 
 OPENPGL_INLINE std::pair<PGLDirectionalSignature, PGLDirectionalSignature> Field::GetDirectionalSignatures(openpgl::cpp::Point3f pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const

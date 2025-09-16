@@ -99,6 +99,8 @@ struct ISurfaceVolumeField
 
     virtual PGLRegionStatistics getBriefRegionStatsSurface(const Point3 &position) const = 0;
 
+    virtual PGLRegionStatistics getBriefRegionStatsVolume(const Point3 &position) const = 0;
+
     virtual std::pair<PGLDirectionalSignature, PGLDirectionalSignature> getDirectionalSignatures(const openpgl::Point3 &pos, uint32_t lookaheadDepth, uint8_t &splitDim, bool &isRight) const = 0;
 
     virtual PGLRange getSurfaceSampleRange(size_t id) const = 0;

@@ -626,6 +626,7 @@ public:
         stats.id = id;
         stats.depth = depth;
         stats.splitKind = m_regionStorageContainer[id].first.splitKind;
+        stats.fluence = m_regionStorageContainer[id].first.candidate.signature.getFluence();
         return stats;
     }
 
