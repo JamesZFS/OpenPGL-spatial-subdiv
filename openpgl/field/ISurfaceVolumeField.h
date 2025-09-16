@@ -79,6 +79,18 @@ struct ISurfaceVolumeField
 
     virtual size_t getMemoryLookaheadRegionDataSurface() const = 0;
 
+    virtual size_t getRegionCountVolume() const = 0;
+
+    virtual size_t getLeafCountVolume() const = 0;
+
+    virtual size_t getLookaheadRegionCountVolume() const = 0;
+
+    virtual size_t getMemoryKDTreeVolume() const = 0;
+
+    virtual size_t getMemoryRegionDataVolume() const = 0;
+
+    virtual size_t getMemoryLookaheadRegionDataVolume() const = 0;
+
     virtual uint32_t getRegionIdxKNNSurface(const openpgl::Point3 &p, float *sample) const = 0;
 
     virtual PGLRegionStatistics getRegionStatsSurface(uint32_t id) const = 0;

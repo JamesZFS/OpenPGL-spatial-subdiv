@@ -319,6 +319,38 @@ extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryLookaheadRegionDataSurface(
     return gField->getMemoryLookaheadRegionDataSurface();
 }
 
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetRegionCountVolume(PGLField field)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getRegionCountVolume();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetLeafCountVolume(PGLField field)
+{
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getLeafCountVolume();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetLookaheadRegionCountVolume(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getLookaheadRegionCountVolume();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryKDTreeVolume(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryKDTreeVolume();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryRegionDataVolume(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryRegionDataVolume();
+}
+
+extern "C" OPENPGL_DLLEXPORT size_t pglFieldGetMemoryLookaheadRegionDataVolume(PGLField field) {
+    const auto *gField = (const IGuidingField *)field;
+    return gField->getMemoryLookaheadRegionDataVolume();
+}
+
 extern "C" OPENPGL_DLLEXPORT uint32_t pglFieldGetRegionIdxKNNSurface(PGLField field, pgl_point3f p, float *sample) {
     const auto *gField = (const IGuidingField *)field;
     const openpgl::Point3 pos(p.x, p.y, p.z);

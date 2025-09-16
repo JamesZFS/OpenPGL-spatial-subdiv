@@ -155,6 +155,13 @@ struct Field
     size_t GetMemoryKDTreeSurface() const;
     size_t GetMemoryRegionDataSurface() const;
     size_t GetMemoryLookaheadRegionDataSurface() const;
+
+    size_t GetRegionCountVolume(bool all = true) const;
+    size_t GetLookaheadRegionCountVolume() const;
+    size_t GetMemoryKDTreeVolume() const;
+    size_t GetMemoryRegionDataVolume() const;
+    size_t GetMemoryLookaheadRegionDataVolume() const;
+
     uint32_t GetRegionIdxKNNSurface(pgl_point3f p, float *sample) const;
 
     /// Returns the debug information for the surface guiding Field. (e.g., the sample count, the CE value, etc.)
@@ -345,6 +352,31 @@ OPENPGL_INLINE size_t Field::GetMemoryRegionDataSurface() const {
 
 OPENPGL_INLINE size_t Field::GetMemoryLookaheadRegionDataSurface() const {
     return pglFieldGetMemoryLookaheadRegionDataSurface(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetRegionCountVolume(bool all) const
+{
+    OPENPGL_ASSERT(m_fieldHandle);
+    if (all)
+        return pglFieldGetRegionCountVolume(m_fieldHandle);
+    else
+        return pglFieldGetLeafCountVolume(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetLookaheadRegionCountVolume() const {
+    return pglFieldGetLookaheadRegionCountVolume(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryKDTreeVolume() const {
+    return pglFieldGetMemoryKDTreeVolume(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryRegionDataVolume() const {
+    return pglFieldGetMemoryRegionDataVolume(m_fieldHandle);
+}
+
+OPENPGL_INLINE size_t Field::GetMemoryLookaheadRegionDataVolume() const {
+    return pglFieldGetMemoryLookaheadRegionDataVolume(m_fieldHandle);
 }
 
 OPENPGL_INLINE uint32_t Field::GetRegionIdxKNNSurface(pgl_point3f p, float *sample) const {
