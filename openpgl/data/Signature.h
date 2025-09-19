@@ -138,10 +138,14 @@ struct Signature  // Directional signature
     }
 
     float getKappaEff() const {  // approximate 1 / sigma^2 without using Comoment
+#if 0
+        return getKappa() * (totalWeight * totalWeight) / totalWeight2;
+#else
         float R2 = get_R_bar2();
         R2 = std::min(R2, 1.0f - 1e-6f); // prevent div by 0
         float KappaEff = 0.5f * R2 * (3 - R2) / (1 - R2);
         return KappaEff * (totalWeight * totalWeight) / totalWeight2;
+#endif
     }
 
     // Standard error of the mean direction estimate
@@ -185,7 +189,7 @@ struct Signature  // Directional signature
 
     // Stores the precomputed (1/sqrt(kappa), max cos(theta)) pairs
     constexpr static int LUTSIZE = 256;
-    const static std::array<std::pair<float, float>, LUTSIZE> AngularLUTHalfDeg, AngularLUT1Deg, AngularLUT3Deg, AngularLUT10Deg;
+    const static std::array<std::pair<float, float>, LUTSIZE> AngularLUT1Deg, AngularLUT2Deg, AngularLUT3Deg, AngularLUT10Deg;
 #ifdef ANGULAR_LUT_STATS
     inline static std::array<int, LUTSIZE> LUTStats;
 #endif
@@ -223,10 +227,10 @@ struct Signature  // Directional signature
         float kappa = kappaA * kappaB / (kappaA + kappaB);  // effective kappa
 
         switch (deltaTheta) {
-            case PGL_SPATIAL_ANGULAR_HALF_DEG:
-                return _getAngularSplitDecision(AngularLUTHalfDeg, kappa, z);
             case PGL_SPATIAL_ANGULAR_1_DEG:
                 return _getAngularSplitDecision(AngularLUT1Deg, kappa, z);
+            case PGL_SPATIAL_ANGULAR_2_DEG:
+                return _getAngularSplitDecision(AngularLUT2Deg, kappa, z);
             case PGL_SPATIAL_ANGULAR_3_DEG:
                 return _getAngularSplitDecision(AngularLUT3Deg, kappa, z);
             case PGL_SPATIAL_ANGULAR_10_DEG:
