@@ -138,14 +138,8 @@ struct Signature  // Directional signature
     }
 
     float getKappaEff() const {  // approximate 1 / sigma^2 without using Comoment
-#if 0
-        return getKappa() * (totalWeight * totalWeight) / totalWeight2;
-#else
         float R2 = get_R_bar2();
-        R2 = std::min(R2, 1.0f - 1e-6f); // prevent div by 0
-        float KappaEff = 0.5f * R2 * (3 - R2) / (1 - R2);
-        return KappaEff * (totalWeight * totalWeight) / totalWeight2;
-#endif
+        return R2 * (3 - R2) / std::max(1.0f - R2, 1e-6f) * (totalWeight * totalWeight) / totalWeight2 + 1;
     }
 
     // Standard error of the mean direction estimate
