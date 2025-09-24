@@ -137,9 +137,19 @@ struct Signature  // Directional signature
         return R * (3 - R2) / (1 - R2);  // approximation
     }
 
+    /// Returns a numerical approximation of the non-negative solution to x*coth(x)=y.
+    /// The maximal relative error in x is 1.46e-4.
+    inline static float invert_x_coth_x(float y) {
+        float num = ((y + 1.69934861f) * y + 5.38753272f) * y + 9.85021305f;
+        num = num * y - num;
+        float den = (y + 0.67453491f) * y + 4.31180006f;
+        return std::sqrt(num / den);
+    }
+
     float getKappaEff() const {  // approximate 1 / sigma^2 without using Comoment
         float R2 = get_R_bar2();
-        return R2 * (3 - R2) / std::max(1.0f - R2, 1e-6f) * (totalWeight * totalWeight) / totalWeight2 + 1;
+        float k_coth_k = R2 * (3 - R2) / std::max(1.0f - R2, 1e-6f) * (totalWeight * totalWeight) / totalWeight2 + 1;
+        return invert_x_coth_x(k_coth_k);
     }
 
     // Standard error of the mean direction estimate
