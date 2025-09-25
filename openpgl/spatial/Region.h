@@ -260,9 +260,10 @@ public:
     }
 
     size_t add_pair() {
-        size_t idx = m_freeIndexStack.pop();  // Check if there is a recyclable pair before allocating new
-        if (idx != -1) return idx;
         return std::distance(m_data.begin(), m_data.grow_by(2));
+        // size_t idx = m_freeIndexStack.pop();  // Check if there is a recyclable pair before allocating new
+        // if (idx != -1) return idx;
+        // return std::distance(m_data.begin(), m_data.grow_by(2));
     }
 
     size_t append() {
@@ -270,32 +271,32 @@ public:
     }
 
     void recycle_pair(size_t idx) {
-        OPENPGL_ASSERT(idx & 1 == 0);
-        m_data[idx].reset();
-        m_data[idx+1].reset();
-        m_freeIndexStack.push(idx);
+        // OPENPGL_ASSERT(idx & 1 == 0);
+        // m_data[idx].reset();
+        // m_data[idx+1].reset();
+        // m_freeIndexStack.push(idx);
     }
 
 private:
     tbb::concurrent_vector<SubdivisionData> m_data;
 
-    struct ConcurrentIndexStack {
-        std::vector<size_t> indices;
-        std::mutex mutex;
+    // struct ConcurrentIndexStack {
+    //     std::vector<size_t> indices;
+    //     std::mutex mutex;
 
-        void push(size_t i) {
-            std::lock_guard lock(mutex);
-            indices.push_back(i);
-        }
+    //     void push(size_t i) {
+    //         std::lock_guard lock(mutex);
+    //         indices.push_back(i);
+    //     }
 
-        size_t pop() {
-            std::lock_guard lock(mutex);
-            if (indices.empty()) return -1;
-            size_t ret = indices.back();
-            indices.pop_back();
-            return ret;
-        }
-    } m_freeIndexStack;
+    //     size_t pop() {
+    //         std::lock_guard lock(mutex);
+    //         if (indices.empty()) return -1;
+    //         size_t ret = indices.back();
+    //         indices.pop_back();
+    //         return ret;
+    //     }
+    // } m_freeIndexStack;
 };
 
 }  // namespace openpgl
