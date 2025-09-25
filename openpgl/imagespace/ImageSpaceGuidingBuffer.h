@@ -102,6 +102,7 @@ struct ImageSpaceGuidingBuffer
     {
         m_denoiser = new Denoiser(m_resolution, false);
         m_contributionEstimateBuffers = new Buffers(m_resolution);
+        m_contributionEstimateBuffers->reset();
         m_ready = false;
     }
 
