@@ -1,5 +1,7 @@
 // Copyright 2020 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+//
+// This file holds the implementation of the proposed illumination-aware spatial subdivision scheme
 
 #pragma once
 
